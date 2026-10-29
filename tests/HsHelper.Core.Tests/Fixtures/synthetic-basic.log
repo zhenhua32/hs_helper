@@ -1,0 +1,30 @@
+D 12:00:00.0000000 PowerTaskList.DebugPrintPower() - CREATE_GAME
+D 12:00:00.0000001 PowerTaskList.DebugPrintPower() - GameEntity EntityID=1
+D 12:00:00.0000002 PowerTaskList.DebugPrintPower() -     tag=STATE value=RUNNING
+D 12:00:00.0000003 PowerTaskList.DebugPrintPower() -     tag=TURN value=1
+D 12:00:00.0000004 PowerTaskList.DebugPrintPower() -     tag=STEP value=BEGIN_MULLIGAN
+D 12:00:00.0000005 PowerTaskList.DebugPrintPower() - Player EntityID=2 PlayerID=1 GameAccountId=[redacted]
+D 12:00:00.0000006 PowerTaskList.DebugPrintPower() -     tag=RESOURCES value=1
+D 12:00:00.0000007 PowerTaskList.DebugPrintPower() -     tag=RESOURCES_USED value=0
+D 12:00:00.0000008 PowerTaskList.DebugPrintPower() -     tag=CURRENT_PLAYER value=1
+D 12:00:00.0000009 PowerTaskList.DebugPrintPower() - Player EntityID=3 PlayerID=2 GameAccountId=[redacted]
+D 12:00:00.0000010 PowerTaskList.DebugPrintPower() -     tag=CURRENT_PLAYER value=0
+D 12:00:00.0000011 PowerTaskList.DebugPrintPower() - FULL_ENTITY - Creating ID=10 CardID=TEST_HUNTER_A
+D 12:00:00.0000012 PowerTaskList.DebugPrintPower() -     tag=CONTROLLER value=1
+D 12:00:00.0000013 PowerTaskList.DebugPrintPower() -     tag=ZONE value=HAND
+D 12:00:00.0000014 PowerTaskList.DebugPrintPower() -     tag=ZONE_POSITION value=1
+D 12:00:00.0000015 PowerTaskList.DebugPrintPower() -     tag=COST value=3
+D 12:00:00.0000016 PowerTaskList.DebugPrintPower() - FULL_ENTITY - Creating ID=11 CardID=TEST_HUNTER_A
+D 12:00:00.0000017 PowerTaskList.DebugPrintPower() -     tag=CONTROLLER value=1
+D 12:00:00.0000018 PowerTaskList.DebugPrintPower() -     tag=ZONE value=HAND
+D 12:00:00.0000019 PowerTaskList.DebugPrintPower() -     tag=ZONE_POSITION value=2
+D 12:00:00.0000020 PowerTaskList.DebugPrintPower() -     tag=COST value=1
+D 12:00:00.0000021 PowerTaskList.DebugPrintPower() - FULL_ENTITY - Creating ID=20 CardID=SHOULD_NOT_LEAK
+D 12:00:00.0000022 PowerTaskList.DebugPrintPower() -     tag=CONTROLLER value=2
+D 12:00:00.0000023 PowerTaskList.DebugPrintPower() -     tag=ZONE value=HAND
+D 12:00:00.0000024 PowerTaskList.DebugPrintPower() -     tag=COST value=8
+D 12:00:00.0000025 PowerTaskList.DebugPrintPower() - FULL_ENTITY - Creating ID=21 CardID=HIDDEN_DECK_ID
+D 12:00:00.0000026 PowerTaskList.DebugPrintPower() -     tag=CONTROLLER value=1
+D 12:00:00.0000027 PowerTaskList.DebugPrintPower() -     tag=ZONE value=DECK
+D 12:00:00.0000028 PowerTaskList.DebugPrintPower() - TAG_CHANGE Entity=GameEntity tag=STEP value=MAIN_ACTION
+D 12:00:00.0000029 PowerProcessor.EndCurrentTaskList() - task complete

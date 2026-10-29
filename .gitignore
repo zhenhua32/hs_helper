@@ -25,3 +25,6 @@ appsettings.*.Local.json
 # Windows filesystem metadata
 Thumbs.db
 Desktop.ini
+
+# Workspace-local SDK and NuGet cache
+/.local/

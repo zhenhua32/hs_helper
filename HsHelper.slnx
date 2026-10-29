@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HsHelper.Core/HsHelper.Core.csproj" />
+    <Project Path="src/HsHelper.Ingestion/HsHelper.Ingestion.csproj" />
+    <Project Path="src/HsHelper.Cards/HsHelper.Cards.csproj" />
+    <Project Path="src/HsHelper.Agent/HsHelper.Agent.csproj" />
+    <Project Path="src/HsHelper.Cli/HsHelper.Cli.csproj" />
+    <Project Path="src/HsHelper.App/HsHelper.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HsHelper.Core.Tests/HsHelper.Core.Tests.csproj" />
+    <Project Path="tests/HsHelper.Ingestion.Tests/HsHelper.Ingestion.Tests.csproj" />
+    <Project Path="tests/HsHelper.Cards.Tests/HsHelper.Cards.Tests.csproj" />
+    <Project Path="tests/HsHelper.Agent.Tests/HsHelper.Agent.Tests.csproj" />
+  </Folder>
+</Solution>
