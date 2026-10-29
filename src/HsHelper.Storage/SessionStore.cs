@@ -236,6 +236,68 @@ public sealed class SessionStore
             var index = outcome switch { "Won" => 0, "Lost" or "Conceded" => 1, "Tied" => 2, _ => 3 };
             counts[index] += reader.GetInt32(2);
         }
+        return BuildStats(groups);
+    }
+
+    /// <summary>
+    /// Aggregates only the latest state actually recorded by the cutoff, including only then-complete matches.
+    /// Dynamic filters use the historical frame, never final session metadata. Limit does not truncate statistics;
+    /// more than 10,000 candidate matches produces an explicit error so callers can narrow the date/build range.
+    /// </summary>
+    public async Task<PersonalStats> GetStatsAsOfAsync(DateTimeOffset asOf, SessionFilter? filter = null,
+        CancellationToken cancellationToken = default)
+    {
+        filter ??= new();
+        const int maximumCandidates = 10000;
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        var clauses = new List<string>();
+        void Fixed(string column, string parameter, object? value, string comparison = "=")
+        {
+            if (value is null) return;
+            clauses.Add(column + comparison + parameter + (column == "g.region" ? " COLLATE NOCASE" : ""));
+            Add(command, parameter, value);
+        }
+        Fixed("g.card_build", "$build", filter.CardBuild); Fixed("g.deck_version_id", "$deck", filter.DeckVersionId);
+        Fixed("g.region", "$region", filter.Region); Fixed("g.id", "$excluded", filter.ExcludeSessionId, "<>");
+        Fixed("g.started_at", "$since", filter.Since.HasValue ? Timestamp(filter.Since.Value) : null, ">=");
+        Fixed("g.started_at", "$until", filter.Until.HasValue ? Timestamp(filter.Until.Value) : null, "<=");
+        if (filter.EndedBefore is { } ended)
+        {
+            clauses.Add("EXISTS(SELECT 1 FROM session_snapshots e WHERE e.session_id=g.id AND e.phase='Complete' AND e.recorded_at<=$ended AND e.recorded_at<=$asOf)");
+            Add(command, "$ended", Timestamp(ended));
+        }
+        command.CommandText = """
+            SELECT s.snapshot_json FROM game_sessions g JOIN session_snapshots s ON s.id=(
+              SELECT x.id FROM session_snapshots x WHERE x.session_id=g.id AND x.recorded_at<=$asOf
+              ORDER BY x.event_seq DESC,x.state_version DESC,x.id DESC LIMIT 1)
+            """ + (clauses.Count == 0 ? "" : " WHERE " + string.Join(" AND ", clauses)) +
+            " ORDER BY g.id LIMIT $maximum";
+        Add(command, "$asOf", Timestamp(asOf)); Add(command, "$maximum", maximumCandidates + 1);
+        var candidates = 0;
+        var groups = new Dictionary<string, int[]>(StringComparer.Ordinal);
+        static bool Matches(string? value, string? expected) => expected is null || string.Equals(value, expected, StringComparison.OrdinalIgnoreCase);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (++candidates > maximumCandidates)
+                throw new InvalidDataException("历史统计超过10000局候选范围，未返回截断结果；请缩小时间、套牌或卡库版本范围。");
+            var snapshot = SnapshotCodec.Deserialize(Unpack(reader.GetValue(0)));
+            if (snapshot.Phase != GamePhase.Complete || !Matches(snapshot.Format, filter.Format) ||
+                !Matches(snapshot.GameType, filter.GameType) || !Matches(snapshot.LocalClass, filter.PlayerClass) ||
+                !Matches(snapshot.OpponentClass ?? "Unknown", filter.OpponentClass)) continue;
+            bool? first = snapshot.FirstPlayerId is { } firstPlayer && snapshot.LocalPlayerId is { } local ? firstPlayer == local : null;
+            if (filter.WentFirst.HasValue && filter.WentFirst != first) continue;
+            var key = snapshot.OpponentClass ?? "Unknown";
+            if (!groups.TryGetValue(key, out var counts)) groups[key] = counts = new int[4];
+            var outcome = snapshot.LocalOutcome switch { "Won" => 0, "Lost" or "Conceded" => 1, "Tied" => 2, _ => 3 };
+            counts[outcome]++;
+        }
+        return BuildStats(groups);
+    }
+
+    private static PersonalStats BuildStats(Dictionary<string, int[]> groups)
+    {
         var matchups = groups.OrderBy(g => g.Key).Select(g => new ClassMatchupStats(g.Key, g.Value.Sum(),
             g.Value[0], g.Value[1], g.Value[2], g.Value[3], Rate(g.Value[0], g.Value[1]))).ToArray();
         var wins = matchups.Sum(g => g.Wins); var losses = matchups.Sum(g => g.Losses);
@@ -415,6 +477,10 @@ public sealed class SessionStore
         Filter("g.game_type", "$gameType", filter.GameType);
         if (filter.Since is { } since) { clauses.Add("g.started_at>=$since"); Add(command, "$since", Timestamp(since)); }
         if (filter.Until is { } until) { clauses.Add("g.started_at<=$until"); Add(command, "$until", Timestamp(until)); }
+        if (filter.EndedBefore is { } endedBefore)
+        { clauses.Add("g.ended_at IS NOT NULL AND g.ended_at<=$endedBefore"); Add(command, "$endedBefore", Timestamp(endedBefore)); }
+        if (filter.ExcludeSessionId is { } excluded)
+        { clauses.Add("g.id<>$excludedSession"); Add(command, "$excludedSession", excluded); }
         return clauses.Count == 0 ? "" : " WHERE " + string.Join(" AND ", clauses);
     }
 

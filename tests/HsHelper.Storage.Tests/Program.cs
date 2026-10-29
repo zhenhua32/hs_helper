@@ -22,6 +22,7 @@ var checks = new List<(string Name, Func<Task> Run)>
     ("multi-game switching saves the previous partial checkpoint", MultipleGames),
     ("statistics preserve filters and sample counts", Statistics),
     ("ranked and casual statistics remain separate", ModeStatistics),
+    ("historical statistics exclude future completions and the selected match", AsOfStatistics),
     ("retention cascades only eligible sessions and keeps deck versions", Retention),
     ("explicit identity fields are rejected before persistence", IdentityGuard),
     ("choice and filtered recent events survive snapshot serialization", ChoiceRoundTrip),
@@ -30,6 +31,9 @@ var checks = new List<(string Name, Func<Task> Run)>
     ("schema migration preserves history and rejects future versions", SchemaMigration)
 };
 checks.AddRange(AnalysisTraceChecks.Cases(database));
+checks.AddRange(CoachKnowledgeChecks.Cases(database));
+checks.AddRange(AdviceArchiveChecks.Cases(database));
+checks.AddRange(HistoricalStatsChecks.Cases(database));
 var completed = 0;
 foreach (var check in checks)
 {
@@ -173,6 +177,40 @@ async Task Statistics()
     var oldSession = await store.GetSessionAsync("stats-win");
     var newer = await store.SaveDeckVersionAsync("统计专用", Definition(200), "stats-new", deck.Id);
     Check((await store.GetSessionAsync("stats-win"))!.DeckVersionId == deck.Id && newer.Id != oldSession!.DeckVersionId, "new deck changed historical match");
+}
+
+async Task AsOfStatistics()
+{
+    var cutoff = new DateTimeOffset(2026, 10, 29, 10, 0, 0, TimeSpan.Zero);
+    var recorder = new SessionRecorder(store, Binding(build: "asof-stats"));
+    foreach (var id in new[] { "asof-past", "asof-future", "asof-current" })
+        recorder.Observe(Snapshot(id, 1, phase: GamePhase.Complete, outcome: id == "asof-current" ? "LOST" : "WON"), 1);
+    recorder.Observe(Snapshot("asof-ongoing", 1), 1);
+    await recorder.CompleteAsync();
+    await using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = database, Pooling = false }.ToString()))
+    {
+        await connection.OpenAsync(); await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE game_sessions SET started_at=$start,ended_at=CASE id
+              WHEN 'asof-past' THEN $past WHEN 'asof-current' THEN $past WHEN 'asof-future' THEN $future ELSE NULL END
+            WHERE card_build='asof-stats'
+            """;
+        command.Parameters.AddWithValue("$start", cutoff.AddHours(-2).ToString("O"));
+        command.Parameters.AddWithValue("$past", cutoff.AddHours(-1).ToString("O"));
+        command.Parameters.AddWithValue("$future", cutoff.AddHours(1).ToString("O"));
+        await command.ExecuteNonQueryAsync();
+    }
+    var filter = new SessionFilter(CardBuild: "asof-stats", EndedBefore: cutoff, ExcludeSessionId: "asof-current");
+    Check((await store.ListSessionsAsync(filter)).Select(s => s.Id).SequenceEqual(new[] { "asof-past" }), "as-of sessions exposed later completion or current match");
+    var stats = await store.GetStatsAsync(filter);
+    Check(stats is { Games: 1, Wins: 1, Losses: 0, Unknown: 0 }, "aggregated as-of statistics leaked final result");
+    Check((await store.GetStatsAsync(filter with { ExcludeSessionId = null })).Games == 2, "current match exclusion was not applied in SQL");
+    var before = (await store.GetSessionAsync("asof-past"))!.EndedAt;
+    var duplicate = new SessionRecorder(store, Binding(build: "asof-stats"));
+    duplicate.Observe(Snapshot("asof-past", 1, phase: GamePhase.Complete, outcome: "WON"), 1);
+    await duplicate.CompleteAsync();
+    Check((await store.GetSessionAsync("asof-past"))!.EndedAt == before && (await store.GetStatsAsync(filter)).Games == 1,
+        "repeat import changed original completion evidence time");
 }
 
 async Task Retention()

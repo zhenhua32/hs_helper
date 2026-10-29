@@ -18,16 +18,16 @@ public partial class MainWindow
         _traces = new AnalysisTraceStore(Path.Combine(_dataRoot, "analysis-traces.db"));
         await _traces.InitializeAsync();
     }
-    private void RememberUsage(ModelUsage usage, string? build, string task)
+    private void RememberUsage(ModelUsage usage, string? build, string task, string templateVersion = AdviceTaskTemplates.Version)
     {
         _pendingRequests.Enqueue(new(usage.RequestId, usage.MatchId, usage.StateVersion, usage.Model, usage.Round,
             usage.InputTokens, usage.OutputTokens, usage.TotalTokens, usage.ChargedTokens, usage.ElapsedMilliseconds,
             usage.Success ? AnalysisTraceStatus.Completed : AnalysisTraceStatus.Failed, usage.ConservativeCharge)
-            { CardBuild = build is null or "" or "unknown" ? null : build, Task = task });
+            { CardBuild = build is null or "" or "unknown" ? null : build, Task = task, PromptTemplateVersion = templateVersion });
     }
-    private void RememberTool(string match, long version, string name, long elapsed, bool succeeded)
+    private void RememberTool(string match, long version, string name, long elapsed, bool succeeded, string? resultHash = null)
         => _pendingTools.Enqueue(new(Guid.NewGuid().ToString("N"), match, version, name, elapsed,
-            succeeded ? AnalysisTraceStatus.Completed : AnalysisTraceStatus.Failed));
+            succeeded ? AnalysisTraceStatus.Completed : AnalysisTraceStatus.Failed) { ResultHash = resultHash });
 
     private async Task FlushTracesAsync()
     {
@@ -58,7 +58,7 @@ public partial class MainWindow
     private void DisplayBudget(string match)
     {
         var budget = _analysisBudget.Snapshot(match);
-        BudgetText.Text = $"本局请求 {budget.RequestsStarted}/60 · 令牌消耗 {budget.ChargedTokens:N0}/200,000" +
+        BudgetText.Text = $"{(match.StartsWith("deck-", StringComparison.Ordinal) ? "套牌分析" : "本局")}请求 {budget.RequestsStarted}/{_activeBudgetLimits.MaxRequestsPerMatch} · 令牌消耗 {budget.ChargedTokens:N0}/{_activeBudgetLimits.MaxTokensPerMatch:N0}" +
             (budget.ConservativeCharges > 0 ? $" · {budget.ConservativeCharges} 次未报告用量，已保守计入预算" : "");
     }
 }

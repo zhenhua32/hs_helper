@@ -30,6 +30,18 @@ var cards = new Dictionary<string, CardRecord>(StringComparer.Ordinal)
     ["WEAPON"] = Card("WEAPON", "WEAPON", attack: 3, text: ""),
     ["CHARGE"] = Card("CHARGE", attack: 2, health: 2, text: "冲锋", mechanics: ["CHARGE"])
 };
+using (var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "beast-hunter-255790.json"))))
+{
+    Equal("255790", fixture.RootElement.GetProperty("build").GetString());
+    foreach (var raw in fixture.RootElement.GetProperty("cards").EnumerateArray())
+    {
+        var id = raw.GetProperty("id").GetString()!;
+        cards[id] = new(id, raw.GetProperty("dbfId").GetInt32(), raw.GetProperty("name").GetString()!, raw.GetProperty("text").GetString()!,
+            raw.GetProperty("cardClass").GetString()!, raw.GetProperty("set").GetString()!, raw.GetProperty("type").GetString()!,
+            raw.TryGetProperty("cost", out var cost) ? cost.GetInt32() : null,
+            raw.TryGetProperty("collectible", out var collectible) && collectible.GetBoolean(), [], [], raw.GetRawText());
+    }
+}
 
 Run("combat exchange is simultaneous and does not mutate snapshot", () =>
 {
@@ -158,7 +170,7 @@ Run("secrets and unknown auras explicitly downgrade exact outcomes", () =>
 });
 Run("unimplemented battlecry does not pretend to consume and resolve the card", () =>
 {
-    var result = Eval(Fixture(Hand(30, "EDR_852", 2)), new PlannedAction(ActionKind.PlayCard, 30));
+    var result = Eval(Fixture(Hand(30, "BE_044", 3)), new PlannedAction(ActionKind.PlayCard, 30));
     Equal(LineVerification.Unsupported, result.Verification); Equal(0, result.AppliedActions);
     Equal(10, result.Result.AvailableMana); Equal("HAND", Find(result, 30).Zone);
 });
@@ -244,6 +256,164 @@ Run("attached enchantments outside play are still relevant to verification", () 
     Equal(LineVerification.Conditional, result.Verification);
     Equal(true, result.UnsupportedMechanics.Contains("UNMAPPED_ATTACHED_ENCHANTMENT"));
 });
+Run("real bitterbloom and flutterwing battlecries strengthen an observed wolf power", () =>
+{
+    var knight = WithWolf(Fixture(Hand(30, "EDR_852", 2)), 2);
+    var before = JsonSerializer.Serialize(knight);
+    var result = Eval(knight, new PlannedAction(ActionKind.PlayCard, 30));
+    Equal(LineVerification.Verified, result.Verification); Equal(8, result.Result.AvailableMana);
+    Equal(2, Find(result, 30).Attack); Equal(3, Find(result, 30).RemainingHealth);
+    Equal(3, Find(result, 12).Flags["TAG_SCRIPT_DATA_NUM_1"]);
+    Equal(1, result.Result.HeroPowerChanges.Count); Equal(2, result.Result.HeroPowerChanges[0].PreviousLevel);
+    Equal(3, result.Result.HeroPowerChanges[0].CurrentLevel); Equal(true, result.Result.HeroPowerChanges[0].AvailabilityKnown);
+    Equal(before, JsonSerializer.Serialize(knight));
+    using var serialized = JsonDocument.Parse(JsonSerializer.Serialize(result));
+    Equal(3, serialized.RootElement.GetProperty("Result").GetProperty("HeroPowerChanges")[0].GetProperty("CurrentLevel").GetInt32());
+    var shield = Eval(WithWolf(Fixture(Hand(30, "EDR_800", 4), Hand(31, "CORE_CS2_189", 1)), 3),
+        new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 31, 30));
+    Equal(LineVerification.Verified, shield.Verification); Equal(4, Find(shield, 30).RemainingHealth);
+    Equal(0, Find(shield, 30).Flags["DIVINE_SHIELD"]); Equal(4, Find(shield, 12).Flags["TAG_SCRIPT_DATA_NUM_2"]);
+});
+Run("replacement from steady shot does not invent first imbue level or refresh availability", () =>
+{
+    var snapshot = Fixture(Hand(30, "EDR_852", 2));
+    var result = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30));
+    Equal(LineVerification.Conditional, result.Verification); Equal("EDR_850p", Find(result, 12).CardId);
+    Equal<int?>(null, result.Result.HeroPowerChanges[0].CurrentLevel); Equal(false, result.Result.HeroPowerChanges[0].AvailabilityKnown);
+    Equal(true, result.UnsupportedMechanics.Contains("UNKNOWN_IMBUE_LEVEL"));
+    Equal(LineVerification.Unsupported, Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.HeroPower, 12)).Verification);
+    var missing = cards.Where(pair => pair.Key != "EDR_850p").ToDictionary();
+    var withoutDependency = evaluator.EvaluateLine(snapshot, [new(ActionKind.PlayCard, 30)], missing);
+    Equal(LineVerification.Conditional, withoutDependency.Verification);
+    Equal(true, withoutDependency.UnsupportedMechanics.Contains("MISSING_IMBUE_CARD_DATA"));
+    Equal(LineVerification.Unsupported, Eval(snapshot with { ClientBuild = "999999" }, new PlannedAction(ActionKind.PlayCard, 30)).Verification);
+});
+Run("real umbraclaw is playable with rush and resolves only its audited native deathrattle", () =>
+{
+    var snapshot = WithWolf(Fixture(Hand(30, "EDR_227", 4), Minion(20, "VANILLA", 2, 3, 5)), 2);
+    var result = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.Attack, 30, 20));
+    Equal(LineVerification.Verified, result.Verification); Equal(false, Find(result, 30).IsAlive); Equal(false, Find(result, 20).IsAlive);
+    Equal(3, Find(result, 12).Flags["TAG_SCRIPT_DATA_NUM_1"]);
+    Equal("deathrattle:EDR_227", result.Result.HeroPowerChanges.Single().Reason);
+    var silenced = WithWolf(Fixture(Minion(21, "EDR_227", 1, 5, 2, ("SILENCED", 1)), Minion(20, "VANILLA", 2, 3, 5)), 2);
+    var noTrigger = Eval(silenced, new PlannedAction(ActionKind.Attack, 21, 20));
+    Equal(LineVerification.Verified, noTrigger.Verification); Equal(0, noTrigger.Result.HeroPowerChanges.Count);
+    Equal(2, Find(noTrigger, 12).Flags["TAG_SCRIPT_DATA_NUM_1"]);
+    Equal(LineVerification.Invalid, Eval(WithWolf(Fixture(Hand(30, "EDR_227", 4)), 2), new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.Attack, 30, 11)).Verification);
+});
+Run("real wolf blessing deterministically buffs exactly one observed beast and clamps cost at zero", () =>
+{
+    var snapshot = WithWolf(Fixture(ObservedHand(30, "EDR_227", 1, 5, 2)), 3);
+    var result = Eval(snapshot, new PlannedAction(ActionKind.HeroPower, 12), new PlannedAction(ActionKind.PlayCard, 30));
+    Equal(LineVerification.Verified, result.Verification); Equal(8, result.Result.AvailableMana);
+    Equal(8, Find(result, 30).Attack); Equal(0, Find(result, 30).Cost); Equal(2, Find(result, 30).RemainingHealth);
+    Equal(LineVerification.Invalid, Eval(snapshot, new PlannedAction(ActionKind.HeroPower, 12, 30)).Verification);
+    Equal(LineVerification.Invalid, Eval(snapshot, new PlannedAction(ActionKind.HeroPower, 12), new PlannedAction(ActionKind.HeroPower, 12)).Verification);
+});
+Run("wolf randomness unknown stats and unknown parameters never produce exact outcomes", () =>
+{
+    var snapshot = WithWolf(Fixture(ObservedHand(30, "EDR_227", 3, 5, 2), ObservedHand(31, "EDR_480", 9, 9, 9)), 2);
+    var random = Eval(snapshot, new PlannedAction(ActionKind.HeroPower, 12));
+    Equal(LineVerification.Conditional, random.Verification); Equal(8, random.Result.AvailableMana);
+    Equal(5, Find(random, 30).Attack); Equal(9, Find(random, 31).Attack);
+    Equal(true, random.UnsupportedMechanics.Contains("RANDOM_WOLF_TARGET"));
+    Equal(LineVerification.Unsupported, Eval(WithWolf(Fixture(Hand(30, "EDR_227", 4)), 2), new PlannedAction(ActionKind.HeroPower, 12)).Verification);
+    Equal(LineVerification.Unsupported, Eval(Replace(snapshot, Wolf(2, 3)), new PlannedAction(ActionKind.HeroPower, 12)).Verification);
+    var unknownHand = Entity(33, null, 1, "HAND", "", []);
+    Equal(LineVerification.Unsupported, Eval(Replace(snapshot, unknownHand), new PlannedAction(ActionKind.HeroPower, 12)).Verification);
+    var numeric = Replace(WithWolf(Fixture(ObservedHand(30, "EDR_227", 4, 5, 2)), 2),
+        Entity(12, "EDR_850p", 1, "PLAY", "HERO_POWER", [("COST", 2), ("EXHAUSTED", 0), ("2", 2), ("3", 2)]));
+    Equal(LineVerification.Verified, Eval(numeric, new PlannedAction(ActionKind.HeroPower, 12)).Verification);
+});
+Run("houndmaster resolves its body and imbue but never invents a beast draw", () =>
+{
+    var deck = Entity(40, null, 1, "DECK", "", []);
+    var result = Eval(WithWolf(Fixture(Hand(30, "EDR_226", 2), deck), 2), new PlannedAction(ActionKind.PlayCard, 30));
+    Equal(LineVerification.Conditional, result.Verification); Equal(1, result.AppliedActions);
+    Equal(3, Find(result, 12).Flags["TAG_SCRIPT_DATA_NUM_1"]); Equal("DECK", Find(result, 40).Zone);
+    Equal<string?>(null, Find(result, 40).CardId); Equal(2, Find(result, 30).Attack);
+    Equal(true, result.UnsupportedMechanics.Contains("UNRESOLVED_BEAST_DRAW"));
+});
+Run("real flower attendant does not confuse current power strength with historical imbue count", () =>
+{
+    var below = Eval(WithWolf(Fixture(Hand(30, "FIR_921", 3)), 1), new PlannedAction(ActionKind.PlayCard, 30));
+    Equal(LineVerification.Conditional, below.Verification); Equal(2, Find(below, 30).Attack); Equal(3, Find(below, 30).RemainingHealth);
+    var drawing = Eval(WithWolf(Fixture(Hand(30, "FIR_921", 3)), 2), new PlannedAction(ActionKind.PlayCard, 30));
+    Equal(LineVerification.Conditional, drawing.Verification); Equal(true, drawing.UnsupportedMechanics.Contains("UNKNOWN_IMBUE_DRAW_THRESHOLD"));
+    Equal(LineVerification.Conditional, Eval(Fixture(Hand(30, "FIR_921", 3)), new PlannedAction(ActionKind.PlayCard, 30)).Verification);
+});
+Run("real DINO_421 buffs known hand minions but keeps hidden deck targets unknown", () =>
+{
+    var snapshot = Fixture(Minion(21, "DINO_421", 1, 8, 8, ("DAMAGE", 7)), Minion(20, "VANILLA", 2, 1, 10),
+        ObservedHand(30, "EDR_227", 4, 5, 2), Hand(31, "GAME_005", 0));
+    var result = Eval(snapshot, new PlannedAction(ActionKind.Attack, 21, 20));
+    Equal(LineVerification.Verified, result.Verification); Equal(8, Find(result, 30).Attack); Equal(5, Find(result, 30).MaximumHealth);
+    Equal(4, Find(result, 30).Cost); Equal(0, Find(result, 31).Cost);
+    var hidden = Eval(Replace(snapshot, Entity(40, null, 1, "DECK", "", [])), new PlannedAction(ActionKind.Attack, 21, 20));
+    Equal(LineVerification.Conditional, hidden.Verification); Equal<int?>(null, Find(hidden, 40).Attack); Equal(8, Find(hidden, 30).Attack);
+    var doubled = Replace(WithWolf(Fixture(Minion(21, "EDR_227", 1, 5, 2), Minion(20, "VANILLA", 2, 3, 5)), 2),
+        Entity(50, null, 1, "PLAY", "ENCHANTMENT", [("EXTRA_MINION_DEATHRATTLES_BASE", 1)]));
+    Equal(LineVerification.Conditional, Eval(doubled, new PlannedAction(ActionKind.Attack, 21, 20)).Verification);
+});
+Run("real goldrinn can be summoned then rush with its own damage aura", () =>
+{
+    var result = Eval(Fixture(Hand(30, "EDR_480", 9), Minion(20, "VANILLA", 2, 1, 18)),
+        new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.Attack, 30, 20));
+    Equal(LineVerification.Verified, result.Verification); Equal(false, Find(result, 20).IsAlive); Equal(8, Find(result, 30).RemainingHealth);
+});
+Run("silenced or explicitly suppressed battlecries do not apply native imbue", () =>
+{
+    var silent = Entity(30, "EDR_852", 1, "HAND", "MINION", [("COST", 2), ("SILENCED", 1)]);
+    var result = Eval(WithWolf(Fixture(silent), 2), new PlannedAction(ActionKind.PlayCard, 30));
+    Equal(LineVerification.Verified, result.Verification); Equal(2, Find(result, 12).Flags["TAG_SCRIPT_DATA_NUM_1"]);
+    Equal(0, result.Result.HeroPowerChanges.Count);
+    var suppressed = Entity(30, "EDR_800", 1, "HAND", "MINION", [("COST", 4), ("BATTLECRY", 0)]);
+    var noTrigger = Eval(WithWolf(Fixture(suppressed), 2), new PlannedAction(ActionKind.PlayCard, 30));
+    Equal(LineVerification.Verified, noTrigger.Verification); Equal(0, noTrigger.Result.HeroPowerChanges.Count);
+});
+Run("audited stat-only enchantments use current observations without double applying buffs", () =>
+{
+    var hand = ObservedHand(30, "EDR_227", 0, 11, 5);
+    var attackBuff = Entity(50, "EDR_850pe1", 1, "SETASIDE", "ENCHANTMENT", [("ATTACHED", 30), ("2", 3)]);
+    var discount = Entity(51, "EDR_850pe5", 1, "PLAY", "ENCHANTMENT", [("ATTACHED", 30)]);
+    var dinosaurBuff = Entity(52, "DINO_421e", 1, "PLAY", "ENCHANTMENT", [("ATTACHED", 30)]);
+    var snapshot = WithWolf(Fixture(hand, attackBuff, discount, dinosaurBuff, Minion(20, "VANILLA", 2, 1, 10)), 2);
+    var result = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.Attack, 30, 20));
+    Equal(LineVerification.Verified, result.Verification); Equal(11, Find(result, 30).Attack);
+    Equal(5, Find(result, 30).MaximumHealth); Equal(4, Find(result, 30).RemainingHealth); Equal(10, result.Result.AvailableMana);
+    Equal(true, result.RuleCoverage.Contains("observed-stat-only-enchantment:EDR_850pe1"));
+    var missingStats = WithWolf(Fixture(Hand(30, "EDR_227", 4), attackBuff), 2);
+    Equal(LineVerification.Conditional, Eval(missingStats, new PlannedAction(ActionKind.PlayCard, 30)).Verification);
+});
+Run("choice validation is explicitly selection-only and freezes the submitted option set", () =>
+{
+    var snapshot = ChoiceFixture();
+    var selection = new List<int> { 40 };
+    var result = evaluator.ValidateChoice(snapshot, selection, expectedChoiceId: 7);
+    selection[0] = 999;
+    Equal(LineVerification.Verified, result.Verification); Equal(true, result.IsLegal); Equal(40, result.SelectedEntityIds[0]);
+    Equal(true, result.SelectionOnly); Equal(false, result.ResolvesEffects); Equal(7, result.ChoiceId);
+    Equal(true, result.Assumptions.Any(a => a.Contains("未模拟选择后效果")));
+    using var serialized = JsonDocument.Parse(JsonSerializer.Serialize(result));
+    Equal(true, serialized.RootElement.GetProperty("SelectionOnly").GetBoolean());
+    Equal(false, serialized.RootElement.GetProperty("ResolvesEffects").GetBoolean());
+});
+Run("stale unavailable duplicate foreign or out-of-range choices are rejected", () =>
+{
+    var snapshot = ChoiceFixture();
+    Equal(LineVerification.Invalid, evaluator.ValidateChoice(snapshot, [40], 8).Verification);
+    Equal(LineVerification.Invalid, evaluator.ValidateChoice(snapshot, [999], 7).Verification);
+    Equal(LineVerification.Invalid, evaluator.ValidateChoice(snapshot, [40, 40], 7).Verification);
+    Equal(LineVerification.Invalid, evaluator.ValidateChoice(snapshot, [], 7).Verification);
+    Equal(LineVerification.Invalid, evaluator.ValidateChoice(snapshot with { Choice = snapshot.Choice! with { PlayerId = 2 } }, [40]).Verification);
+    Equal(LineVerification.Unsupported, evaluator.ValidateChoice(snapshot with { Choice = snapshot.Choice! with { IsReady = false } }, [40]).Verification);
+    Equal(LineVerification.Unsupported, evaluator.ValidateChoice(snapshot with { Quality = snapshot.Quality with { IsStable = false } }, [40]).Verification);
+    Equal(LineVerification.Unsupported, evaluator.ValidateChoice(snapshot with { Choice = snapshot.Choice! with { CountMax = 5 } }, [40]).Verification);
+    var foreign = snapshot with { Choice = snapshot.Choice! with { Options = [new(40, "EDR_227", 2, 1)] } };
+    Equal(LineVerification.Invalid, evaluator.ValidateChoice(foreign, [40]).Verification);
+    var mulligan = snapshot with { Phase = GamePhase.Mulligan, Choice = snapshot.Choice! with { CountMin = 0, CountMax = 2 } };
+    Equal(LineVerification.Verified, evaluator.ValidateChoice(mulligan, []).Verification);
+});
 
 if (args.Length == 1)
 {
@@ -289,8 +459,15 @@ static EntitySnapshot Entity(int id, string? card, int controller, string zone, 
 static EntitySnapshot Minion(int id, string card, int owner, int attack, int health, params (string Key, int Value)[] extra)
     => Entity(id, card, owner, "PLAY", "MINION", [("ATK", attack), ("HEALTH", health), ("DAMAGE", 0), ("NUM_TURNS_IN_PLAY", 1), ("EXHAUSTED", 0), .. extra]);
 static EntitySnapshot Hand(int id, string card, int cost) => Entity(id, card, 1, "HAND", "", [("COST", cost)]);
+static EntitySnapshot ObservedHand(int id, string card, int cost, int attack, int health)
+    => Entity(id, card, 1, "HAND", "MINION", [("COST", cost), ("ATK", attack), ("HEALTH", health), ("DAMAGE", 0)]);
+static EntitySnapshot Wolf(int attack, int? discount = null) => Entity(12, "EDR_850p", 1, "PLAY", "HERO_POWER",
+    [("COST", 2), ("EXHAUSTED", 0), ("TAG_SCRIPT_DATA_NUM_1", attack), ("TAG_SCRIPT_DATA_NUM_2", discount ?? attack)]);
+static GameSnapshot WithWolf(GameSnapshot snapshot, int level) => Replace(snapshot, Wolf(level));
+static GameSnapshot ChoiceFixture() => Fixture() with { Phase = GamePhase.Choice,
+    Choice = new(7, 1, "GENERAL", 30, 1, 1, [new(40, "EDR_227", 1, 1), new(41, "EDR_480", 1, 2)], true) };
 static EntitySnapshot Hero(int id, int owner, int maxHealth, int damage = 0, int armor = 0, int attack = 0, params (string Key, int Value)[] extra)
-    => Entity(id, "HERO_" + owner, owner, "PLAY", "HERO", [("HEALTH", maxHealth), ("DAMAGE", damage), ("ARMOR", armor), ("ATK", attack), ("EXHAUSTED", 0), .. extra]);
+    => Entity(id, "HERO_" + owner, owner, "PLAY", "HERO", [("CLASS", owner == 1 ? 3 : 4), ("HEALTH", maxHealth), ("DAMAGE", damage), ("ARMOR", armor), ("ATK", attack), ("EXHAUSTED", 0), .. extra]);
 static EntitySnapshot Player(int id, int player, int resources, int hero) => new(id, null, EntityKind.Player,
     new Dictionary<string, string> { ["CARDTYPE"] = "2", ["PLAYER_ID"] = player.ToString(), ["RESOURCES"] = resources.ToString(),
         ["RESOURCES_USED"] = "0", ["MAXRESOURCES"] = "10", ["HERO_ENTITY"] = hero.ToString() }.ToFrozenDictionary());

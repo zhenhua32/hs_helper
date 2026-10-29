@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup><ProjectReference Include="../../src/HsHelper.Agent/HsHelper.Agent.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../src/HsHelper.Coaching/HsHelper.Coaching.csproj" /></ItemGroup>
 </Project>

@@ -1,0 +1,384 @@
+{
+  "build": "255790",
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "keywordSource": "https://hearthstone.blizzard.com/en-us/expansions-adventures/into-the-emerald-dream",
+  "scriptDefaultsSource": "https://api.hearthstonejson.com/v1/255790/CardDefs.base.xml",
+  "notes": "Exact card objects extracted from the pinned build; script parameters are read from observed snapshot tags, never inferred from these printed defaults.",
+  "cards": [
+    {
+      "artist": "Matt Dixon",
+      "attack": 3,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 128892,
+      "flavor": "手手最好的朋友。",
+      "health": 3,
+      "id": "BE_044",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "F3TCH3R寻回机",
+      "race": "BEAST",
+      "races": [
+        "MECHANICAL",
+        "BEAST"
+      ],
+      "rarity": "COMMON",
+      "set": "BE",
+      "text": "<b>战吼：</b><b>拼装</b>一张法力值消耗为（4）的随从牌。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Mauro Cascioli",
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 69545,
+      "flavor": "为了那些不知道该把什么牌放入套牌的人准备的！",
+      "howToEarn": "与猎人职业一同解锁。",
+      "howToEarnGolden": "使用猎人赢得100场对战后解锁。",
+      "id": "CORE_DS1_184",
+      "mechanics": [
+        "DISCOVER"
+      ],
+      "name": "追踪术",
+      "rarity": "RARE",
+      "set": "CORE",
+      "text": "从你的牌库中<b>发现</b>一张牌。",
+      "type": "SPELL"
+    },
+    {
+      "artist": "Zoltan Boros",
+      "attack": 4,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "countAsCopyOfDbfId": 119798,
+      "dbfId": 131356,
+      "flavor": "这块陨石离我们太近了吧！",
+      "health": 2,
+      "howToEarn": "完成教学后解锁。",
+      "howToEarnGolden": "总计赢得2500场对战后解锁。",
+      "id": "CORE_EDR_004_2026",
+      "mechanics": [
+        "BATTLECRY",
+        "DISCOVER"
+      ],
+      "name": "迅猛龙先锋",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "EPIC",
+      "set": "CORE",
+      "text": "<b>回溯</b>。<b>战吼：</b><b>发现</b>一张具有<b>黑暗之赐</b>的野兽牌。<b>延系：</b>其法力值消耗减少（1）点。",
+      "type": "MINION"
+    },
+    {
+      "artist": "James Ryman",
+      "attack": 1,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 97376,
+      "flavor": "地精珠宝商慕名而来，失望而归…",
+      "health": 2,
+      "howToEarn": "与猎人职业一同解锁。",
+      "howToEarnGolden": "使用猎人赢得50场对战后解锁。",
+      "id": "CORE_UNG_912",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "宝石鹦鹉",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "COMMON",
+      "set": "CORE",
+      "text": "<b>战吼：</b>&随机将一张野兽牌置入你的手牌。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Todd Harris",
+      "attack": 8,
+      "cardClass": "DRUID",
+      "collectible": true,
+      "cost": 8,
+      "dbfId": 118617,
+      "flavor": "地雷？什么地雷？",
+      "health": 8,
+      "id": "DINO_421",
+      "isMiniSet": true,
+      "mechanics": [
+        "DEATHRATTLE",
+        "ELUSIVE",
+        "TAUNT"
+      ],
+      "name": "震地雷龙",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "set": "THE_LOST_CITY",
+      "text": "<b>嘲讽</b>。<b>扰魔</b>。<b>亡语：</b>&使你的手牌和牌库中的所有随从牌获得+3/+3。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ivan Fomin",
+      "attack": 2,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 114018,
+      "flavor": "“你好呀小家伙！多吃点绿色食品吧，对身体好哦！”",
+      "health": 2,
+      "id": "EDR_226",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "奇异训犬师",
+      "rarity": "COMMON",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b>\n抽一张野兽牌。<b>灌注</b>你的英雄技能。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Patrik Bjorkstrom",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 114020,
+      "flavor": "所谓物以类聚，那么幽爪熊该和谁一起冬眠？",
+      "health": 2,
+      "id": "EDR_227",
+      "mechanics": [
+        "DEATHRATTLE",
+        "RUSH"
+      ],
+      "name": "幽爪熊",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。<b>亡语：</b><b>灌注</b>你的英雄技能。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Eva Widermann",
+      "attack": 9,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 9,
+      "dbfId": 114254,
+      "elite": true,
+      "flavor": "以勇猛果决而闻名于世，且拥有的名号众多，其中包括洛戈什，还有巨狼。",
+      "health": 9,
+      "id": "EDR_480",
+      "mechanics": [
+        "AURA",
+        "RUSH"
+      ],
+      "name": "戈德林",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。友方野兽造成的伤害翻倍。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Edgar Hidalgo",
+      "attack": 4,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 114006,
+      "flavor": "蝴蝶振翅飞，守卫永相随——",
+      "health": 4,
+      "id": "EDR_800",
+      "mechanics": [
+        "BATTLECRY",
+        "DIVINE_SHIELD",
+        "TAUNT"
+      ],
+      "name": "振翅守卫",
+      "rarity": "COMMON",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b><b>嘲讽</b>。圣盾</b>\n<b>战吼：</b><b>灌注</b>你的英雄技能。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Timur Shevtsov",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 114933,
+      "flavor": "梦啊，梦，梦，梦……",
+      "health": 1,
+      "howToEarnGolden": "可以在<i>漫游翡翠梦境</i>奖励路线中获得该奖励。",
+      "id": "EDR_849",
+      "mechanics": [
+        "TRIGGER_VISUAL"
+      ],
+      "name": "梦缚迅猛龙",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "COMMON",
+      "set": "EMERALD_DREAM",
+      "text": "在你使用一张随从牌后，随机使其获得一项<b>额外效果</b>。",
+      "type": "MINION"
+    },
+    {
+      "artist": "BOSi Studio",
+      "cardClass": "HUNTER",
+      "collectionText": "随机使你手牌中的一张野兽牌获得+<b>",
+      "cost": 2,
+      "dbfId": 114052,
+      "id": "EDR_850p",
+      "name": "巨狼的祝福",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "随机使你手牌中的一张野兽牌获得+<b>@</b>攻击力，其法力值消耗减少（<b>@</b>）点。",
+      "type": "HERO_POWER"
+    },
+    {
+      "artist": "Stefano Spagnuolo",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 114935,
+      "flavor": "鲜花虽美，却也有刺。还有胡子。还有盾牌。",
+      "health": 3,
+      "id": "EDR_852",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "苦花骑士",
+      "rarity": "COMMON",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b><b>灌注</b>你的英雄技能。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ursula Dorada",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 115648,
+      "flavor": "护花是为了择花。“她爱我……她不爱我……”",
+      "health": 3,
+      "id": "FIR_921",
+      "isMiniSet": true,
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "花木护侍",
+      "race": "DRAENEI",
+      "races": [
+        "DRAENEI"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b>如果你已<b>灌注</b>过你的英雄技能两次，抽两张牌。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ramzy Kamen",
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 117596,
+      "flavor": "偶也不知道这个图案指向哪里！",
+      "id": "TLC_824",
+      "mechanics": [
+        "DISCOVER"
+      ],
+      "name": "奇异的地图",
+      "rarity": "COMMON",
+      "set": "THE_LOST_CITY",
+      "text": "<b>发现</b>一张攻击力为奇数的野兽牌，如果你在本回合中使用该牌，再从其余选项中选择一张。",
+      "type": "SPELL"
+    },
+    {
+      "artist": "Steve Prescott",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 69565,
+      "faction": "HORDE",
+      "flavor": "媚眼如丝，轻盈如燕，致命如箭。",
+      "health": 1,
+      "howToEarn": "完成教学后解锁。",
+      "howToEarnGolden": "总计赢得500场对战后解锁。",
+      "id": "CORE_CS2_189",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "精灵弓箭手",
+      "rarity": "COMMON",
+      "set": "CORE",
+      "targetingArrowText": "造成1点伤害。",
+      "text": "<b>战吼：</b>造成1点伤害。",
+      "type": "MINION"
+    },
+    {
+      "cardClass": "DRUID",
+      "dbfId": 118618,
+      "id": "DINO_421e",
+      "name": "震地",
+      "set": "THE_LOST_CITY",
+      "text": "+3/+3。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 114619,
+      "id": "EDR_850pe1",
+      "name": "戈德林的勇气",
+      "set": "EMERALD_DREAM",
+      "text": "+0攻击力。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 114959,
+      "id": "EDR_850pe5",
+      "name": "巨狼的吼叫",
+      "set": "EMERALD_DREAM",
+      "text": "法力值消耗减少。",
+      "type": "ENCHANTMENT"
+    }
+  ]
+}

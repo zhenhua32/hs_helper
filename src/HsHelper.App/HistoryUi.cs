@@ -75,14 +75,20 @@ public partial class MainWindow
 
     private async Task LoadDeckLibraryAsync(string? selectId = null)
     {
+        var previousPlanId = (PlanDeckBox.SelectedItem as DeckItem)?.Value.Id;
         _loadingDecks = true;
         try
         {
             var items = (await _store.ListDeckVersionsAsync()).Select(d => new DeckItem(d)).ToArray();
             SavedDeckBox.ItemsSource = items;
             SavedDeckBox.SelectedItem = items.FirstOrDefault(d => d.Value.Id == (selectId ?? _selectedDeckVersion?.Id));
+            var planId = previousPlanId ?? selectId ?? _selectedDeckVersion?.Id;
+            PlanDeckBox.ItemsSource = items;
+            PlanDeckBox.SelectedItem = items.FirstOrDefault(d => d.Value.Id == planId);
         }
         finally { _loadingDecks = false; }
+        if (_knowledge is not null && previousPlanId != (PlanDeckBox.SelectedItem as DeckItem)?.Value.Id)
+        { ClearKnowledgeEditor(); await RefreshKnowledgeAsync(); }
     }
 
     private async void SaveDeckToLibraryClicked(object sender, RoutedEventArgs e) => await Run(async () =>
@@ -155,6 +161,8 @@ public partial class MainWindow
         }
         await FinishCaptureAsync();
         if (_traces is not null) await FlushTracesAsync();
+        await FlushAdviceArchivesAsync();
+        await WaitForConfigurationIoAsync();
         if (_store is not null) await RefreshHistoryAsync();
     }
     private async void WindowClosing(object? sender, CancelEventArgs e)
@@ -215,6 +223,7 @@ public partial class MainWindow
             var names = await _catalog.GetByIdsAsync(exact.Entities.Values.Select(x => x.CardId).OfType<string>().Distinct().Take(500), context.CardBuild);
             if (revision != _historyRevision || (DecisionsList.SelectedItem as DecisionItem)?.Value.Id != selectedId) return;
             _historyContext = context with { Snapshot = exact };
+            _historyObservedAt = item.Value.RecordedAt;
             SessionBuildBox.Text = context.CardBuild == "unknown" ? "" : context.CardBuild;
             EventsGrid.ItemsSource = context.RecentEvents;
             var lookup = names.ToDictionary(c => c.Id, c => c.Name);

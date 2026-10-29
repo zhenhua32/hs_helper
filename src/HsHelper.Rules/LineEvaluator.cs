@@ -11,16 +11,19 @@ namespace HsHelper.Rules;
 /// Deterministic, deliberately bounded rules. Card data must be pinned to the supplied snapshot's build.
 /// Unknown effects lower verification; they are never silently accepted as a complete simulation.
 /// </summary>
-public sealed class LineEvaluator
+public sealed partial class LineEvaluator
 {
     // Card text/stats audited against https://api.hearthstonejson.com/v1/255790/zhCN/cards.json.
     // State tag names: https://github.com/HearthSim/python-hearthstone/blob/master/hearthstone/enums.py.
     public const string AuditedBuild = "255790";
+    public static IReadOnlyList<string> RequiredRelatedCardIds { get; } = Array.AsReadOnly(new[]
+        { "EDR_850p", "EDR_850pe1", "EDR_850pe5", "DINO_421e" });
     public static IReadOnlyList<string> CoverageSummary { get; } = Array.AsReadOnly(new[]
     {
         "基础攻击、嘲讽、圣盾、免疫、冻结、风怒、冲锋、突袭、剧毒、吸血、护甲和观察到的当前费用",
         "build255790：基础稳固射击、硬币、奥术射击、杀戮命令、猎人印记、精灵弓箭手、安装爆炸陷阱、戈德林伤害翻倍",
-        "未知奥秘、未覆盖光环/触发、亡语与复生会降低为有条件结果；发现、灌注和未覆盖战吼停止完整模拟",
+        "build255790：苦花骑士、振翅守卫与幽爪熊灌注；单一已知候选野兽的巨狼祝福；无法确认灌注参数时保留条件",
+        "未知奥秘、未覆盖光环/触发、亡语与复生会降低为有条件结果；发现与随机选项不自行生成，选择范围可单独核验",
         "斩杀搜索有限深度，未找到结果不代表不存在；只有完整已覆盖序列可标记已验证斩杀"
     });
     private static readonly HashSet<string> ArcaneShot = ["DS1_185", "CORE_DS1_185"];
@@ -189,8 +192,13 @@ public sealed class LineEvaluator
     {
         var source = state.Source(action.SourceEntityId, "PLAY"); if (source is null) return;
         if (source.Type != "HERO_POWER") { state.Invalid("来源不是英雄技能。"); return; }
+        if (state.Has(source, "HERO_POWER_DISABLED") || state.Player?.Int("HERO_POWER_DISABLED") is > 0)
+        { state.Invalid("英雄技能当前被禁用。"); return; }
         if (state.Has(source, "EXHAUSTED") || source.Flags.GetValueOrDefault("RULES_USED") != 0)
         { state.Invalid("英雄技能本回合已使用或不可用。"); return; }
+        if (source.Int("RULES_HERO_POWER_READINESS_UNKNOWN") is > 0)
+        { state.Unsupported("UNKNOWN_REPLACED_POWER_READINESS", "英雄技能替换后的可用状态尚未确认，请等待新的客户端局面。"); return; }
+        if (source.CardId == "EDR_850p") { UseWolfBlessing(state, source, action); return; }
         if (source.CardId is null || !SteadyShot.Contains(source.CardId))
         { state.Unsupported("HERO_POWER_EFFECT", "当前只覆盖基础稳固射击，灌注和其他英雄技能需要对应规则。"); return; }
         if (!state.RequireAuditedBuild()) return;
@@ -214,6 +222,7 @@ public sealed class LineEvaluator
         if (source.Cost is null) { state.Unsupported("UNKNOWN_CURRENT_COST", "手牌当前费用未知，不能使用基础印刷费用代替。"); return; }
         if (source.Cost > state.Mana) { state.Invalid("当前法力不足。"); return; }
         var id = source.CardId!;
+        if (TryPlayBeastHunter(state, action, source, profile)) return;
         if ((id == "GAME_005" || ArcaneShot.Contains(id) || KillCommand.Contains(id) || HuntersMark.Contains(id) ||
             ExplosiveTrap.Contains(id) || ElvenArcher.Contains(id)) && !state.RequireAuditedBuild()) return;
         if (profile.Type == "MINION")
@@ -228,13 +237,7 @@ public sealed class LineEvaluator
             if (ElvenArcher.Contains(id))
             { target = state.Target(action.TargetEntityId); if (target is null || !state.CanTarget(target, "BATTLECRY")) return; }
             else if (action.TargetEntityId is not null) { state.Invalid("该随从不需要目标。"); return; }
-            if (profile.Attack is null || profile.Health is null) { state.Unsupported("UNKNOWN_BASE_STATS", "入场随从的基础属性缺失。"); return; }
-            if (!state.Pay(source)) return;
-            source.Zone = "PLAY"; source.Attack ??= profile.Attack; source.MaximumHealth ??= profile.Health; source.Health = source.MaximumHealth;
-            source.Type = "MINION"; source.Attacks = 0;
-            source.Flags = source.Flags.Where(flag => StaticKeywords.Contains(flag.Key) || flag.Key == "SILENCED").ToDictionary(StringComparer.Ordinal);
-            source.Flags["NUM_TURNS_IN_PLAY"] = 0;
-            source.Flags["EXHAUSTED"] = profile.Mechanics.Contains("CHARGE") || profile.Mechanics.Contains("RUSH") ? 0 : 1;
+            if (!state.Summon(source, profile)) return;
             if (target is not null) state.Damage(source, target, 1, false);
             state.ResolveDeaths(); state.Coverage.Add(ElvenArcher.Contains(id) ? "elven-archer-battlecry-1" : "simple-minion-summon");
             return;
@@ -292,7 +295,7 @@ public sealed class LineEvaluator
         public int? Int(string name) => Flags.TryGetValue(name, out var value) ? value : null;
     }
 
-    private sealed class Runtime
+    private sealed partial class Runtime
     {
         private readonly GameSnapshot _snapshot;
         private readonly IReadOnlyDictionary<string, CardRecord> _cards;
@@ -468,7 +471,8 @@ public sealed class LineEvaluator
         }
         public void Remove(Entity entity)
         {
-            if (Has(entity, "DEATHRATTLE") || Has(entity, "REBORN"))
+            var resolvedNative = TryResolveBeastHunterDeath(entity);
+            if ((Has(entity, "DEATHRATTLE") && !resolvedNative) || Has(entity, "REBORN"))
                 Conditional("本次死亡后的亡语或复生尚未展开；后续结果假设这些效果不改变所列动作。", "DEATHRATTLE_OR_REBORN");
             entity.Alive = false; entity.Zone = "GRAVEYARD";
         }
@@ -477,7 +481,8 @@ public sealed class LineEvaluator
             foreach (var entity in Entities.Values.Where(e => e.Alive && (e.Zone is "PLAY" or "HAND" || e.Type == "PLAYER" ||
                 (e.Type == "ENCHANTMENT" && e.Int("ATTACHED") is > 0 && e.Zone != "GRAVEYARD"))))
             {
-                if (entity.Flags.Any(flag => flag.Value != 0 && flag.Key.Length > 0 && flag.Key.All(char.IsDigit)))
+                if (entity.Flags.Any(flag => flag.Value != 0 && flag.Key.Length > 0 && flag.Key.All(char.IsDigit) &&
+                    !((_snapshot.ClientBuild == AuditedBuild && entity.CardId == "EDR_850p" || IsObservedStatEnchantment(entity)) && flag.Key is "2" or "3")))
                     Conditional("存在尚未解释的数字状态标签，不能确认已覆盖全部动作限制。", "UNMAPPED_NUMERIC_TAG");
                 if (new[] { "HEALTH_MINIMUM", "MINIMUM_HEALTH", "DAMAGE_CANT_KILL", "INCOMING_DAMAGE_MULTIPLIER", "SPELL_DAMAGE_DOUBLE", "SPELLPOWER_DOUBLE", "SPELL_HEALING_DOUBLE", "HEALING_DOES_DAMAGE", "HEALING_DOUBLE", "MULTIPLY_HERO_DAMAGE", "RECEIVES_DOUBLE_SPELLDAMAGE_BONUS", "LIFESTEAL_DAMAGES_OPPOSING_HERO", "CANT_HEAL", "CANT_DAMAGE", "CANT_BE_DESTROYED", "HERO_CANT_BE_DESTROYED", "ALL_TARGETS_RANDOM", "FORGETFUL", "HEROPOWER_ADDITIONAL_ACTIVATIONS", "HEROPOWER_UNLIMITED_USES", "HEROPOWER_ACTIVATIONS_THIS_TURN", "CURRENT_HEROPOWER_DAMAGE_BONUS" }
                     .Any(tag => entity.Int(tag) is > 0))
@@ -485,11 +490,17 @@ public sealed class LineEvaluator
                 if ((action.Kind == ActionKind.PlayCard && new[] { "SPELLS_COST_HEALTH", "NEXT_CARD_COSTS_HEALTH", "COSTS_HEALTH", "HEALTH_COST" }.Any(tag => entity.Int(tag) is > 0)) ||
                     (action.Kind == ActionKind.HeroPower && entity.Int("HEROPOWER_COSTS_HEALTH") is > 0))
                 { Unsupported("ALTERNATE_RESOURCE_PAYMENT", "当前存在生命等特殊支付方式，不能使用普通法力支付规则。"); return; }
+                if (new[] { "EXTRA_MINION_DEATHRATTLES_BASE", "EXTRA_DEATHRATTLES_BASE", "EXTRA_DEATHRATTLES_ADDITIONAL", "EXTRA_BATTLECRIES_BASE", "EXTRA_MINION_BATTLECRIES_BASE", "EXTRA_BATTLECRIES_ADDITIONAL", "CANT_TRIGGER_DEATHRATTLE" }.Any(tag => entity.Int(tag) is > 0))
+                    Conditional("存在重复或禁用战吼/亡语的规则修正，此处未完整展开触发次数。", "BATTLECRY_OR_DEATHRATTLE_MODIFIER");
             }
             foreach (var entity in Entities.Values.Where(e => e.Alive))
             {
                 if (entity.Type == "ENCHANTMENT" && entity.Int("ATTACHED") is > 0 && entity.Zone != "GRAVEYARD")
-                { Conditional("存在尚未单独审计的附魔，假设它不额外改变伤害、目标、支付或触发顺序。", "UNMAPPED_ATTACHED_ENCHANTMENT"); continue; }
+                {
+                    if (IsObservedStatEnchantment(entity)) Coverage.Add("observed-stat-only-enchantment:" + entity.CardId);
+                    else Conditional("存在尚未单独审计的附魔，假设它不额外改变伤害、目标、支付或触发顺序。", "UNMAPPED_ATTACHED_ENCHANTMENT");
+                    continue;
+                }
                 if (entity.Zone == "SECRET" && entity.Controller != Local)
                 { Conditional("假设对手奥秘不触发或不改变本序列，不能据此声称已验证斩杀。", "OPPONENT_SECRET"); continue; }
                 if (entity.Zone == "SECRET" && entity.Controller == Local)
@@ -541,7 +552,8 @@ public sealed class LineEvaluator
             return new(_snapshot.MatchId, _snapshot.StateVersion, verification, verification == LineVerification.Invalid ? false : verification == LineVerification.Verified ? true : null,
                 verification == LineVerification.Verified && potential, potential, Applied, _errors.AsReadOnly(),
                 _assumptions.OrderBy(x => x, StringComparer.Ordinal).ToArray(), _unsupported.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
-                Coverage.OrderBy(x => x, StringComparer.Ordinal).ToArray(), new(Mana, Array.AsReadOnly(entities)));
+                Coverage.OrderBy(x => x, StringComparer.Ordinal).ToArray(), new(Mana, Array.AsReadOnly(entities))
+                { HeroPowerChanges = Array.AsReadOnly(_heroPowerChanges.ToArray()) });
         }
 
         private static FrozenDictionary<string, int> ResultFlags(Entity entity)

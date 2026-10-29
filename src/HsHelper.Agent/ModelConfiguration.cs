@@ -6,7 +6,10 @@ using System.Text.RegularExpressions;
 
 namespace HsHelper.Agent;
 
-public sealed record ModelConfiguration(ModelSettings Settings, string ApiKey, string Source);
+public sealed record ModelConfiguration(ModelSettings Settings, string ApiKey, string Source)
+{
+    public IReadOnlyList<string> ExplicitSettingKeys { get; init; } = [];
+}
 
 public static class EnvironmentModelConfiguration
 {
@@ -54,7 +57,56 @@ public static class EnvironmentModelConfiguration
         var model = Read("model_name", "MODEL_NAME", "OPENAI_MODEL") ?? throw new InvalidDataException("环境配置缺少 model_name。");
         var key = Read("api_key", "MODEL_API_KEY", "OPENAI_API_KEY") ?? "";
         if (key.Any(char.IsControl)) throw new InvalidDataException("环境配置中的密钥含不支持的控制字符。");
-        return new(new ModelSettings(endpoint, model), key, source);
+        var explicitKeys = new List<string>();
+        long Number(string keyName, long fallback, long minimum, long maximum)
+        {
+            var value = keyName == "MAX_CONCURRENT_REQUESTS_PER_MATCH"
+                ? Read("MODEL_" + keyName, keyName, "MODEL_MAX_CONCURRENT_REQUESTS", "MAX_CONCURRENT_REQUESTS")
+                : Read("MODEL_" + keyName, keyName);
+            if (value is null) return fallback;
+            if (!long.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var number) ||
+                number < minimum || number > maximum)
+                throw new InvalidDataException("环境配置中的模型预算参数格式或范围无效。");
+            explicitKeys.Add(keyName switch
+            {
+                "MAX_TOOL_ROUNDS" => nameof(ModelSettings.MaxToolRounds), "MAX_OUTPUT_TOKENS" => nameof(ModelSettings.MaxOutputTokens),
+                "TIMEOUT_SECONDS" => nameof(ModelSettings.TimeoutSeconds), "MAX_REQUESTS_PER_MATCH" => nameof(AnalysisBudgetLimits.MaxRequestsPerMatch),
+                "MAX_TOKENS_PER_MATCH" => nameof(AnalysisBudgetLimits.MaxTokensPerMatch), _ => nameof(AnalysisBudgetLimits.MaxConcurrentRequestsPerMatch)
+            });
+            return number;
+        }
+        var defaults = new ModelSettings(endpoint, model);
+        var settings = defaults with
+        {
+            MaxToolRounds = (int)Number("MAX_TOOL_ROUNDS", defaults.MaxToolRounds, 0, 4),
+            MaxOutputTokens = (int)Number("MAX_OUTPUT_TOKENS", defaults.MaxOutputTokens, 100, 8192),
+            TimeoutSeconds = (int)Number("TIMEOUT_SECONDS", defaults.TimeoutSeconds, 1, 120),
+            BudgetLimits = new((int)Number("MAX_REQUESTS_PER_MATCH", defaults.BudgetLimits.MaxRequestsPerMatch, 1, 10000),
+                Number("MAX_TOKENS_PER_MATCH", defaults.BudgetLimits.MaxTokensPerMatch, 1, 100000000),
+                (int)Number("MAX_CONCURRENT_REQUESTS_PER_MATCH", defaults.BudgetLimits.MaxConcurrentRequestsPerMatch, 1, 8))
+        };
+        return new(settings, key, source) { ExplicitSettingKeys = Array.AsReadOnly(explicitKeys.ToArray()) };
+    }
+
+    public static ModelConfiguration MergeTuning(ModelConfiguration environmentConfig, ModelSettings? savedSettings)
+    {
+        ArgumentNullException.ThrowIfNull(environmentConfig);
+        if (savedSettings is null) { environmentConfig.Settings.ValidateTuning(); return environmentConfig; }
+        savedSettings.ValidateTuning();
+        var environment = environmentConfig.Settings;
+        var explicitKeys = environmentConfig.ExplicitSettingKeys ?? [];
+        bool Own(string key) => explicitKeys.Contains(key, StringComparer.Ordinal);
+        var merged = environment with
+        {
+            MaxToolRounds = Own(nameof(ModelSettings.MaxToolRounds)) ? environment.MaxToolRounds : savedSettings.MaxToolRounds,
+            MaxOutputTokens = Own(nameof(ModelSettings.MaxOutputTokens)) ? environment.MaxOutputTokens : savedSettings.MaxOutputTokens,
+            TimeoutSeconds = Own(nameof(ModelSettings.TimeoutSeconds)) ? environment.TimeoutSeconds : savedSettings.TimeoutSeconds,
+            BudgetLimits = new(Own(nameof(AnalysisBudgetLimits.MaxRequestsPerMatch)) ? environment.BudgetLimits.MaxRequestsPerMatch : savedSettings.BudgetLimits.MaxRequestsPerMatch,
+                Own(nameof(AnalysisBudgetLimits.MaxTokensPerMatch)) ? environment.BudgetLimits.MaxTokensPerMatch : savedSettings.BudgetLimits.MaxTokensPerMatch,
+                Own(nameof(AnalysisBudgetLimits.MaxConcurrentRequestsPerMatch)) ? environment.BudgetLimits.MaxConcurrentRequestsPerMatch : savedSettings.BudgetLimits.MaxConcurrentRequestsPerMatch)
+        };
+        merged.ValidateTuning();
+        return environmentConfig with { Settings = merged };
     }
 
     public static Uri NormalizeEndpoint(string text)
@@ -125,6 +177,7 @@ public sealed class ProtectedModelConfigurationStore(string path, ISecretProtect
     private sealed record Document(int Version, string ProtectedPayload);
     public async Task SaveAsync(ModelConfiguration config, CancellationToken token = default)
     {
+        config.Settings.ValidateTuning();
         var plaintext = JsonSerializer.SerializeToUtf8Bytes(config);
         byte[] encrypted;
         try { encrypted = protector.Protect(plaintext); }
@@ -151,6 +204,7 @@ public sealed class ProtectedModelConfigurationStore(string path, ISecretProtect
             plaintext = protector.Unprotect(Convert.FromBase64String(doc.ProtectedPayload));
             var config = JsonSerializer.Deserialize<ModelConfiguration>(plaintext) ?? throw new InvalidDataException("模型配置为空。");
             _ = EnvironmentModelConfiguration.NormalizeEndpoint(config.Settings.Endpoint.ToString());
+            config.Settings.ValidateTuning();
             return config;
         }
         catch (Exception ex) when (ex is JsonException or FormatException or CryptographicException)

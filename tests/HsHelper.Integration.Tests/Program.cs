@@ -152,7 +152,7 @@ Pass("rules validate summon-cost, charge and attack against corresponding later 
 var handler = new FakeModelHandler();
 using var http = new HttpClient(handler);
 var calls = new List<string>();
-var pinnedNode = JsonNode.Parse(historicalJson)!.AsObject();
+var pinnedNode = CompactAdviceContextBuilder.Build(before, oldContext.CardBuild, firstDeck.Definition, cardMap.Values);
 var advice = await new AdviceService(http).AnalyzeAsync(new(new Uri("https://synthetic.invalid/v1/chat/completions"), "synthetic-fake-model", MaxToolRounds: 2),
     "synthetic-dummy-key", new(sessionId, before.StateVersion, "turn", pinnedNode), async (name, arguments, token) =>
     {
@@ -211,7 +211,7 @@ Pass("full coaching tool loop bridges draw odds, rules/search, host action valid
 var secretEntity = new EntitySnapshot(999, null, EntityKind.Card,
     new Dictionary<string, string> { ["CONTROLLER"] = "2", ["ZONE"] = "SECRET", ["CARDTYPE"] = "5" }.ToFrozenDictionary());
 var conditionalSnapshot = before with { Entities = before.Entities.Append(new(999, secretEntity)).ToFrozenDictionary() };
-var conditionalNode = JsonNode.Parse(SnapshotCodec.Serialize(conditionalSnapshot))!.AsObject();
+var conditionalNode = CompactAdviceContextBuilder.Build(conditionalSnapshot, SyntheticFixture.Build, firstDeck.Definition, cardMap.Values);
 var conditionalCoach = new SnapshotCoach(conditionalSnapshot, conditionalNode, catalog, SyntheticFixture.Build);
 using var conditionalHandler = new BridgeModelHandler(requestTools: false);
 using var conditionalHttp = new HttpClient(conditionalHandler);
@@ -221,6 +221,9 @@ var conditionalAdvice = await new AdviceService(conditionalHttp).AnalyzeAsync(ne
 Check(conditionalAdvice.Verification == "conditional" && conditionalAdvice.Actions.Count == 0 && !conditionalAdvice.VerifiedLethal && conditionalAdvice.Risks.Count() > 0,
     "conditional secret interaction escaped as verified concrete actions");
 Pass("uncovered secrets downgrade model plans and remove concrete actions and lethal claims");
+
+await CoachLibraryIntegration.RunAsync(temp, catalog, firstDeck, before, Pass);
+await CoachPrivacyIntegration.RunAsync(catalog, before, Pass);
 
 if (args.Length == 2)
 {

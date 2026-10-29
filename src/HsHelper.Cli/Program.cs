@@ -10,8 +10,31 @@ using HsHelper.Coaching;
 using System.Collections.Concurrent;
 
 return await MainAsync(args);
+static string ToolEvidenceSummary(CoachToolObservation observation)
+{
+    if (!observation.Success || observation.ResultJson is null) return "工具未完成，未保存原始结果。";
+    var result = JsonNode.Parse(observation.ResultJson);
+    string Field(string key) => result?[key]?.ToString() ?? "未知";
+    var summary = observation.Name switch
+    {
+        "get_snapshot" => "已查询本次固定的紧凑玩家视角局面。",
+        "get_cards" => "固定版本牌效：" + string.Join("、", (result?["cards"] as JsonArray ?? []).Select(c => c?["Id"]?.ToString() ?? c?["id"]?.ToString() ?? "未知")),
+        "get_recent_events" => "仅查询固定事件序号及以前的匿名事件与公开出牌。",
+        "calculate_draw_odds" => $"精确条件 {Field("is_exact")}；概率 {Field("probability")}；{Field("reason")}",
+        "evaluate_line" => $"验证 {Field("Verification")}；合法 {Field("IsLegal")}；确定斩杀 {Field("IsLethal")}；未覆盖 {Field("UnsupportedMechanics")}",
+        "find_lethal" => $"已验证斩杀 {Field("VerifiedLethalFound")}；搜索节点 {Field("ExploredNodes")}；{Field("Coverage")}",
+        "validate_choice" => $"候选合法 {Field("IsLegal")}；只验证选择范围，不模拟选择后的效果。",
+        "get_matchup_plan" => "已查询固定历史时点之前的用户计划/笔记版本。",
+        "get_personal_stats" => $"此前已结束个人样本 {result?["stats"]?["Games"]?.ToString() ?? "未知"} 局，排除当前局。",
+        _ => "工具查询已完成。"
+    };
+    if (result?["error"] is { } error) summary = "工具返回限制：" + error;
+    else if (result?["missing"] is { } missing) summary = "查询资料缺失：" + missing;
+    return summary.Length <= 900 ? summary : summary[..899] + "…";
+}
 static async Task<int> MainAsync(string[] args)
 {
+    var adviceStage = "preflight";
     var jsonOptions = new JsonSerializerOptions { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
     if (args.Length == 0 || args[0] is "help" or "--help")
     {
@@ -26,7 +49,7 @@ static async Task<int> MainAsync(string[] args)
             cards-search [--query text] [--class HUNTER] [--build number] [--data-dir path]
             deck-decode --code base64
             model-check [--env .env]
-            advise --snapshot path --out advice.json [--env .env] [--data-dir path] [--task text]
+            advise --snapshot path --out advice.json [--env .env] [--data-dir path] [--task turn|mulligan|choice|review|deckplan] [--question text]
             record --log path [--player auto|1|2] [--deck-file path] [--deck-name name] [--data-dir path]
             sessions [--data-dir path]
             timeline --session id [--data-dir path]
@@ -68,7 +91,8 @@ static async Task<int> MainAsync(string[] args)
                 var dataRoot = Option("data-dir") ?? Environment.GetEnvironmentVariable("HSHELPER_DATA_DIR")
                     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HsHelper");
                 var protectedPaths = new[] { snapshotPath, environmentPath, Path.Combine(dataRoot, "cards.db"),
-                    Path.Combine(dataRoot, "sessions.db"), Path.Combine(dataRoot, "analysis-traces.db") };
+                    Path.Combine(dataRoot, "sessions.db"), Path.Combine(dataRoot, "analysis-traces.db"),
+                    Path.Combine(dataRoot, "knowledge.db"), Path.Combine(dataRoot, "advice-archive.db"), Path.Combine(dataRoot, "model-config.json") };
                 if (protectedPaths.Any(path => Path.GetFullPath(path).Equals(outputPath, StringComparison.OrdinalIgnoreCase)))
                     throw new ArgumentException("输出不能覆盖输入、模型配置或数据库。");
                 var snapshot = SnapshotCodec.Deserialize(await File.ReadAllTextAsync(snapshotPath));
@@ -84,14 +108,54 @@ static async Task<int> MainAsync(string[] args)
                 var catalog = new CardCatalog(Path.Combine(dataRoot, "cards.db")); await catalog.InitializeAsync();
                 if (await catalog.GetManifestAsync(build) is null) throw new InvalidDataException("缺少局面对应的固定版本卡库。");
                 var config = await EnvironmentModelConfiguration.LoadAsync(environmentPath);
+                var tuningPath = Path.Combine(dataRoot, "model-config.json");
+                var saved = File.Exists(tuningPath)
+                    ? await new ProtectedModelConfigurationStore(tuningPath, new WindowsSecretProtector()).LoadAsync() : null;
+                config = EnvironmentModelConfiguration.MergeTuning(config, saved?.Settings);
                 if (config.Settings.Model.Contains("://", StringComparison.Ordinal)) throw new InvalidDataException("模型标识不能包含地址。");
+                var sessions = new SessionStore(Path.Combine(dataRoot, "sessions.db")); await sessions.InitializeAsync();
+                var knowledge = new CoachKnowledgeStore(Path.Combine(dataRoot, "knowledge.db")); await knowledge.InitializeAsync();
+                var archive = new AdviceArchiveStore(Path.Combine(dataRoot, "advice-archive.db")); await archive.InitializeAsync();
+                DeckVersion? deck = null;
+                if (snapshot.DeckTracking is { } tracking && tracking.MatchId == snapshot.MatchId && tracking.StateVersion == snapshot.StateVersion && tracking.CardBuild == build)
+                    deck = await sessions.GetDeckVersionAsync(tracking.DeckVersion);
+                var relevantCards = (await catalog.GetByIdsAsync(snapshot.Entities.Values
+                    .Where(e => e.Zone == "PLAY" || e.ControllerId == snapshot.LocalPlayerId && e.Zone is "HAND" or "SECRET")
+                    .Select(e => e.CardId).OfType<string>()
+                    .Concat(snapshot.Choice?.Options.Select(o => o.CardId).OfType<string>() ?? []).Distinct(), build)).ToDictionary(c => c.Id);
+                if (deck is not null)
+                    foreach (var card in await catalog.GetByDbfIdsAsync(deck.Definition.Cards.Select(c => c.DbfId)
+                        .Concat(deck.Definition.Sideboards.SelectMany(s => s.Cards.Select(c => c.DbfId))).Distinct(), build)) relevantCards[card.Id] = card;
+                var taskKind = Option("task") is { } namedTask ? AdviceTaskTemplates.Resolve(namedTask) : snapshot.Phase switch
+                { GamePhase.Choice => AdviceTaskKind.Choice, GamePhase.Mulligan => AdviceTaskKind.Mulligan,
+                    GamePhase.Complete => AdviceTaskKind.Review, _ => AdviceTaskKind.Turn };
+                var context = CompactAdviceContextBuilder.Create(snapshot, build, taskKind, deck?.Definition, relevantCards.Values)
+                    with { UserQuestion = Option("question") ?? Option("task") };
+                var point = (await sessions.ListDecisionPointsAsync(snapshot.MatchId, includeUnstable: true))
+                    .FirstOrDefault(p => p.EventSequence == snapshot.EventSequence && p.StateVersion == snapshot.StateVersion &&
+                        p.IsDecisionPoint && p.IsStable && p.IsComplete);
+                if (point is not null)
+                {
+                    var stored = await sessions.GetDecisionSnapshotAsync(point.Id);
+                    if (stored is null || SnapshotCodec.Serialize(stored) != SnapshotCodec.Serialize(snapshot)) point = null;
+                }
+                CoachLibraryContext? library = point is null ? null : new(sessions, knowledge,
+                    new(snapshot.MatchId, snapshot.StateVersion, build, deck?.Id, point.RecordedAt, snapshot.OpponentClass,
+                        snapshot.FirstPlayerId is null ? null : snapshot.FirstPlayerId == snapshot.LocalPlayerId,
+                        Format: snapshot.Format ?? "STANDARD", GameType: snapshot.GameType ?? "GT_RANKED", EventSequence: snapshot.EventSequence));
+                context.Snapshot["personal_library_available"] = library is not null;
                 var traces = new AnalysisTraceStore(Path.Combine(dataRoot, "analysis-traces.db")); await traces.InitializeAsync();
                 var totals = await traces.GetBudgetTotalsAsync(snapshot.MatchId);
-                var budget = new AnalysisBudget(); budget.SeedMatch(snapshot.MatchId, totals.RequestCount, totals.ChargedTokens);
+                var budget = new AnalysisBudget(config.Settings.BudgetLimits); budget.SeedMatch(snapshot.MatchId, totals.RequestCount, totals.ChargedTokens);
                 var requests = new ConcurrentQueue<ModelRequestTrace>(); var tools = new ConcurrentQueue<ToolExecutionTrace>();
-                var coach = new SnapshotCoach(snapshot, JsonNode.Parse(SnapshotCodec.Serialize(snapshot))!.AsObject(), catalog, build,
-                    (name, elapsed, succeeded) => tools.Enqueue(new(Guid.NewGuid().ToString("N"), snapshot.MatchId, snapshot.StateVersion,
-                        name, elapsed, succeeded ? AnalysisTraceStatus.Completed : AnalysisTraceStatus.Failed)));
+                var evidence = new ConcurrentQueue<AdviceToolEvidence>();
+                var coach = new SnapshotCoach(snapshot, context.Snapshot, catalog, build, library: library, toolCompleted: observation =>
+                {
+                    tools.Enqueue(new(Guid.NewGuid().ToString("N"), snapshot.MatchId, snapshot.StateVersion, observation.Name,
+                        observation.ElapsedMilliseconds, observation.Success ? AnalysisTraceStatus.Completed : AnalysisTraceStatus.Failed)
+                        { ResultHash = observation.ResultHash });
+                    evidence.Enqueue(new(observation.Name, ToolEvidenceSummary(observation), observation.ResultHash));
+                }, taskKind: context.TaskKind);
                 var usages = new ConcurrentQueue<ModelUsage>();
                 void Remember(ModelUsage usage)
                 {
@@ -99,7 +163,7 @@ static async Task<int> MainAsync(string[] args)
                     requests.Enqueue(new(usage.RequestId, usage.MatchId, usage.StateVersion, usage.Model, usage.Round,
                         usage.InputTokens, usage.OutputTokens, usage.TotalTokens, usage.ChargedTokens, usage.ElapsedMilliseconds,
                         usage.Success ? AnalysisTraceStatus.Completed : AnalysisTraceStatus.Failed, usage.ConservativeCharge)
-                        { CardBuild = build, Task = "cli-advise" });
+                        { CardBuild = build, Task = context.Task, PromptTemplateVersion = context.TemplateVersion });
                 }
                 using var cancellation = new CancellationTokenSource();
                 ConsoleCancelEventHandler cancel = (_, e) => { e.Cancel = true; cancellation.Cancel(); };
@@ -109,13 +173,23 @@ static async Task<int> MainAsync(string[] args)
                 try
                 {
                     using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
+                    adviceStage = "analysis";
                     advice = await new AdviceService(http).AnalyzeAsync(config.Settings, config.ApiKey,
-                        new(snapshot.MatchId, snapshot.StateVersion, Option("task") ?? "回合建议", JsonNode.Parse(SnapshotCodec.Serialize(snapshot))!.AsObject()),
-                        coach.ExecuteAsync, () => !cancellation.IsCancellationRequested, cancellation.Token, coach.Capabilities(budget, Remember));
+                        context, coach.ExecuteAsync, () => !cancellation.IsCancellationRequested, cancellation.Token, coach.Capabilities(budget, Remember));
+                    adviceStage = "archive";
+                    var archived = await archive.SaveAsync(new(snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence, build, context.TemplateVersion, advice.Summary)
+                    {
+                        DeckVersionId = deck?.Id, Task = context.Task, UserQuestion = context.UserQuestion, Reasons = advice.Reasons, Alternative = advice.Alternative, Risks = advice.Risks,
+                        Verification = advice.Verification, VerifiedLethal = advice.VerifiedLethal,
+                        Actions = advice.Actions.Select(a => new ArchivedAdviceAction(a.Kind, a.SourceEntityId, a.TargetEntityId)).ToArray(), Evidence = evidence.ToArray()
+                    }, sensitiveValues: [config.ApiKey, config.Settings.Endpoint.ToString()], cancellationToken: CancellationToken.None);
+                    advice = advice with { Summary = archived.Advice.Summary, Reasons = archived.Advice.Reasons.ToArray(),
+                        Alternative = archived.Advice.Alternative, Risks = archived.Advice.Risks.ToArray(), UserQuestion = archived.Advice.UserQuestion };
                     var result = JsonSerializer.Serialize(advice, jsonOptions);
                     if (!string.IsNullOrEmpty(config.ApiKey) && result.Contains(config.ApiKey, StringComparison.Ordinal))
                         throw new InvalidDataException("模型结果包含不应导出的敏感内容。");
                     Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+                    adviceStage = "output";
                     var temporary = outputPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
                     try { await File.WriteAllTextAsync(temporary, result, cancellation.Token); File.Move(temporary, outputPath, true); }
                     finally { if (File.Exists(temporary)) File.Delete(temporary); }
@@ -123,6 +197,7 @@ static async Task<int> MainAsync(string[] args)
                 finally
                 {
                     try { await traces.AppendBatchAsync(requests.ToArray(), tools.ToArray(), CancellationToken.None); }
+                    catch { adviceStage = "audit"; throw; }
                     finally { Console.CancelKeyPress -= cancel; }
                 }
                 var usage = usages.ToArray();
@@ -276,7 +351,12 @@ static async Task<int> MainAsync(string[] args)
         }
     }
     catch (OperationCanceledException) { return 130; }
-    catch (Exception) when (args[0] == "advise")
-    { Console.Error.WriteLine("局面分析未完成。请检查过滤快照、固定版本卡库、模型配置、本局预算和输出路径；原始响应与凭据不会输出。"); return 1; }
+    catch (Exception error) when (args[0] == "advise")
+    {
+        Console.Error.WriteLine(JsonSerializer.Serialize(new { Error = "advice_failed", Stage = adviceStage,
+            Kind = error.GetType().Name, HttpStatus = error is HttpRequestException requestError ? (int?)requestError.StatusCode : null,
+            Hint = "请检查对应阶段的快照、卡库、模型服务、本局预算或文件路径；原始响应与凭据不会输出。" }));
+        return 1;
+    }
     catch (Exception ex) { Console.Error.WriteLine(ex.Message); return 1; }
 }

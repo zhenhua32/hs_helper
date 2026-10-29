@@ -21,7 +21,9 @@ foreach (var (name, run) in tests)
     try { run(); Console.WriteLine($"PASS {name}"); }
     catch (Exception error) { failed++; Console.Error.WriteLine($"FAIL {name}: {error.Message}"); }
 }
-Console.WriteLine($"{tests.Length - failed}/{tests.Length} overlay tests passed");
+try { HiddenWindowSmoke.Run(); Console.WriteLine("PASS hidden WPF initialization, plan versioning, tombstone and archived planning advice"); }
+catch (Exception error) { failed++; Console.Error.WriteLine($"FAIL hidden WPF interaction smoke: {error.Message}"); }
+Console.WriteLine($"{tests.Length + 1 - failed}/{tests.Length + 1} App regression checks passed");
 return failed == 0 ? 0 : 1;
 
 static void Check(bool condition, string message)

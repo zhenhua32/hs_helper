@@ -38,7 +38,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource _source = new();
     private CancellationTokenSource? _analysis;
     private DeckDefinition? _deck;
-    private readonly AnalysisBudget _analysisBudget = new();
+    private AnalysisBudget _analysisBudget = new();
     private readonly HashSet<Task> _analysisTasks = [];
 
     public MainWindow()
@@ -56,12 +56,14 @@ public partial class MainWindow : Window
 
     private async void WindowLoaded(object sender, RoutedEventArgs e) => await Run(async () =>
     {
+        var startupConfigurationRevision = _configurationRevision;
         await _catalog.InitializeAsync();
         await RefreshCatalogAsync();
         Diagnose();
         await InitializeHistoryAsync();
         await InitializeTracesAsync();
-        await LoadModelConfigurationAsync();
+        await InitializeKnowledgeAsync();
+        await LoadModelConfigurationAsync(expectedRevision: startupConfigurationRevision);
     });
 
     private void Diagnose()
@@ -100,6 +102,7 @@ public partial class MainWindow : Window
         await FinishCaptureAsync();
         _historyContext = null;
         PinSourceDeck();
+        ResetConnectionClock();
         var generation = _sourceGeneration;
         var token = _source.Token;
         _loadingSource = true; PlayerBox.IsEnabled = false; SavedDeckBox.IsEnabled = false;
@@ -144,6 +147,8 @@ public partial class MainWindow : Window
         if (generation != _sourceGeneration) return;
         _engine = engine;
         _liveFrame = lastFrame; _trackingFrames = tracking;
+        _lastStateObservedAt = DateTimeOffset.UtcNow;
+        _currentLogFile = dialog.FileName;
         LogPathBox.Text = dialog.FileName;
         SessionBuildBox.Text = build ?? "";
         RenderSnapshot();
@@ -163,6 +168,7 @@ public partial class MainWindow : Window
         _engine = NewEngine();
         _liveFrame = null; _trackingFrames = null;
         _sourceLine = 0;
+        ResetConnectionClock();
         _liveRoot = LogPathBox.Text;
         _timer.Start();
         await ReadLiveAsync();
@@ -174,6 +180,7 @@ public partial class MainWindow : Window
         _historyLoading = false;
         _source.Cancel(); _source.Dispose(); _source = new();
         InvalidateAdvice();
+        UpdateConnectionStatus();
     }
     private async void StopClicked(object sender, RoutedEventArgs e) => await Run(async () => { await StopRecordingAsync(); StatusText.Text = "已停止监听并保存记录，显示最后一次快照。"; });
     private async void LogPathChanged(object sender, TextChangedEventArgs e)
@@ -184,6 +191,7 @@ public partial class MainWindow : Window
     {
         if (_reading) return;
         _reading = true;
+        _lastReadAttemptAt = DateTimeOffset.UtcNow;
         var generation = _sourceGeneration;
         var token = _source.Token;
         var engine = _engine;
@@ -193,7 +201,9 @@ public partial class MainWindow : Window
         {
             var batch = await tailer.ReadAvailableAsync(_liveRoot, token);
             if (generation != _sourceGeneration) return;
-            if (batch.Path is null) { StatusText.Text = "等待 Power.log 写入…"; return; }
+            if (batch.Path is null) { UpdateConnectionStatus(); return; }
+            _currentLogFile = batch.Path; _currentLogOffset = batch.ByteOffset;
+            if (batch.Lines.Count > 0) _lastLogActivityAt = DateTimeOffset.UtcNow;
             catchUp = batch.HasMoreData;
             if (batch.ResetReason != LogResetReason.None)
             {
@@ -218,6 +228,7 @@ public partial class MainWindow : Window
                 if (engine.ProcessLine(line))
                 {
                     var frame = engine.Snapshot();
+                    _lastStateObservedAt = DateTimeOffset.UtcNow;
                     _liveFrame = _trackingFrames?.Observe(frame) ?? frame;
                     capture?.Observe(_liveFrame, _sourceLine);
                 }
@@ -228,13 +239,14 @@ public partial class MainWindow : Window
             if (generation != _sourceGeneration) return;
             if (batch.Lines.Count > 0 || batch.ResetReason != LogResetReason.None) RenderSnapshot();
             if (batch.Lines.Count > 0) ScheduleAutomaticAdvice(batch.HasMoreData);
-            StatusText.Text = $"正在监听 · 已读取 {batch.ByteOffset:N0} 字节 · {batch.Path}";
+            UpdateConnectionStatus();
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { if (generation == _sourceGeneration) { _timer.Stop(); StatusText.Text = "日志读取停止：" + ex.Message; } }
         finally
         {
             _reading = false;
+            if (generation == _sourceGeneration) UpdateConnectionStatus();
             if (catchUp && generation == _sourceGeneration && _timer.IsEnabled)
                 _ = Dispatcher.BeginInvoke(new Action(async () => await ReadLiveAsync()), DispatcherPriority.Background);
         }
@@ -252,6 +264,7 @@ public partial class MainWindow : Window
         StateText.Text = (_historyContext is null ? "当前日志 · " : "历史局面 · ") + $"回合 {state.Turn?.ToString() ?? "未知"} · 阶段 {state.Phase} · 局面版本 {state.StateVersion} · 行动方 {state.ActivePlayerId?.ToString() ?? "未知"}\n" +
             $"完整：{state.Quality.IsComplete} · 稳定：{state.Quality.IsStable} · 我方视角：{state.Quality.HasLocalPerspective}\n" + string.Join("；", state.Quality.Warnings);
         _ = Run(UpdateOverlayAsync);
+        UpdateConnectionStatus();
     }
     private void InvalidateAdvice()
     {
@@ -262,6 +275,14 @@ public partial class MainWindow : Window
     }
     private void BuildChanged(object sender, TextChangedEventArgs e) => InvalidateAdvice();
     private void AdviceTaskChanged(object sender, SelectionChangedEventArgs e) => InvalidateAdvice();
+    private void QuestionChanged(object sender, TextChangedEventArgs e) => InvalidateAdvice();
+    private async void QuickQuestionClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.Tag is not string question) return;
+        QuestionBox.Text = question;
+        TaskBox.SelectedIndex = question.Contains("起手", StringComparison.Ordinal) ? 1 : question.Contains("候选", StringComparison.Ordinal) ? 3 : 0;
+        await Run(AnalyzeCurrentAsync);
+    }
     private async void ExportClicked(object sender, RoutedEventArgs e) => await Run(async () =>
     {
         var dialog = new SaveFileDialog { Filter = "局面JSON|*.json", FileName = "snapshot.json" };
@@ -335,16 +356,16 @@ public partial class MainWindow : Window
     });
 
     private async void AnalyzeClicked(object sender, RoutedEventArgs e) => await Run(AnalyzeCurrentAsync);
-    private Task AnalyzeCurrentAsync()
+    private Task AnalyzeCurrentAsync() => TrackAnalysisAsync(AnalyzeCoreAsync);
+    private async Task TrackAnalysisAsync(Func<Task> analyze)
     {
-        var operation = AnalyzeCoreAsync();
+        var configurationRevision = _configurationRevision;
+        await ApplyBudgetPolicyAsync(ConfigurationFromFields().Settings.BudgetLimits);
+        if (_closing || configurationRevision != _configurationRevision) throw new OperationCanceledException("模型配置已变化。");
+        var operation = analyze();
         _analysisTasks.Add(operation);
-        return FinishAsync();
-        async Task FinishAsync()
-        {
-            try { await operation; }
-            finally { _analysisTasks.Remove(operation); }
-        }
+        try { await operation; }
+        finally { _analysisTasks.Remove(operation); }
     }
     private async Task AnalyzeCoreAsync()
     {
@@ -355,6 +376,11 @@ public partial class MainWindow : Window
         var history = _historyContext;
         var snapshot = history?.Snapshot ?? _liveFrame ?? _engine.Snapshot();
         var importedDeck = AnalysisDeck;
+        var userQuestion = string.IsNullOrWhiteSpace(QuestionBox.Text) ? null : QuestionBox.Text.Trim();
+        var deckVersionId = history is not null ? history.DeckVersionId :
+            _sourceBindingEstablished ? _sourceDeckVersion?.Id : _selectedDeckVersion?.Id;
+        var asOf = history is null ? DateTimeOffset.UtcNow : _historyObservedAt
+            ?? throw new InvalidOperationException("历史局面缺少记录时刻，无法限制个人资料查询。");
         var requestedBuild = history?.CardBuild ?? SessionBuildBox.Text.Trim();
         var historyRevision = _historyRevision;
         var revision = _revision;
@@ -379,50 +405,44 @@ public partial class MainWindow : Window
             if (!IsCurrent()) throw new OperationCanceledException("所选局面已经改变。");
             var task = ((ComboBoxItem)TaskBox.SelectedItem).Content.ToString()!;
             if (task == "回合建议") task = snapshot.Phase switch { GamePhase.Mulligan => "留牌建议", GamePhase.Choice => "选择建议", _ => task };
-            var json = JsonSerializer.SerializeToNode(new
-            {
-                snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence, snapshot.Turn,
-                snapshot.ActivePlayerId, snapshot.LocalPlayerId, snapshot.Phase, snapshot.Quality, snapshot.Choice, snapshot.DeckTracking,
-                RecentEvents = history is null ? (object)snapshot.RecentEvents : history.RecentEvents,
-                Entities = snapshot.Entities.Values.Where(e => e.Kind != EntityKind.Card || e.Zone is "HAND" or "PLAY" or "SECRET").ToArray(),
-                snapshot.PublicPlays,
-                DeckCounts = snapshot.Entities.Values.Where(e => e.Zone == "DECK").GroupBy(e => e.ControllerId)
-                    .Select(g => new { Player = g.Key, Count = g.Count() }).ToArray()
-            }, SnapshotJson)!.AsObject();
-            json["card_data_build"] = requestedBuild;
-            json["rule_coverage"] = "基础战斗及部分猎人牌效；具体覆盖和限制以evaluate_line/find_lethal返回为准。未覆盖效果不能视为已经计算。";
+            var related = new Dictionary<string, CardRecord>();
+            if (pinnedManifest is not null)
+                foreach (var card in await _catalog.GetByIdsAsync(snapshot.Entities.Values.Select(e => e.CardId).OfType<string>()
+                    .Concat(snapshot.Choice?.Options.Select(o => o.CardId).OfType<string>() ?? []).Distinct(), requestedBuild, cancellationToken: cancellation.Token))
+                    related[card.Id] = card;
             if (importedDeck is not null)
             {
-                json["imported_deck"] = JsonSerializer.SerializeToNode(importedDeck);
-                json["deck_confirmation"] = history?.Deck is not null || _sourceDeckVersion is not null
-                    ? "用户为该局确认并固定的套牌版本；实际剩余牌库以DeckTracking的证据和质量标记为准。"
-                    : "用户导入的套牌背景，尚未确认当前对局绑定，不据此断言剩余牌库。";
                 if (pinnedManifest is not null && requestedBuild == pinnedManifest.Build)
                 {
                     var deckNumbers = importedDeck.Cards.Select(c => c.DbfId)
                         .Concat(importedDeck.Sideboards.SelectMany(s => s.Cards.Select(c => c.DbfId))).Distinct();
                     var deckCards = await _catalog.GetByDbfIdsAsync(deckNumbers, pinnedManifest.Build,
                         cancellationToken: cancellation.Token);
-                    json["imported_deck_cards"] = JsonSerializer.SerializeToNode(deckCards.Select(c => new { c.Id, c.DbfId, c.Name, c.Text, c.Cost }));
+                    foreach (var card in deckCards) related[card.Id] = card;
                 }
             }
             if (!IsCurrent()) throw new OperationCanceledException("所选局面已经改变。");
-            var context = new AdviceContext(snapshot.MatchId, snapshot.StateVersion, task, json);
+            var context = CompactAdviceContextBuilder.Create(snapshot, requestedBuild, AdviceTaskTemplates.Resolve(task), importedDeck, related.Values)
+                with { UserQuestion = userQuestion };
+            var json = context.Snapshot;
+            json["deck_confirmation"] = deckVersionId is not null ? "该局已固定套牌版本；剩余组成仍以追踪证据为准。" : "仅导入背景，尚未确认对局套牌。";
+            json["rule_coverage"] = "具体计算覆盖和限制以evaluate_line/find_lethal/validate_choice返回为准。";
             AdviceBox.Text = "正在分析固定局面…";
             await SeedBudgetAsync(snapshot.MatchId);
             if (!IsCurrent()) throw new OperationCanceledException("所选局面已经改变。");
-            var coach = new SnapshotCoach(snapshot, json, _catalog, requestedBuild,
-                (name, elapsed, success) => RememberTool(snapshot.MatchId, snapshot.StateVersion, name, elapsed, success));
+            var library = new CoachLibraryContext(_store, _knowledge, new(snapshot.MatchId, snapshot.StateVersion, requestedBuild,
+                deckVersionId, asOf, snapshot.OpponentClass, snapshot.FirstPlayerId is null ? null : snapshot.FirstPlayerId == snapshot.LocalPlayerId,
+                EventSequence: snapshot.EventSequence));
+            var evidence = new List<AdviceToolEvidence>();
+            var coach = new SnapshotCoach(snapshot, json, _catalog, requestedBuild, library: library,
+                toolCompleted: observation => ObserveTool(evidence, snapshot, observation), taskKind: context.TaskKind);
             var advice = await new AdviceService(_http).AnalyzeAsync(modelConfiguration.Settings, modelConfiguration.ApiKey,
                 context, coach.ExecuteAsync, IsCurrent, cancellation.Token,
-                coach.Capabilities(_analysisBudget, usage => RememberUsage(usage, requestedBuild, task)));
+                coach.Capabilities(_analysisBudget, usage => RememberUsage(usage, requestedBuild, task, context.TemplateVersion)));
+            var saved = await ArchiveAdviceAsync(advice, snapshot, context, requestedBuild, deckVersionId, evidence, modelConfiguration.ApiKey);
             if (IsCurrent())
             {
-                AdviceBox.Text = $"{(advice.Verification == "verified" ? "动作已通过本地规则验证" : "策略建议")} · 局面 v{advice.StateVersion}\n\n{advice.Summary}\n\n依据\n" +
-                    string.Join("\n", advice.Reasons) + $"\n\n备选\n{advice.Alternative ?? "无"}\n\n风险与未知\n" + string.Join("\n", advice.Risks) +
-                    (advice.Actions.Count == 0 ? "" : "\n\n已验证动作\n" + string.Join("\n", advice.Actions.Select(a => $"{a.Kind} · 实体 {a.SourceEntityId} → {a.TargetEntityId?.ToString() ?? "无目标"}"))) +
-                    (advice.VerifiedLethal ? "\n本地规则确认此序列可斩杀。" : "");
-                _overlayAdvice = advice.Summary + (advice.Risks.Length > 0 ? "\n风险：" + advice.Risks[0] : "");
+                DisplayArchivedAdvice(saved);
                 await UpdateOverlayAsync();
             }
         }

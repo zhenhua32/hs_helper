@@ -24,7 +24,8 @@ public sealed record DecisionPoint(long Id, string SessionId, long EventSequence
 public sealed record SessionFilter(string? CardBuild = null, string? DeckVersionId = null,
     string? OpponentClass = null, bool? WentFirst = null, string? Format = null,
     DateTimeOffset? Since = null, DateTimeOffset? Until = null, int Limit = 100,
-    string? PlayerClass = null, string? Region = null, string? GameType = null);
+    string? PlayerClass = null, string? Region = null, string? GameType = null,
+    DateTimeOffset? EndedBefore = null, string? ExcludeSessionId = null);
 
 public sealed record ClassMatchupStats(string OpponentClass, int Games, int Wins, int Losses, int Ties,
     int Unknown, double? WinRate);

@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup><ProjectReference Include="../../src/HsHelper.Rules/HsHelper.Rules.csproj"/></ItemGroup>
+  <ItemGroup><None Update="Fixtures/**" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>
