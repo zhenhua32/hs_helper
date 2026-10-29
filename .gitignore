@@ -1,0 +1,27 @@
+# .NET build output and Visual Studio local files
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+
+# Test output
+**/TestResults/
+coverage/
+
+# Local model configuration and credentials
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json
+
+# Generated runtime data in the repository
+/data/
+/logs/
+/cache/
+/artifacts/
+
+# Windows filesystem metadata
+Thumbs.db
+Desktop.ini
