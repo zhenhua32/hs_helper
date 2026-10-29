@@ -1,0 +1,5 @@
+### 野兽快
+# 用户提供的标准猎人验收套牌，保留牌码中的边栏。
+# 提供日期：2026-10-29
+# 模式由用户声明；构筑与当前卡池可用性由程序另行检查。
+AAECAb7lBwTO/Abygwfclgeu2AcNqZ8E458E4PgF1voG4voG5PoG9YEH94EHwIcHp4gHyK4H/O4HnIIIAAEDg4QHrtgH2Z4HrtgHkfEHrtgHAAA=

@@ -14,7 +14,28 @@ public sealed record CardManifest(
 
 public sealed record CardSearchQuery(
     string? Text = null, string? CardClass = null, bool? Collectible = null,
-    int Limit = 100, int Offset = 0);
+    int Limit = 100, int Offset = 0, string? Keyword = null,
+    bool StandardOnly = false, bool StandardPoolOnly = false, DateTimeOffset? At = null);
+
+/// <summary>Explicit, version-pinned evidence. Partial evidence never yields Legal.</summary>
+public sealed record CardPoolRules(
+    string RuleId, string Build, int Format, DateTimeOffset EffectiveFrom,
+    DateTimeOffset ValidUntil, string Source, IReadOnlyList<string> AllowedSets,
+    IReadOnlyList<string> AllowedCardIds, IReadOnlyList<string> BannedCardIds,
+    IReadOnlyList<string> UnreleasedCardIds, bool IsComplete = false,
+    string? Notes = null);
+
+public sealed record DeckCardDescription(int DbfId, int Count, string? CardId, string Name,
+    int? Cost, string CardClass, string Rarity, CardLegality Legality);
+public sealed record ManaCurveBucket(int Cost, int Count);
+public sealed record DeckSideboardDescription(int OwnerDbfId, string? OwnerCardId, string OwnerName,
+    IReadOnlyList<DeckCardDescription> Cards, IReadOnlyList<ManaCurveBucket> ManaCurve);
+public sealed record DeckDescription(int Format, string? HeroClass,
+    IReadOnlyList<DeckCardDescription> Cards, IReadOnlyList<ManaCurveBucket> ManaCurve,
+    CardLegality Legality, IReadOnlyList<string> Issues, string Build, string? RuleId)
+{
+    public IReadOnlyList<DeckSideboardDescription> Sideboards { get; init; } = [];
+}
 
 public sealed record DeckCard(int DbfId, int Count);
 public sealed record DeckSideboard(int OwnerDbfId, IReadOnlyList<DeckCard> Cards);

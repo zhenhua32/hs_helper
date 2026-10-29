@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../HsHelper.Agent/HsHelper.Agent.csproj" />
+    <ProjectReference Include="../HsHelper.Cards/HsHelper.Cards.csproj" />
+    <ProjectReference Include="../HsHelper.Core/HsHelper.Core.csproj" />
+    <ProjectReference Include="../HsHelper.Rules/HsHelper.Rules.csproj" />
+  </ItemGroup>
+</Project>

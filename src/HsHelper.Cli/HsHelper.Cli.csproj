@@ -1,4 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../HsHelper.Core/HsHelper.Core.csproj"/><ProjectReference Include="../HsHelper.Ingestion/HsHelper.Ingestion.csproj"/><ProjectReference Include="../HsHelper.Cards/HsHelper.Cards.csproj"/></ItemGroup>
+  <ItemGroup><ProjectReference Include="../HsHelper.Core/HsHelper.Core.csproj"/><ProjectReference Include="../HsHelper.Ingestion/HsHelper.Ingestion.csproj"/><ProjectReference Include="../HsHelper.Cards/HsHelper.Cards.csproj"/><ProjectReference Include="../HsHelper.Agent/HsHelper.Agent.csproj"/></ItemGroup>
+  <ItemGroup><ProjectReference Include="../HsHelper.Storage/HsHelper.Storage.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../HsHelper.Coaching/HsHelper.Coaching.csproj" /></ItemGroup>
 </Project>

@@ -4,6 +4,9 @@
     <Project Path="src/HsHelper.Ingestion/HsHelper.Ingestion.csproj" />
     <Project Path="src/HsHelper.Cards/HsHelper.Cards.csproj" />
     <Project Path="src/HsHelper.Agent/HsHelper.Agent.csproj" />
+    <Project Path="src/HsHelper.Rules/HsHelper.Rules.csproj" />
+    <Project Path="src/HsHelper.Coaching/HsHelper.Coaching.csproj" />
+    <Project Path="src/HsHelper.Storage/HsHelper.Storage.csproj" />
     <Project Path="src/HsHelper.Cli/HsHelper.Cli.csproj" />
     <Project Path="src/HsHelper.App/HsHelper.App.csproj" />
   </Folder>
@@ -12,5 +15,10 @@
     <Project Path="tests/HsHelper.Ingestion.Tests/HsHelper.Ingestion.Tests.csproj" />
     <Project Path="tests/HsHelper.Cards.Tests/HsHelper.Cards.Tests.csproj" />
     <Project Path="tests/HsHelper.Agent.Tests/HsHelper.Agent.Tests.csproj" />
+    <Project Path="tests/HsHelper.Configuration.Tests/HsHelper.Configuration.Tests.csproj" />
+    <Project Path="tests/HsHelper.Storage.Tests/HsHelper.Storage.Tests.csproj" />
+    <Project Path="tests/HsHelper.Rules.Tests/HsHelper.Rules.Tests.csproj" />
+    <Project Path="tests/HsHelper.App.Tests/HsHelper.App.Tests.csproj" />
+    <Project Path="tests/HsHelper.Integration.Tests/HsHelper.Integration.Tests.csproj" />
   </Folder>
 </Solution>

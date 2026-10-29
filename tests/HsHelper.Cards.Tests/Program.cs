@@ -1,10 +1,12 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using HsHelper.Cards;
 
 var passed = 0;
 var failed = 0;
-var taskRoot = Path.Combine(Path.GetTempPath(), "HsHelper.Cards.Tests", Guid.NewGuid().ToString("N"));
+var taskParent = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), ".local", "cards-tests"));
+var taskRoot = Path.Combine(taskParent, Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(taskRoot);
 try
 {
@@ -146,7 +148,117 @@ try
         var valid = Convert.FromBase64String(DeckCode.Encode(new(2, [31], [new(42, 2)], [])));
         await Throws<NotSupportedException>(() => Task.FromResult(DeckCode.Decode(Convert.ToBase64String(valid.Concat(new byte[] { 99 }).ToArray()))));
     });
-    if (args.Length == 2)
+    await Run("versioned pool rules distinguish membership, complete legality, bans and expiry", async () =>
+    {
+        var catalog = new CardCatalog(Path.Combine(taskRoot, "rules.db"));
+        await catalog.InitializeAsync();
+        await Import(catalog, Data("规则测试").Replace("\"entourage\"", "\"mechanics\":[\"BATTLECRY\"],\"entourage\""), "500");
+        Equal(0, (await catalog.SearchAsync(new(StandardPoolOnly: true))).Count);
+        var now = DateTimeOffset.UtcNow;
+        var partial = Rules("partial", "500", now.AddDays(-1), now.AddDays(7), false);
+        await ImportRules(catalog, partial);
+        Equal(1, (await catalog.SearchAsync(new(StandardPoolOnly: true))).Count);
+        Equal(CardLegality.Unknown, (await catalog.SearchAsync(new(StandardPoolOnly: true))).Single().StandardLegality);
+        Equal(0, (await catalog.SearchAsync(new(StandardOnly: true))).Count);
+        var complete = partial with { RuleId = "complete", EffectiveFrom = now.AddHours(-12), IsComplete = true, AllowedCardIds = ["DUAL_A"], BannedCardIds = ["DUAL_A"] };
+        await ImportRules(catalog, complete);
+        Equal(CardLegality.Legal, (await catalog.GetByIdsAsync(["HUNTER_A"])).Single().StandardLegality);
+        Equal(CardLegality.Illegal, (await catalog.GetByIdsAsync(["DUAL_A"])).Single().StandardLegality);
+        Equal(1, (await catalog.SearchAsync(new(StandardOnly: true, Keyword: "battlecry"))).Count);
+        Equal(0, (await catalog.SearchAsync(new(StandardOnly: true, Keyword: "TAUNT"))).Count);
+        var reopened = new CardCatalog(Path.Combine(taskRoot, "rules.db"));
+        await reopened.InitializeAsync();
+        Equal("complete", (await reopened.GetPoolRulesAsync("500"))!.RuleId);
+        await Throws<InvalidDataException>(() => ImportRules(catalog, complete with { AllowedSets = ["OTHER"] }));
+        Equal("complete", (await catalog.GetPoolRulesAsync("500"))!.RuleId);
+        await ImportRules(catalog, complete with { RuleId = "expired", EffectiveFrom = now.AddHours(-1), ValidUntil = now.AddMinutes(-30) });
+        Equal<CardPoolRules?>(null, await catalog.GetPoolRulesAsync("500"));
+        Equal(CardLegality.Unknown, (await catalog.GetByIdsAsync(["HUNTER_A"])).Single().StandardLegality);
+        Equal("complete", (await catalog.GetPoolRulesAsync("500", at: now.AddHours(-2)))!.RuleId);
+        Equal<CardPoolRules?>(null, await catalog.GetPoolRulesAsync("501"));
+    });
+    await Run("invalid or canceled pool import leaves prior evidence unchanged", async () =>
+    {
+        var catalog = new CardCatalog(Path.Combine(taskRoot, "rule-failure.db"));
+        await catalog.InitializeAsync();
+        var rules = Rules("good", "600", DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1), true);
+        await ImportRules(catalog, rules);
+        await Throws<InvalidDataException>(() => ImportRules(catalog, rules with { RuleId = "bad", Source = "" }));
+        await Throws<InvalidDataException>(() => ImportRules(catalog, rules with { RuleId = "bad", ValidUntil = rules.EffectiveFrom }));
+        await Throws<InvalidDataException>(() => ImportRules(catalog, rules with { RuleId = "bad", AllowedSets = [], AllowedCardIds = [] }));
+        using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
+        await Throws<OperationCanceledException>(() => catalog.ImportPoolRulesAsync(new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(rules with { RuleId = "cancel" })), cancellation.Token));
+        Equal("good", (await catalog.GetPoolRulesAsync("600"))!.RuleId);
+    });
+    await Run("official pool parses explicit sets and verifies fixed build counts without assuming bans", async () =>
+    {
+        var config = JsonSerializer.Serialize(new { sets = new object[] {
+            new { slug = "test", id = 123, collectibleCount = 2 },
+            new { slug = "standard", id = "standard", cardSets = new[] { "test" } } }, setGroups = Array.Empty<object>() });
+        var html = "<cards config=\"" + WebUtility.HtmlEncode(config) + "\"></cards>";
+        var xml = """<CardDefs build="700"><Entity CardID="A"><Tag name="COLLECTIBLE" value="1"/><Tag name="CARD_SET" value="123"/></Entity><Entity CardID="B"><Tag name="COLLECTIBLE" value="1"/><Tag name="CARD_SET" value="123"/></Entity></CardDefs>""";
+        var pool = OfficialStandardPool.CreatePartial(html, new MemoryStream(Encoding.UTF8.GetBytes(xml)), "700", DateTimeOffset.UtcNow);
+        Equal(2, pool.AllowedCardIds.Count);
+        Equal(false, pool.IsComplete);
+        await Throws<InvalidDataException>(() => Task.FromResult(OfficialStandardPool.CreatePartial(html, new MemoryStream(Encoding.UTF8.GetBytes(xml)), "701", DateTimeOffset.UtcNow)));
+        await Throws<InvalidDataException>(() => Task.FromResult(OfficialStandardPool.CreatePartial(html.Replace("&quot;collectibleCount&quot;:2", "&quot;collectibleCount&quot;:3"), new MemoryStream(Encoding.UTF8.GetBytes(xml)), "700", DateTimeOffset.UtcNow)));
+    });
+    await Run("deck description maps cards, curves and ordinary construction while retaining uncertainty", async () =>
+    {
+        var catalog = new CardCatalog(Path.Combine(taskRoot, "deck-description.db"));
+        await catalog.InitializeAsync();
+        var records = Enumerable.Range(0, 20).Select(i => new Dictionary<string, object> {
+            ["id"] = "DECK_" + i, ["dbfId"] = 100 + i, ["name"] = "套牌牌" + i,
+            ["type"] = "MINION", ["cardClass"] = "HUNTER", ["set"] = "TEST", ["rarity"] = "COMMON",
+            ["cost"] = i % 7, ["collectible"] = true, ["text"] = "从你的套牌中抽一张牌" }).ToList();
+        records.Add(new() { ["id"] = "HERO", ["dbfId"] = 31, ["name"] = "猎人", ["type"] = "HERO", ["cardClass"] = "HUNTER" });
+        await Import(catalog, JsonSerializer.Serialize(records), "700");
+        await ImportRules(catalog, Rules("deck-rules", "700", DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1), true));
+        var deck = new DeckDefinition(2, [31], Enumerable.Range(0, 15).Select(i => new DeckCard(100 + i, 2)).ToArray(), []);
+        var description = await catalog.DescribeDeckAsync(deck, "700");
+        Equal(CardLegality.Legal, description.Legality);
+        Equal("HUNTER", description.HeroClass);
+        Equal(30, description.ManaCurve.Sum(b => b.Count));
+        Equal("套牌牌0", description.Cards[0].Name);
+        var withSideboard = await catalog.DescribeDeckAsync(deck with { Sideboards = [new(100, [new(101, 1)])] }, "700");
+        Equal(CardLegality.Unknown, withSideboard.Legality);
+        Equal("套牌牌0", withSideboard.Sideboards.Single().OwnerName);
+        Equal("套牌牌1", withSideboard.Sideboards.Single().Cards.Single().Name);
+        Equal(1, withSideboard.Sideboards.Single().ManaCurve.Sum(b => b.Count));
+        Equal(CardLegality.Illegal, (await catalog.DescribeDeckAsync(deck with { Sideboards = [new(999, [new(101, 1)])] }, "700")).Legality);
+        Equal(CardLegality.Unknown, (await catalog.DescribeDeckAsync(deck with { Cards = [new(999, 2)] }, "700")).Legality);
+        records[0]["rarity"] = "LEGENDARY";
+        await Import(catalog, JsonSerializer.Serialize(records), "701");
+        await ImportRules(catalog, Rules("deck-rules-701", "701", DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1), true));
+        Equal(CardLegality.Illegal, (await catalog.DescribeDeckAsync(deck, "701")).Legality);
+        records[0]["rarity"] = "COMMON";
+        records[0]["cardClass"] = "NEUTRAL";
+        records[0]["classes"] = new[] { "DRUID", "MAGE" };
+        await Import(catalog, JsonSerializer.Serialize(records), "702");
+        await ImportRules(catalog, Rules("deck-rules-702", "702", DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1), true));
+        Equal(CardLegality.Illegal, (await catalog.DescribeDeckAsync(deck, "702")).Legality);
+        records[0]["cardClass"] = "HUNTER"; records[0].Remove("classes");
+        records[0]["text"] = "你的套牌上限和初始生命值改为40。";
+        await Import(catalog, JsonSerializer.Serialize(records), "703");
+        await ImportRules(catalog, Rules("deck-rules-703", "703", DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1), true));
+        Equal(CardLegality.Unknown, (await catalog.DescribeDeckAsync(deck with { Cards = Enumerable.Range(0, 20).Select(i => new DeckCard(100 + i, 2)).ToArray() }, "703")).Legality);
+    });
+    await Run("image cache uses verified source and reuses validated PNG offline", async () =>
+    {
+        var cache = new CardImageCache(Path.Combine(taskRoot, "images"));
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jF9kAAAAASUVORK5CYII=");
+        var calls = 0;
+        using var http = new HttpClient(new FakeHttp(request => { calls++; return new(HttpStatusCode.OK) { RequestMessage = request, Content = new ByteArrayContent(png) }; }));
+        var first = await cache.GetAsync(http, "TEST_CARD");
+        Equal(true, File.Exists(first));
+        Equal(first, await cache.GetAsync(http, "TEST_CARD"));
+        Equal(1, calls);
+        await Throws<ArgumentException>(() => cache.GetAsync(http, "../../escape"));
+        using var bad = new HttpClient(new FakeHttp(request => new(HttpStatusCode.OK) { RequestMessage = request, Content = new StringContent("<html>no image</html>") }));
+        await Throws<InvalidDataException>(() => cache.GetAsync(bad, "BAD_CARD"));
+        Equal(false, File.Exists(Path.Combine(taskRoot, "images", "zhCN-BAD_CARD.png")));
+    });
+    if (args.Length >= 2)
     {
         await Run("optional real-data import", async () =>
         {
@@ -159,8 +271,45 @@ try
             if ((await catalog.SearchAsync(new(CardClass: "HUNTER"))).Count == 0) throw new InvalidOperationException("Expected hunter cards.");
         });
     }
+    if (args.Length >= 4)
+    {
+        await Run("optional official pool and fixed-build source compatibility", () =>
+        {
+            using var definitions = File.OpenRead(args[3]);
+            var rules = OfficialStandardPool.CreatePartial(File.ReadAllText(args[2]), definitions, args[1], DateTimeOffset.UtcNow);
+            Console.WriteLine($"Official standard pool membership: {rules.AllowedCardIds.Count}; complete legality: {rules.IsComplete}");
+            if (rules.AllowedCardIds.Count < 100) throw new InvalidDataException("Expected substantial current pool.");
+            return Task.CompletedTask;
+        });
+    }
+    if (args.Length == 5)
+    {
+        await Run("optional user beast hunter deck preserves full main deck and sideboards", async () =>
+        {
+            var deck = DeckCode.Decode(File.ReadAllText(args[4]));
+            Equal(2, deck.Format);
+            Equal(30, deck.Cards.Sum(c => c.Count));
+            Equal(3, deck.Sideboards.SelectMany(s => s.Cards).Sum(c => c.Count));
+            Equal(DeckCode.Encode(deck), DeckCode.Encode(DeckCode.Decode(DeckCode.Encode(deck))));
+            var catalog = new CardCatalog(Path.Combine(taskRoot, "real.db"));
+            using var definitions = File.OpenRead(args[3]);
+            await ImportRules(catalog, OfficialStandardPool.CreatePartial(File.ReadAllText(args[2]), definitions, args[1], DateTimeOffset.UtcNow));
+            var description = await catalog.DescribeDeckAsync(deck, args[1]);
+            if (description.Cards.Any(c => c.CardId is null) || description.Sideboards.SelectMany(s => s.Cards).Any(c => c.CardId is null))
+                throw new InvalidDataException("Expected all actual user deck cards in the fixed build.");
+            Equal(30, description.ManaCurve.Sum(b => b.Count));
+            Equal(3, description.Sideboards.SelectMany(s => s.ManaCurve).Sum(b => b.Count));
+            Console.WriteLine($"Actual hunter main deck: 30; sideboard: 3; description legality: {description.Legality}");
+        });
+    }
 }
-finally { Directory.Delete(taskRoot, recursive: true); }
+finally
+{
+    var cleanup = Path.GetFullPath(taskRoot);
+    if (!cleanup.StartsWith(taskParent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        throw new InvalidOperationException("Refusing to clean outside the explicit test directory.");
+    Directory.Delete(cleanup, recursive: true);
+}
 
 Console.WriteLine($"Cards regression: {passed} passed, {failed} failed.");
 return failed == 0 ? 0 : 1;
@@ -182,6 +331,10 @@ static async Task Throws<T>(Func<Task> test) where T : Exception
 }
 static Task<CardManifest> Import(CardCatalog catalog, string json, string build)
     => catalog.ImportAsync(new MemoryStream(Encoding.UTF8.GetBytes(json)), build);
+static Task<CardPoolRules> ImportRules(CardCatalog catalog, CardPoolRules rules)
+    => catalog.ImportPoolRulesAsync(new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(rules)));
+static CardPoolRules Rules(string id, string build, DateTimeOffset from, DateTimeOffset until, bool complete)
+    => new(id, build, 2, from, until, "test-explicit-reviewed-evidence", ["TEST"], [], [], [], complete);
 static string Data(string text) => $$"""
     [
       {"id":"HUNTER_A","dbfId":1,"name":"测试猎人牌","text":"{{text}}","type":"SPELL","cardClass":"HUNTER","set":"TEST","cost":2,"collectible":true,"entourage":["TOKEN_A"]},

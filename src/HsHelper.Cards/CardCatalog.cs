@@ -8,7 +8,7 @@ using Microsoft.Data.Sqlite;
 namespace HsHelper.Cards;
 
 /// <summary>Version-pinned catalog. Imports and the active pointer commit in one transaction.</summary>
-public sealed class CardCatalog
+public sealed partial class CardCatalog
 {
     private const int MaximumBytes = 100 * 1024 * 1024;
     private readonly string _connectionString;
@@ -24,6 +24,12 @@ public sealed class CardCatalog
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
+        await using (var version = connection.CreateCommand())
+        {
+            version.CommandText = "PRAGMA user_version";
+            if (Convert.ToInt64(await version.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) > 2)
+                throw new InvalidDataException("卡库由较新版本创建，当前程序不能迁移该数据库。");
+        }
         await using var command = connection.CreateCommand();
         command.CommandText = """
             PRAGMA foreign_keys=ON;
@@ -43,7 +49,12 @@ public sealed class CardCatalog
               FOREIGN KEY(build,locale) REFERENCES card_manifests(build,locale));
             CREATE INDEX IF NOT EXISTS cards_dbf ON cards(build,locale,dbf_id);
             CREATE INDEX IF NOT EXISTS cards_class ON cards(build,locale,card_class);
-            PRAGMA user_version=1;
+            CREATE TABLE IF NOT EXISTS card_pool_rules (
+              rule_id TEXT PRIMARY KEY, build TEXT NOT NULL, format INTEGER NOT NULL,
+              effective_from INTEGER NOT NULL, valid_until INTEGER NOT NULL,
+              imported_at INTEGER NOT NULL, source TEXT NOT NULL, sha256 TEXT NOT NULL, json TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS pool_rules_version ON card_pool_rules(build,format,effective_from,imported_at);
+            PRAGMA user_version=2;
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -194,6 +205,9 @@ public sealed class CardCatalog
         if (query.Limit is < 1 or > 1000 || query.Offset < 0) throw new ArgumentOutOfRangeException(nameof(query));
         build ??= (await GetActiveManifestAsync(locale, cancellationToken))?.Build;
         if (build is null) return Array.Empty<CardRecord>();
+        var poolRules = await GetPoolRulesAsync(build, 2, query.At, cancellationToken);
+        if ((query.StandardOnly || query.StandardPoolOnly) && poolRules is null) return Array.Empty<CardRecord>();
+        if (query.StandardOnly && poolRules?.IsComplete != true) return Array.Empty<CardRecord>();
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         var conditions = new List<string> { "build=$build", "locale=$locale" };
@@ -215,6 +229,19 @@ public sealed class CardCatalog
             conditions.Add("collectible=$collectible");
             command.Parameters.AddWithValue("$collectible", query.Collectible.Value);
         }
+        if (!string.IsNullOrWhiteSpace(query.Keyword))
+        {
+            conditions.Add("(EXISTS(SELECT 1 FROM json_each(cards.raw_json,'$.mechanics') WHERE upper(value)=$keyword) OR EXISTS(SELECT 1 FROM json_each(cards.raw_json,'$.referencedTags') WHERE upper(value)=$keyword))");
+            command.Parameters.AddWithValue("$keyword", query.Keyword.ToUpperInvariant());
+        }
+        if (query.StandardOnly || query.StandardPoolOnly)
+        {
+            conditions.Add("collectible=1 AND (card_set IN (SELECT value FROM json_each($sets)) OR card_id IN (SELECT value FROM json_each($allowed))) AND card_id NOT IN (SELECT value FROM json_each($banned)) AND card_id NOT IN (SELECT value FROM json_each($unreleased))");
+            command.Parameters.AddWithValue("$sets", JsonSerializer.Serialize(poolRules!.AllowedSets));
+            command.Parameters.AddWithValue("$allowed", JsonSerializer.Serialize(poolRules.AllowedCardIds));
+            command.Parameters.AddWithValue("$banned", JsonSerializer.Serialize(poolRules.BannedCardIds));
+            command.Parameters.AddWithValue("$unreleased", JsonSerializer.Serialize(poolRules.UnreleasedCardIds));
+        }
         command.CommandText = $"SELECT raw_json FROM cards WHERE {string.Join(" AND ", conditions)} ORDER BY cost,card_id LIMIT $limit OFFSET $offset";
         command.Parameters.AddWithValue("$limit", query.Limit);
         command.Parameters.AddWithValue("$offset", query.Offset);
@@ -223,7 +250,8 @@ public sealed class CardCatalog
         while (await reader.ReadAsync(cancellationToken))
         {
             using var document = JsonDocument.Parse(reader.GetString(0));
-            result.Add(ParseCard(document.RootElement));
+            var card = ParseCard(document.RootElement);
+            result.Add(card with { StandardLegality = EvaluateLegality(card, poolRules) });
         }
         return result.AsReadOnly();
     }
@@ -243,6 +271,7 @@ public sealed class CardCatalog
         if (ids.Length == 0) return Array.Empty<CardRecord>();
         build ??= (await GetActiveManifestAsync(locale, cancellationToken))?.Build;
         if (build is null) return Array.Empty<CardRecord>();
+        var poolRules = await GetPoolRulesAsync(build, 2, cancellationToken: cancellationToken);
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         var names = ids.Select((_, i) => $"$id{i}").ToArray();
@@ -255,7 +284,8 @@ public sealed class CardCatalog
         while (await reader.ReadAsync(cancellationToken))
         {
             using var document = JsonDocument.Parse(reader.GetString(0));
-            result.Add(ParseCard(document.RootElement));
+            var card = ParseCard(document.RootElement);
+            result.Add(card with { StandardLegality = EvaluateLegality(card, poolRules) });
         }
         return result.AsReadOnly();
     }
