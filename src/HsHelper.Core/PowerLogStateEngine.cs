@@ -37,6 +37,20 @@ public sealed class PowerLogStateEngine
         public List<ChoiceOptionSnapshot> Options { get; } = [];
         public bool Ready { get; set; }
         public bool Chosen { get; set; }
+        public bool Superseded { get; set; }
+        public long OfferedAt { get; init; }
+        public long PreviousOfferedAt { get; init; }
+        public int? PrivateOwner { get; init; }
+        public string? SourceCardId { get; set; }
+        public string? SourceDescriptorCardId { get; set; }
+        public int? SourceDescriptorOwner { get; set; }
+        public bool SourceObserved { get; set; }
+        public Dictionary<int, EntitySnapshot> OptionEntities { get; } = [];
+        public Dictionary<int, int> ChosenByPosition { get; } = [];
+        public int? ExpectedChosenCount { get; set; }
+        public long ChosenAt { get; set; }
+        public bool HistoryInvalid { get; set; }
+        public bool HistoryEmitted { get; set; }
     }
 
     private static readonly Regex GameEntityPattern = Pattern(@"^GameEntity\s+EntityID=(\d+)");
@@ -55,6 +69,11 @@ public sealed class PowerLogStateEngine
     private static readonly Regex DescriptorPlayerPattern = Pattern(@"\bplayer=(\d+)\b");
     private static readonly Regex DormantPattern = Pattern(@"^CACHED_TAG_FOR_DORMANT_CHANGE\s+Entity=(.+?)\s+tag=(\S+)\s+value=(.+)$");
     private static readonly HashSet<string> HiddenSafeTags = ["ZONE", "CONTROLLER", "ZONE_POSITION", "ENTITY_ID"];
+    private static readonly HashSet<string> ChoiceObservedTags = ["ZONE", "CONTROLLER", "ZONE_POSITION", "ENTITY_ID", "CARDTYPE", "COST", "ATK", "HEALTH", "DAMAGE", "ARMOR", "DURABILITY",
+        "TAUNT", "DIVINE_SHIELD", "CHARGE", "RUSH", "LIFESTEAL", "POISONOUS", "STEALTH", "WINDFURY", "MEGA_WINDFURY", "ELUSIVE", "REBORN", "SILENCED", "FROZEN", "EXHAUSTED", "NUM_TURNS_IN_PLAY", "CARDRACE", "TAG_SCRIPT_DATA_NUM_1", "TAG_SCRIPT_DATA_NUM_2"];
+    private const int MaximumChoiceHistoryEntries = 32;
+    private const int MaximumRememberedChoices = 64;
+    private const int MaximumChoiceOptions = 64;
 
     private readonly Dictionary<int, Entity> _entities = [];
     private readonly HashSet<string> _warnings = new(StringComparer.Ordinal);
@@ -66,6 +85,12 @@ public sealed class PowerLogStateEngine
     private long _eventHistoryTruncatedThrough;
     private ChoiceBuilder? _currentChoice;
     private bool _readingChosen;
+    private readonly Queue<ChoiceHistoryEntry> _choiceHistory = new();
+    private readonly Dictionary<int, HashSet<string>> _choiceHistoryWarnings = [];
+    private readonly Dictionary<int, long> _choiceHistoryTruncatedThrough = [];
+    private readonly HashSet<int> _unobservedPrivateChoicePlayers = [];
+    private bool _unscopedChoiceHistoryGap;
+    private long _lastOfferedChoiceSequence;
     private readonly bool _autoDetectPerspective;
     private bool _manualPerspective;
     private int? _provenInitialPlayerId;
@@ -379,7 +404,7 @@ public sealed class PowerLogStateEngine
         var players = _entities.Values.Where(e => e.Kind == EntityKind.Player).ToArray();
         var uniquePlayers = players.Select(player => IntTag(player, "PLAYER_ID")).OrderBy(id => id).ToArray();
         var playersValid = uniquePlayers.Length == 2 && uniquePlayers[0] == 1 && uniquePlayers[1] == 2;
-        var hasPerspective = _localPlayerId.HasValue && players.Any(p => IntTag(p, "PLAYER_ID") == _localPlayerId);
+        var hasPerspective = !_isSpectating && _localPlayerId.HasValue && players.Count(p => IntTag(p, "PLAYER_ID") == _localPlayerId) == 1;
         if (!hasPerspective) warnings.Add("我方玩家身份尚未确认");
         if (_gameEntity is null || players.Length < 2) warnings.Add("开局实体信息尚不完整");
         else if (!playersValid) warnings.Add("双方玩家标识存在重复或缺失");
@@ -393,7 +418,8 @@ public sealed class PowerLogStateEngine
         var choiceReady = ownChoice is { Ready: true } && (ownChoice.TaskList is null || _taskComplete);
         var stable = isComplete && _blockCount == 0 &&
             (choiceReady || (_taskComplete && ownChoice is null && decisionPhase));
-        var entities = _entities.Values.ToFrozenDictionary(e => e.Id, e => ToSnapshot(e, hasPerspective));
+        var visibleChoice = playersValid && ownChoice is { Ready: true } ? ownChoice : null;
+        var entities = _entities.Values.ToFrozenDictionary(e => e.Id, e => ToSnapshot(e, hasPerspective, visibleChoice));
         var activePlayers = players.Where(e => IntTag(e, "CURRENT_PLAYER") == 1).ToArray();
         return new GameSnapshot($"{_sessionId}-{_matchNumber:D4}", _version, _eventSequence,
             _gameEntity is { } gameId ? IntTag(_entities[gameId], "TURN") : null,
@@ -404,7 +430,9 @@ public sealed class PowerLogStateEngine
         {
             Choice = ownChoice is null ? null : new CurrentChoiceSnapshot(ownChoice.Id, ownChoice.PlayerId,
                 ownChoice.Type, ownChoice.SourceId, ownChoice.Minimum, ownChoice.Maximum,
-                Array.AsReadOnly(ownChoice.Options.ToArray()), ownChoice.Ready),
+                Array.AsReadOnly(ownChoice.Options.ToArray()), ownChoice.Ready)
+                { OfferedAtEventSequence = ownChoice.OfferedAt, PreviousOfferedAtEventSequence = ownChoice.PreviousOfferedAt, SourceCardId = ownChoice.SourceCardId },
+            ChoiceHistory = SnapshotChoiceHistory(hasPerspective && playersValid),
             RecentEvents = Array.AsReadOnly(_recentEvents.Select(item =>
                 item.Event.CardId is not null && item.PrivateOwner.HasValue && item.PrivateOwner != (hasPerspective ? _localPlayerId : null)
                     ? item.Event with { CardId = null } : item.Event).ToArray()),
@@ -417,12 +445,24 @@ public sealed class PowerLogStateEngine
         };
     }
 
-    private EntitySnapshot ToSnapshot(Entity entity, bool hasPerspective)
+    private EntitySnapshot ToSnapshot(Entity entity, bool hasPerspective, ChoiceBuilder? ownChoice)
     {
         var zone = entity.Tags.GetValueOrDefault("ZONE");
         var own = hasPerspective && IntTag(entity, "CONTROLLER") == _localPlayerId;
         var visible = entity.Kind is EntityKind.Game or EntityKind.Player ||
             (!entity.Hidden && (zone is "PLAY" or "GRAVEYARD" || (own && zone is "HAND" or "SECRET")));
+        // SETASIDE cards remain private unless this exact observed offer names them for the
+        // confirmed chooser. This projection has its own whitelist and never enters the
+        // general visible cache, so finishing a choice cannot leave private tags exposed.
+        var option = !visible ? ownChoice?.Options.FirstOrDefault(candidate => candidate.EntityId == entity.Id) : null;
+        if (option is { CardId: not null } && option.ControllerId == _localPlayerId &&
+            (IntTag(entity, "CONTROLLER") is not { } controller || controller == _localPlayerId) &&
+            entity.CardId is not null && entity.CardId == option.CardId)
+        {
+            var optionTags = entity.Tags.Where(pair => ChoiceObservedTags.Contains(pair.Key)).ToDictionary(StringComparer.Ordinal);
+            optionTags["CONTROLLER"] = _localPlayerId!.Value.ToString(CultureInfo.InvariantCulture);
+            return new(entity.Id, option.CardId, entity.Kind, optionTags.ToFrozenDictionary(StringComparer.Ordinal));
+        }
         if (visible && entity.VisibleRevision == entity.Revision && entity.VisibleSnapshot is { } visibleCached) return visibleCached;
         if (!visible && entity.HiddenRevision == entity.Revision && entity.HiddenSnapshot is { } hiddenCached) return hiddenCached;
         var tags = visible ? entity.Tags : entity.Tags.Where(t => HiddenSafeTags.Contains(t.Key));
@@ -484,15 +524,17 @@ public sealed class PowerLogStateEngine
         return true;
     }
 
-    private ChoiceBuilder? GetOwnChoice() => _localPlayerId.HasValue
-        ? _choices.Values.Where(choice => !choice.Chosen && choice.PlayerId == _localPlayerId).OrderByDescending(choice => choice.Id).FirstOrDefault()
+    private ChoiceBuilder? GetOwnChoice() => _localPlayerId.HasValue && !_isSpectating
+        ? _choices.Values.Where(choice => !choice.Chosen && !choice.Superseded && choice.PlayerId == _localPlayerId && choice.PrivateOwner == _localPlayerId).OrderByDescending(choice => choice.OfferedAt).FirstOrDefault()
         : null;
 
     private void FlushChoice()
     {
-        if (_currentChoice is { Chosen: false, Ready: false } choice && choice.Options.Count > 0)
+        if (_readingChosen && _currentChoice is { } chosen && !chosen.HistoryEmitted) CompleteChoiceHistory(chosen);
+        if (_currentChoice is { Chosen: false, Ready: false } choice && (choice.Options.Count > 0 || choice.Maximum == 0))
         {
-            choice.Ready = true;
+            choice.Ready = ValidOfferedChoice(choice);
+            if (!choice.Ready) ChoiceHistoryProblem(choice, "选择候选的数量或位置记录不完整。");
             _version++;
         }
         _currentChoice = null;
@@ -501,6 +543,8 @@ public sealed class PowerLogStateEngine
 
     private bool ProcessChoiceLine(string line)
     {
+        // Protocol shapes: HearthSim/python-hslog hslog/tokens.py CHOICES_* / ENTITIES_CHOSEN_*,
+        // and parser.py ChoicesHandler. A chosen header announces a count; it does not name the selected cards.
         var offered = line.Contains("DebugPrintEntityChoices", StringComparison.Ordinal);
         var header = offered ? ChoiceHeaderPattern.Match(line) : ChosenHeaderPattern.Match(line);
         _eventSequence++;
@@ -511,27 +555,83 @@ public sealed class PowerLogStateEngine
             if (offered)
             {
                 var playerRef = header.Groups[2].Value;
-                int? player = int.TryParse(playerRef, out var numeric) ? numeric : _playerNames.GetValueOrDefault(playerRef);
+                var player = ChoicePlayer(playerRef);
                 int? task = int.TryParse(header.Groups[3].Value, out var number) ? number : null;
+                var minimum = ParseId(header.Groups[5].Value); var maximum = ParseId(header.Groups[6].Value);
+                if (_choices.TryGetValue(id, out var duplicateChoice))
+                {
+                    _currentChoice = duplicateChoice;
+                    if (duplicateChoice.PlayerId != player || duplicateChoice.Type != header.Groups[4].Value || duplicateChoice.TaskList != task ||
+                        duplicateChoice.Minimum != minimum || duplicateChoice.Maximum != maximum)
+                    { duplicateChoice.HistoryInvalid = true; ChoiceHistoryProblem(duplicateChoice, "重复选择标头与原记录冲突，未覆盖历史。"); }
+                    return false;
+                }
+                foreach (var previous in _choices.Values.Where(c => !c.Chosen && !c.Superseded && c.PlayerId == player && player.HasValue))
+                { previous.Superseded = true; ChoiceHistoryProblem(previous, "选择被后续同玩家选择取代，但缺少实际已选明细。"); }
                 _currentChoice = new(id, player, header.Groups[4].Value, task,
-                    ParseId(header.Groups[5].Value), ParseId(header.Groups[6].Value));
+                    minimum, maximum)
+                { OfferedAt = _eventSequence, PreviousOfferedAt = _lastOfferedChoiceSequence, PrivateOwner = ConfirmedChoiceOwner() };
+                if (_currentChoice.PrivateOwner != player || player is null)
+                    MarkUnobservedChoice(player);
+                _lastOfferedChoiceSequence = _eventSequence;
                 _choices[id] = _currentChoice;
+                while (_choices.Count > MaximumRememberedChoices)
+                {
+                    var oldest = _choices.Values.OrderBy(c => c.OfferedAt).First();
+                    if (!oldest.Chosen) ChoiceHistoryProblem(oldest, "尚未完成的选择已超出保留范围。");
+                    _choices.Remove(oldest.Id);
+                }
                 _readingChosen = false;
             }
             else
             {
                 _choices.TryGetValue(id, out _currentChoice);
-                if (_currentChoice is not null) _currentChoice.Chosen = true;
                 _readingChosen = true;
+                var chooser = ChoicePlayer(header.Groups[2].Value);
+                if (_currentChoice is null)
+                { ChoiceHistoryProblem(null, "已选明细缺少对应的候选记录，未关联到其他选择。", chooser); return false; }
+                var choice = _currentChoice;
+                if (choice.HistoryEmitted) return false;
+                var latestForPlayer = _choices.Values.Where(c => c.PlayerId == choice.PlayerId).OrderByDescending(c => c.OfferedAt).FirstOrDefault();
+                if (choice.Superseded || latestForPlayer != choice || chooser != choice.PlayerId)
+                { ChoiceHistoryProblem(choice, "已选标头迟到或玩家范围不匹配，未关联到当前选择。"); _currentChoice = null; return false; }
+                choice.Chosen = true;
+                choice.ExpectedChosenCount = ParseId(header.Groups[3].Value);
+                choice.ChosenAt = _eventSequence;
+                if (choice.ExpectedChosenCount == 0) CompleteChoiceHistory(choice);
             }
             _currentEntity = null;
             return Changed();
         }
-        if (_currentChoice is null || _readingChosen) return false;
+        if (_currentChoice is null) return false;
+        if (_readingChosen) return ProcessChosenEntity(line, _currentChoice);
+        if (!ValidateChoiceScope(_currentChoice)) return false;
         var source = line.IndexOf("Source=", StringComparison.Ordinal);
         if (source >= 0)
         {
-            _currentChoice.SourceId = ResolveReference(line[(source + 7)..].Trim());
+            var sourceReference = line[(source + 7)..].Trim();
+            var sourceId = ResolveReference(sourceReference);
+            var sourceCardMatch = DescriptorCardPattern.Match(sourceReference);
+            var sourceCard = sourceCardMatch.Success ? NullIfEmpty(sourceCardMatch.Groups[1].Value) : null;
+            var sourcePlayerMatch = DescriptorPlayerPattern.Match(sourceReference);
+            int? sourcePlayer = sourcePlayerMatch.Success ? ParseId(sourcePlayerMatch.Groups[1].Value) : null;
+            if (_currentChoice.SourceObserved)
+            {
+                if (_currentChoice.SourceId != sourceId || _currentChoice.SourceDescriptorCardId != sourceCard || _currentChoice.SourceDescriptorOwner != sourcePlayer)
+                { _currentChoice.HistoryInvalid = true; ChoiceHistoryProblem(_currentChoice, "重复选择来源与原记录冲突。"); }
+                return false;
+            }
+            _currentChoice.SourceObserved = true;
+            _currentChoice.SourceId = sourceId;
+            _currentChoice.SourceDescriptorCardId = sourceCard;
+            _currentChoice.SourceDescriptorOwner = sourcePlayer;
+            if (sourceId is { } checkedId && _entities.TryGetValue(checkedId, out var checkedSource) &&
+                (sourceCard is not null && checkedSource.CardId is not null && sourceCard != checkedSource.CardId ||
+                 sourcePlayer is not null && IntTag(checkedSource, "CONTROLLER") is { } sourceOwner && sourcePlayer != sourceOwner))
+            { _currentChoice.HistoryInvalid = true; ChoiceHistoryProblem(_currentChoice, "选择来源描述与当时实体身份冲突，未混合不同来源。"); return Changed(); }
+            if (sourceId is { } observed && _entities.TryGetValue(observed, out var sourceEntity) &&
+                _currentChoice.PrivateOwner == _localPlayerId && !_isSpectating && IsIdentityVisible(sourceEntity))
+                _currentChoice.SourceCardId = sourceEntity.CardId;
             return Changed();
         }
         var option = ChoiceEntityPattern.Match(line);
@@ -553,9 +653,164 @@ public sealed class PowerLogStateEngine
             _entities.GetValueOrDefault(entityId.Value)?.CardId;
         var optionValue = new ChoiceOptionSnapshot(entityId.Value, cardId, owner, ParseId(option.Groups[1].Value));
         var existing = _currentChoice.Options.FindIndex(value => value.Position == optionValue.Position);
-        if (existing >= 0) _currentChoice.Options[existing] = optionValue;
-        else _currentChoice.Options.Add(optionValue);
+        if (existing >= 0)
+        {
+            if (_currentChoice.Options[existing] != optionValue)
+            { _currentChoice.HistoryInvalid = true; ChoiceHistoryProblem(_currentChoice, "重复候选位置与原记录冲突，未覆盖历史。"); }
+            return false;
+        }
+        if (_currentChoice.HistoryEmitted) return false;
+        if (_currentChoice.Options.Count >= MaximumChoiceOptions)
+        { _currentChoice.HistoryInvalid = true; ChoiceHistoryProblem(_currentChoice, "候选数量超出保留范围。"); return false; }
+        _currentChoice.Options.Add(optionValue);
+        CaptureChoiceOptionEntity(_currentChoice, optionValue);
         return Changed();
+    }
+
+    private int? ChoicePlayer(string reference)
+    {
+        if (int.TryParse(reference, NumberStyles.None, CultureInfo.InvariantCulture, out var numeric) && numeric > 0)
+        {
+            if (_entities.Values.Any(e => e.Kind == EntityKind.Player && IntTag(e, "PLAYER_ID") == numeric)) return numeric;
+            return _entities.TryGetValue(numeric, out var player) && player.Kind == EntityKind.Player ? IntTag(player, "PLAYER_ID") : numeric;
+        }
+        if (_playerNames.TryGetValue(reference, out var alias)) return alias;
+        var descriptor = DescriptorPlayerPattern.Match(reference);
+        if (descriptor.Success) return ParseId(descriptor.Groups[1].Value);
+        return ResolveReference(reference) is { } id && _entities.TryGetValue(id, out var entity) && entity.Kind == EntityKind.Player
+            ? IntTag(entity, "PLAYER_ID") : null;
+    }
+
+    private int? ConfirmedChoiceOwner()
+    {
+        if (_isSpectating || _localPlayerId is not (1 or 2)) return null;
+        var players = _entities.Values.Where(entity => entity.Kind == EntityKind.Player).Select(entity => IntTag(entity, "PLAYER_ID")).Order().ToArray();
+        return players.SequenceEqual(new int?[] { 1, 2 }) ? _localPlayerId : null;
+    }
+
+    private void MarkUnobservedChoice(int? player)
+    {
+        if (player is 1 or 2) _unobservedPrivateChoicePlayers.Add(player.Value);
+        else _unscopedChoiceHistoryGap = true;
+    }
+
+    private bool ValidateChoiceScope(ChoiceBuilder choice)
+    {
+        if (choice.PrivateOwner is { } owner && choice.PlayerId == owner && ConfirmedChoiceOwner() == owner) return true;
+        if (!choice.HistoryEmitted)
+        {
+            MarkUnobservedChoice(choice.PlayerId);
+            if (choice.PrivateOwner is { } originalOwner && choice.PlayerId == originalOwner)
+            {
+                choice.HistoryInvalid = true;
+                ChoiceHistoryProblem(choice, "读取选择详情期间我方视角发生变化，未保存其它视角的私有候选或已选明细。");
+            }
+        }
+        return false;
+    }
+
+    private static bool ValidOfferedChoice(ChoiceBuilder choice) => !choice.HistoryInvalid &&
+        choice.Minimum >= 0 && choice.Maximum >= choice.Minimum && choice.Maximum <= choice.Options.Count &&
+        choice.Options.Select(o => o.EntityId).Distinct().Count() == choice.Options.Count &&
+        choice.Options.Select(o => o.Position).Order().SequenceEqual(Enumerable.Range(0, choice.Options.Count).Select(i => (int?)i));
+
+    private void CaptureChoiceOptionEntity(ChoiceBuilder choice, ChoiceOptionSnapshot option)
+    {
+        if (_isSpectating || choice.PrivateOwner is null || choice.PrivateOwner != _localPlayerId || choice.PlayerId != choice.PrivateOwner ||
+            !_entities.TryGetValue(option.EntityId, out var entity)) return;
+        // The descriptor proves what was offered, but cannot bind unidentified residual
+        // attributes to that identity. Missing internal identity is unknown, not a conflict.
+        if (entity.CardId is null) return;
+        if (IntTag(entity, "CONTROLLER") is { } controller && controller != choice.PlayerId ||
+            entity.CardId is { } cardId && cardId != option.CardId)
+        { choice.HistoryInvalid = true; ChoiceHistoryProblem(choice, "候选描述与当时实体属性范围冲突，未混合不同身份的属性。"); return; }
+        var tags = entity.Tags.Where(pair => ChoiceObservedTags.Contains(pair.Key)).ToDictionary(StringComparer.Ordinal);
+        if (option.ControllerId is { } owner) tags["CONTROLLER"] = owner.ToString(CultureInfo.InvariantCulture);
+        choice.OptionEntities[option.EntityId] = new(option.EntityId, option.CardId, entity.Kind, tags.ToFrozenDictionary(StringComparer.Ordinal));
+    }
+
+    private bool ProcessChosenEntity(string line, ChoiceBuilder choice)
+    {
+        if (!ValidateChoiceScope(choice)) return false;
+        var match = ChoiceEntityPattern.Match(line);
+        if (!match.Success) return false;
+        var index = ParseId(match.Groups[1].Value);
+        var reference = match.Groups[2].Value.Trim();
+        var entityId = ResolveReference(reference);
+        if (entityId is null || choice.ExpectedChosenCount is not { } expected || expected > MaximumChoiceOptions || index >= expected ||
+            !choice.Options.Any(option => option.EntityId == entityId))
+        { choice.HistoryInvalid = true; ChoiceHistoryProblem(choice, "已选明细包含未提供、越界或未确认的候选，未推断选中结果。"); return false; }
+        var owner = DescriptorPlayerPattern.Match(reference);
+        if (owner.Success && ParseId(owner.Groups[1].Value) != choice.PlayerId)
+        { choice.HistoryInvalid = true; ChoiceHistoryProblem(choice, "已选候选的归属与选择玩家不匹配。"); return false; }
+        var chosenCard = DescriptorCardPattern.Match(reference);
+        if (chosenCard.Success && NullIfEmpty(chosenCard.Groups[1].Value) is { } card &&
+            choice.Options.First(option => option.EntityId == entityId).CardId != card)
+        { choice.HistoryInvalid = true; ChoiceHistoryProblem(choice, "已选描述与当时提供的候选身份冲突，未补写旧候选。"); return false; }
+        if (choice.ChosenByPosition.TryGetValue(index, out var previous))
+        {
+            if (previous != entityId) { choice.HistoryInvalid = true; ChoiceHistoryProblem(choice, "重复已选位置与先前明细冲突，未覆盖历史。"); }
+            return false;
+        }
+        if (choice.HistoryEmitted) return false;
+        choice.ChosenByPosition[index] = entityId.Value;
+        choice.ChosenAt = _eventSequence;
+        if (choice.ChosenByPosition.Count == expected) CompleteChoiceHistory(choice);
+        return Changed();
+    }
+
+    private void CompleteChoiceHistory(ChoiceBuilder choice)
+    {
+        if (choice.HistoryEmitted) return;
+        choice.HistoryEmitted = true;
+        if (choice.PrivateOwner is not { } owner || choice.PlayerId != owner)
+        {
+            MarkUnobservedChoice(choice.PlayerId);
+            return;
+        }
+        if (_isSpectating || _localPlayerId != owner)
+        { ChoiceHistoryProblem(choice, "已选明细不在当时确认的我方视角下，未保存私有选择历史。"); return; }
+        var selected = choice.ChosenByPosition.OrderBy(pair => pair.Key).Select(pair => pair.Value).ToArray();
+        var complete = ValidOfferedChoice(choice) && choice.Ready && choice.Chosen && choice.ExpectedChosenCount is { } expected &&
+            expected >= choice.Minimum && expected <= choice.Maximum && selected.Length == expected &&
+            selected.Distinct().Count() == selected.Length && choice.ChosenByPosition.Keys.Order().SequenceEqual(Enumerable.Range(0, expected)) &&
+            choice.ChosenAt > choice.OfferedAt && choice.ChosenAt <= _eventSequence;
+        if (!complete) { ChoiceHistoryProblem(choice, "已选标头与实际明细不完整，未把标头当作已选候选。"); return; }
+        _choiceHistory.Enqueue(new(choice.Id, choice.PlayerId, choice.Type, choice.SourceId, choice.SourceCardId,
+            choice.Minimum, choice.Maximum, choice.OfferedAt, choice.ChosenAt,
+            choice.Options, choice.OptionEntities.Values.OrderBy(entity => entity.Id).ToArray(), selected, true));
+        while (_choiceHistory.Count > MaximumChoiceHistoryEntries)
+        {
+            var removed = _choiceHistory.Dequeue();
+            if (removed.PlayerId is { } player) _choiceHistoryTruncatedThrough[player] = removed.ChosenAtEventSequence;
+        }
+    }
+
+    private void ChoiceHistoryProblem(ChoiceBuilder? choice, string reason, int? reportedPlayer = null)
+    {
+        if (choice is { HistoryInvalid: true }) choice.Ready = false;
+        var owner = choice?.PrivateOwner ?? (!_isSpectating && (reportedPlayer is null || reportedPlayer == _localPlayerId) ? _localPlayerId : null);
+        if (owner is not (1 or 2) || choice is not null && choice.PlayerId != owner) return;
+        if (!_choiceHistoryWarnings.TryGetValue(owner.Value, out var warnings)) _choiceHistoryWarnings[owner.Value] = warnings = new(StringComparer.Ordinal);
+        if (warnings.Add(reason)) _version++;
+    }
+
+    private ChoiceHistorySnapshot SnapshotChoiceHistory(bool hasPerspective)
+    {
+        var owner = hasPerspective && !_isSpectating ? _localPlayerId : null;
+        var warnings = owner is { } player && _choiceHistoryWarnings.TryGetValue(player, out var recorded)
+            ? new HashSet<string>(recorded, StringComparer.Ordinal) : new HashSet<string>(StringComparer.Ordinal);
+        if (!owner.HasValue) warnings.Add("尚未确认非观战的我方视角，不提供私有选择历史。");
+        if (_unscopedChoiceHistoryGap || owner is { } missingOwner && _unobservedPrivateChoicePlayers.Contains(missingOwner))
+            warnings.Add("存在未在当时确认的我方视角下观察的选择，不能补回私有选择历史。");
+        if (!_sawStart || _hasGap) warnings.Add("日志存在起点或输入缺口，选择历史不能声明完整。");
+        var truncated = owner is { } id ? _choiceHistoryTruncatedThrough.GetValueOrDefault(id) : 0;
+        if (truncated > 0) warnings.Add("较早选择已超出保留范围，不能跨截断推断多阶段关联。");
+        if (_readingChosen && _currentChoice is { HistoryEmitted: false } pending && pending.PlayerId == owner && pending.PrivateOwner == owner)
+            warnings.Add("已选明细仍在读取，尚未形成完整选择历史。");
+        var entries = owner.HasValue ? _choiceHistory.Where(entry => entry.PlayerId == owner && entry.ChosenAtEventSequence <= _eventSequence).ToArray() : [];
+        return new($"{_sessionId}-{_matchNumber:D4}", _version, _eventSequence, entries, warnings.Count == 0, truncated,
+            warnings.Order(StringComparer.Ordinal).ToArray());
     }
 
     private bool IsIdentityVisible(Entity entity) => entity.Kind is EntityKind.Game or EntityKind.Player ||
@@ -620,6 +875,8 @@ public sealed class PowerLogStateEngine
     {
         _entities.Clear(); _warnings.Clear();
         _choices.Clear(); _currentChoice = null; _readingChosen = false; _recentEvents.Clear();
+        _choiceHistory.Clear(); _choiceHistoryWarnings.Clear(); _choiceHistoryTruncatedThrough.Clear(); _lastOfferedChoiceSequence = 0;
+        _unobservedPrivateChoicePlayers.Clear(); _unscopedChoiceHistoryGap = false;
         _provenInitialPlayerId = null;
         _eventHistoryTruncatedThrough = 0;
         _clientBuild = null; _format = null; _gameType = null; _pendingBuild = null; _pendingFormat = null; _pendingGameType = null;

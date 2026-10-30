@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Globalization;
+using System.Text.Json.Serialization;
 
 namespace HsHelper.Core;
 
@@ -8,7 +9,65 @@ public enum EntityKind { Unknown, Game, Player, Card }
 
 public sealed record ChoiceOptionSnapshot(int EntityId, string? CardId, int? ControllerId, int? Position);
 public sealed record CurrentChoiceSnapshot(int Id, int? PlayerId, string Type, int? SourceEntityId,
-    int CountMin, int CountMax, IReadOnlyList<ChoiceOptionSnapshot> Options, bool IsReady);
+    int CountMin, int CountMax, IReadOnlyList<ChoiceOptionSnapshot> Options, bool IsReady)
+{
+    public long OfferedAtEventSequence { get; init; }
+    public long PreviousOfferedAtEventSequence { get; init; }
+    public string? SourceCardId { get; init; }
+}
+
+/// <summary>An observed offer and its actual chosen rows, frozen before later entity changes.</summary>
+public sealed record ChoiceHistoryEntry
+{
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public int ChoiceId { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public int? PlayerId { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public string Type { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public int? SourceEntityId { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public string? SourceCardId { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public int CountMin { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public int CountMax { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public long OfferedAtEventSequence { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public long ChosenAtEventSequence { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public IReadOnlyList<ChoiceOptionSnapshot> Options { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public IReadOnlyList<EntitySnapshot> OptionEntities { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public IReadOnlyList<int> ChosenEntityIds { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public bool IsComplete { get; }
+
+    public ChoiceHistoryEntry(int choiceId, int? playerId, string type, int? sourceEntityId, string? sourceCardId,
+        int countMin, int countMax, long offeredAtEventSequence, long chosenAtEventSequence,
+        IReadOnlyList<ChoiceOptionSnapshot> options, IReadOnlyList<EntitySnapshot> optionEntities,
+        IReadOnlyList<int> chosenEntityIds, bool isComplete)
+    {
+        ArgumentNullException.ThrowIfNull(options); ArgumentNullException.ThrowIfNull(optionEntities); ArgumentNullException.ThrowIfNull(chosenEntityIds);
+        ChoiceId = choiceId; PlayerId = playerId; Type = type; SourceEntityId = sourceEntityId; SourceCardId = sourceCardId;
+        CountMin = countMin; CountMax = countMax; OfferedAtEventSequence = offeredAtEventSequence; ChosenAtEventSequence = chosenAtEventSequence;
+        Options = Array.AsReadOnly(options.ToArray());
+        OptionEntities = Array.AsReadOnly(optionEntities.Select(entity => entity is null ? null! :
+            entity with { Tags = entity.Tags?.ToFrozenDictionary(StringComparer.Ordinal)! }).ToArray());
+        ChosenEntityIds = Array.AsReadOnly(chosenEntityIds.ToArray()); IsComplete = isComplete;
+    }
+}
+
+/// <summary>Perspective-safe choices observed by this version; missing rows and truncation remain explicit.</summary>
+public sealed record ChoiceHistorySnapshot
+{
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public string MatchId { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public long StateVersion { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public long EventSequence { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public IReadOnlyList<ChoiceHistoryEntry> Entries { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public bool IsComplete { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public long TruncatedThroughSequence { get; }
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public IReadOnlyList<string> Warnings { get; }
+
+    public ChoiceHistorySnapshot(string matchId, long stateVersion, long eventSequence,
+        IReadOnlyList<ChoiceHistoryEntry> entries, bool isComplete, long truncatedThroughSequence, IReadOnlyList<string> warnings)
+    {
+        ArgumentNullException.ThrowIfNull(entries); ArgumentNullException.ThrowIfNull(warnings);
+        MatchId = matchId; StateVersion = stateVersion; EventSequence = eventSequence;
+        Entries = Array.AsReadOnly(entries.ToArray()); IsComplete = isComplete;
+        TruncatedThroughSequence = truncatedThroughSequence; Warnings = Array.AsReadOnly(warnings.ToArray());
+    }
+}
 public sealed record ObservedGameEvent(long Sequence, string Kind, int? EntityId, int? ControllerId,
     string? CardId, string? FromZone, string? ToZone, string Summary);
 
@@ -51,6 +110,7 @@ public sealed record GameSnapshot(
     SnapshotQuality Quality)
 {
     public CurrentChoiceSnapshot? Choice { get; init; }
+    public ChoiceHistorySnapshot? ChoiceHistory { get; init; }
     public IReadOnlyList<ObservedGameEvent> RecentEvents { get; init; } = [];
     public long EventHistoryTruncatedThrough { get; init; }
     public string? Format { get; init; }

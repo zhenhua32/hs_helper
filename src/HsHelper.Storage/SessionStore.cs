@@ -363,6 +363,13 @@ public sealed class SessionStore
             throw new ArgumentException("快照缺少有效对局标识或序号。");
         if (snapshot.LocalPlayerId is not null && snapshot.LocalPlayerId != binding.LocalPlayerId)
             throw new InvalidOperationException("快照视角与固定会话视角不一致，请重新建立记录器。");
+        if (snapshot.ChoiceHistory is { } history)
+            foreach (var entry in history.Entries)
+            {
+                if (entry is null || entry.OptionEntities.Any(entity => entity is null || entity.Tags is null))
+                    throw new InvalidDataException("历史选择的实体证据不完整。");
+                foreach (var entity in entry.OptionEntities) ValidateEntity(entity);
+            }
         if (inspectEntities) foreach (var entity in snapshot.Entities.Values) ValidateEntity(entity);
     }
 

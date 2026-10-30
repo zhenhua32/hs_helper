@@ -102,7 +102,7 @@ public sealed class SessionRecorder
         {
             Entities = snapshot.Entities.Where(pair => pair.Value.Kind != EntityKind.Card || heroIds.Contains(pair.Key))
                 .ToFrozenDictionary(pair => pair.Key, pair => pair.Value),
-            Choice = null, RecentEvents = [], DeckTracking = null
+            Choice = null, ChoiceHistory = null, RecentEvents = [], DeckTracking = null
         };
     }
 

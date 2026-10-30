@@ -6,7 +6,8 @@ public static class ChoiceVisibility
     public static int? ConfirmedLocalPlayer(GameSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        return snapshot.Quality.HasLocalPerspective && !snapshot.IsSpectating && snapshot.LocalPlayerId is > 0 and var local &&
+        return !snapshot.Entities.Values.Any(entity => entity is null || entity.Tags is null) &&
+            snapshot.Quality.HasLocalPerspective && !snapshot.IsSpectating && snapshot.LocalPlayerId is > 0 and var local &&
             snapshot.Entities.Values.Count(entity => entity.Kind == EntityKind.Player && entity.GetIntTag("PLAYER_ID") == local) == 1
                 ? local : null;
     }
