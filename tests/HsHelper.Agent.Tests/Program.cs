@@ -27,7 +27,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("invalid settings fail before HTTP", InvalidSettings),
     ("truncated responses are rejected", TruncatedResponse),
     ("invalid credential fails without echoing credential", InvalidCredential),
-}.Concat(CapabilitiesTests.Cases()).Concat(CompactContextTests.Cases()).ToArray();
+}.Concat(CapabilitiesTests.Cases()).Concat(CompactContextTests.Cases()).Concat(ConversationTests.Cases()).ToArray();
 var failed = 0;
 foreach (var test in tests)
 {

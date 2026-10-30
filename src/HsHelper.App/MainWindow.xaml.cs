@@ -40,18 +40,20 @@ public partial class MainWindow : Window
     private DeckDefinition? _deck;
     private AnalysisBudget _analysisBudget = new();
     private readonly HashSet<Task> _analysisTasks = [];
+    private LogSetupWindow? _logSetupWindow;
 
     public MainWindow()
     {
         InitializeComponent();
-        _dataRoot = Environment.GetEnvironmentVariable("HSHELPER_DATA_DIR") ?? Path.Combine(
+        Title = $"炉石猎人助手 {AppVersion.DisplayVersion}";
+        _dataRoot = App.LaunchSettings?.DataDirectory ?? Environment.GetEnvironmentVariable("HSHELPER_DATA_DIR") ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HsHelper");
         _catalog = new CardCatalog(Path.Combine(_dataRoot, "cards.db"));
         _modelStore = new ProtectedModelConfigurationStore(Path.Combine(_dataRoot, "model-config.json"), new WindowsSecretProtector());
         Closing += WindowClosing;
         InitializeOverlay();
-        _timer.Tick += async (_, _) => await ReadLiveAsync();
-        Closed += (_, _) => { _timer.Stop(); _source.Cancel(); _analysis?.Cancel(); _connectionCheck?.Cancel(); _http.Dispose(); _cardHttp.Dispose(); };
+        _timer.Tick += async (_, _) => { RefreshAccessState(); await ReadLiveAsync(); };
+        Closed += (_, _) => { _timer.Stop(); _source.Cancel(); _analysis?.Cancel(); _connectionCheck?.Cancel(); _localTools?.Close(); _http.Dispose(); _cardHttp.Dispose(); };
     }
 
     private async void WindowLoaded(object sender, RoutedEventArgs e) => await Run(async () =>
@@ -76,11 +78,12 @@ public partial class MainWindow : Window
     private async void DiagnoseClicked(object sender, RoutedEventArgs e) => await Run(() => { Diagnose(); return Task.CompletedTask; });
     private async void PreviewConfigClicked(object sender, RoutedEventArgs e) => await Run(() =>
     {
-        var plan = LogConfiguration.CreatePlan(HearthstoneDiagnostics.DefaultConfigurationPath);
-        var preview = new Window { Title = "日志配置预览（尚未写入）", Owner = this, Width = 650, Height = 500,
-            Content = new TextBox { Text = $"路径：{plan.Path}\n{plan.RestartNotice}\n\n建议内容：\n{plan.ProposedText}",
-                IsReadOnly = true, AcceptsReturn = true, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(16) } };
-        preview.Show();
+        if (_logSetupWindow is null)
+        {
+            _logSetupWindow = new LogSetupWindow(HearthstoneDiagnostics.DefaultConfigurationPath, _dataRoot) { Owner = this };
+            _logSetupWindow.Closed += (_, _) => _logSetupWindow = null;
+        }
+        _logSetupWindow.Show();
         return Task.CompletedTask;
     });
 
@@ -98,16 +101,22 @@ public partial class MainWindow : Window
         if (_loadingSource) throw new InvalidOperationException("回放正在进行，可先停止后再选择其他日志。");
         var dialog = new OpenFileDialog { Filter = "炉石日志|*.log|所有文件|*.*" };
         if (dialog.ShowDialog() != true) return;
+        await ReplayPathAsync(dialog.FileName);
+    });
+    private async Task ReplayPathAsync(string path)
+    {
+        if (_loadingSource) throw new InvalidOperationException("回放正在进行，请先停止。");
         BeginSource();
         await FinishCaptureAsync();
         _historyContext = null;
+        _viewIsFileReplay = true;
         PinSourceDeck();
         ResetConnectionClock();
         var generation = _sourceGeneration;
         var token = _source.Token;
         _loadingSource = true; PlayerBox.IsEnabled = false; SavedDeckBox.IsEnabled = false;
-        var build = ClientBuildMetadata.ReadPowerLogBuild(dialog.FileName);
-        var engine = NewEngine(SourceIdentity(dialog.FileName));
+        var build = ClientBuildMetadata.ReadPowerLogBuild(path);
+        var engine = NewEngine(SourceIdentity(path));
         DeckTrackingEnricher? tracking = null;
         GameSnapshot lastFrame = engine.Snapshot();
         var capture = NewCapture(build);
@@ -119,7 +128,7 @@ public partial class MainWindow : Window
             var producer = Task.Run(async () =>
             {
                 long lineNumber = 0;
-                await foreach (var line in SharedLogReplay.ReadLinesAsync(dialog.FileName, token))
+                await foreach (var line in SharedLogReplay.ReadLinesAsync(path, token))
                 {
                     lineNumber++;
                     if (engine.ProcessLine(line))
@@ -148,14 +157,15 @@ public partial class MainWindow : Window
         _engine = engine;
         _liveFrame = lastFrame; _trackingFrames = tracking;
         _lastStateObservedAt = DateTimeOffset.UtcNow;
-        _currentLogFile = dialog.FileName;
-        LogPathBox.Text = dialog.FileName;
+        _currentLogFile = path;
+        LogPathBox.Text = path;
         SessionBuildBox.Text = build ?? "";
         RenderSnapshot();
         await RefreshHistoryAsync();
         StatusText.Text = $"回放完成，已保存 {capture.RecordedMatchCount} 局，视角未确认 {capture.UnconfirmedMatchCount} 局。空白属性表示未知。";
-    });
-    private async void WatchClicked(object sender, RoutedEventArgs e) => await Run(async () =>
+    }
+    private async void WatchClicked(object sender, RoutedEventArgs e) => await Run(StartWatchingAsync);
+    private async Task StartWatchingAsync()
     {
         if (_loadingSource) throw new InvalidOperationException("回放正在进行，可先停止后再开始监听。");
         if (string.IsNullOrWhiteSpace(LogPathBox.Text)) { Diagnose(); if (string.IsNullOrWhiteSpace(LogPathBox.Text)) return; }
@@ -163,6 +173,7 @@ public partial class MainWindow : Window
         BeginSource();
         await FinishCaptureAsync();
         _historyContext = null;
+        _viewIsFileReplay = false;
         PinSourceDeck();
         _tailer.Dispose(); _tailer = new(64 * 1024);
         _engine = NewEngine();
@@ -170,9 +181,10 @@ public partial class MainWindow : Window
         _sourceLine = 0;
         ResetConnectionClock();
         _liveRoot = LogPathBox.Text;
+        _catchingUp = true; _sourceFailed = false;
         _timer.Start();
         await ReadLiveAsync();
-    });
+    }
     private void BeginSource()
     {
         _timer.Stop(); _sourceGeneration++;
@@ -180,6 +192,7 @@ public partial class MainWindow : Window
         _historyLoading = false;
         _source.Cancel(); _source.Dispose(); _source = new();
         InvalidateAdvice();
+        _localTools?.Invalidate("日志来源或监听状态已变化，请重新绑定本地计算。");
         UpdateConnectionStatus();
     }
     private async void StopClicked(object sender, RoutedEventArgs e) => await Run(async () => { await StopRecordingAsync(); StatusText.Text = "已停止监听并保存记录，显示最后一次快照。"; });
@@ -203,6 +216,10 @@ public partial class MainWindow : Window
             if (generation != _sourceGeneration) return;
             if (batch.Path is null) { UpdateConnectionStatus(); return; }
             _currentLogFile = batch.Path; _currentLogOffset = batch.ByteOffset;
+            _lastSuccessfulReadAt = DateTimeOffset.UtcNow;
+            var fileWrite = File.GetLastWriteTimeUtc(batch.Path);
+            _sourceFileLastWriteAt = fileWrite == DateTime.FromFileTimeUtc(0) ? null : new DateTimeOffset(fileWrite);
+            _catchingUp = batch.HasMoreData; _sourceFailed = false;
             if (batch.Lines.Count > 0) _lastLogActivityAt = DateTimeOffset.UtcNow;
             catchUp = batch.HasMoreData;
             if (batch.ResetReason != LogResetReason.None)
@@ -242,7 +259,7 @@ public partial class MainWindow : Window
             UpdateConnectionStatus();
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { if (generation == _sourceGeneration) { _timer.Stop(); StatusText.Text = "日志读取停止：" + ex.Message; } }
+        catch (Exception ex) { if (generation == _sourceGeneration) { _sourceFailed = true; _timer.Stop(); StatusText.Text = "日志读取停止：" + ex.Message; } }
         finally
         {
             _reading = false;
@@ -257,6 +274,7 @@ public partial class MainWindow : Window
         if (state.MatchId != _renderedMatchId || state.StateVersion != _renderedVersion)
         {
             InvalidateAdvice();
+            _localTools?.Invalidate("所选局面已更新，请重新打开本地计算以绑定新版本。");
             _renderedMatchId = state.MatchId;
             _renderedVersion = state.StateVersion;
         }
@@ -264,6 +282,7 @@ public partial class MainWindow : Window
         StateText.Text = (_historyContext is null ? "当前日志 · " : "历史局面 · ") + $"回合 {state.Turn?.ToString() ?? "未知"} · 阶段 {state.Phase} · 局面版本 {state.StateVersion} · 行动方 {state.ActivePlayerId?.ToString() ?? "未知"}\n" +
             $"完整：{state.Quality.IsComplete} · 稳定：{state.Quality.IsStable} · 我方视角：{state.Quality.HasLocalPerspective}\n" + string.Join("；", state.Quality.Warnings);
         _ = Run(UpdateOverlayAsync);
+        _ = Run(RenderBattleAsync);
         UpdateConnectionStatus();
     }
     private void InvalidateAdvice()
@@ -273,7 +292,12 @@ public partial class MainWindow : Window
         _overlayAdvice = "局面已更新，旧建议已失效。";
         if (AdviceBox is not null) AdviceBox.Text = "局面或视角已更新。已有建议已失效，可重新请求分析。";
     }
-    private void BuildChanged(object sender, TextChangedEventArgs e) => InvalidateAdvice();
+    private void BuildChanged(object sender, TextChangedEventArgs e)
+    {
+        InvalidateAdvice(); _localTools?.Invalidate("局面卡库绑定已修改，请重新绑定本地计算。");
+        _battleRenderRevision++;
+        if (_catalog is not null && BattleViewRoot is not null) _ = Run(RenderBattleAsync);
+    }
     private void AdviceTaskChanged(object sender, SelectionChangedEventArgs e) => InvalidateAdvice();
     private void QuestionChanged(object sender, TextChangedEventArgs e) => InvalidateAdvice();
     private async void QuickQuestionClicked(object sender, RoutedEventArgs e)
@@ -371,16 +395,20 @@ public partial class MainWindow : Window
     {
         if (_closing || _traces is null) throw new InvalidOperationException("应用正在初始化或关闭，请稍后再分析。");
         if (_historyLoading) throw new InvalidOperationException("历史局面正在读取，请等待读取完成后分析。");
+        var access = CurrentAccess;
+        if (!access.CanAnalyze) throw new InvalidOperationException(access.Reason);
         var modelConfiguration = ConfigurationFromFields();
         var configurationRevision = _configurationRevision;
         var history = _historyContext;
         var snapshot = history?.Snapshot ?? _liveFrame ?? _engine.Snapshot();
         var importedDeck = AnalysisDeck;
+        var requestStartedAt = DateTimeOffset.UtcNow;
         var userQuestion = string.IsNullOrWhiteSpace(QuestionBox.Text) ? null : QuestionBox.Text.Trim();
         var deckVersionId = history is not null ? history.DeckVersionId :
             _sourceBindingEstablished ? _sourceDeckVersion?.Id : _selectedDeckVersion?.Id;
-        var asOf = history is null ? DateTimeOffset.UtcNow : _historyObservedAt
-            ?? throw new InvalidOperationException("历史局面缺少记录时刻，无法限制个人资料查询。");
+        var asOf = history is not null ? _historyObservedAt
+            ?? throw new InvalidOperationException("历史局面缺少记录时刻，无法限制个人资料查询。")
+            : access.IsHistorical ? _lastStateObservedAt ?? requestStartedAt : requestStartedAt;
         var requestedBuild = history?.CardBuild ?? SessionBuildBox.Text.Trim();
         var historyRevision = _historyRevision;
         var revision = _revision;
@@ -396,7 +424,7 @@ public partial class MainWindow : Window
         bool IsCurrent() => revision == _revision && configurationRevision == _configurationRevision && historyRevision == _historyRevision && ReferenceEquals(history, _historyContext)
             && (history?.CardBuild ?? SessionBuildBox.Text.Trim()) == requestedBuild && ReferenceEquals(importedDeck, AnalysisDeck)
             && DisplaySnapshot.MatchId == snapshot.MatchId && DisplaySnapshot.StateVersion == snapshot.StateVersion
-            && ReferenceEquals(_analysis, cancellation);
+            && ReferenceEquals(_analysis, cancellation) && CurrentAccess.CanAnalyze && CurrentAccess.Kind == access.Kind;
         _analysis = cancellation;
         AnalyzeButton.IsEnabled = false;
         try
@@ -404,6 +432,7 @@ public partial class MainWindow : Window
             var pinnedManifest = string.IsNullOrEmpty(requestedBuild) || requestedBuild == "unknown" ? null : await _catalog.GetManifestAsync(requestedBuild);
             if (!IsCurrent()) throw new OperationCanceledException("所选局面已经改变。");
             var task = ((ComboBoxItem)TaskBox.SelectedItem).Content.ToString()!;
+            if (access.IsHistorical && task == "回合建议") task = "局面复盘";
             if (task == "回合建议") task = snapshot.Phase switch { GamePhase.Mulligan => "留牌建议", GamePhase.Choice => "选择建议", _ => task };
             var related = new Dictionary<string, CardRecord>();
             if (pinnedManifest is not null)
@@ -423,8 +452,11 @@ public partial class MainWindow : Window
             }
             if (!IsCurrent()) throw new OperationCanceledException("所选局面已经改变。");
             var context = CompactAdviceContextBuilder.Create(snapshot, requestedBuild, AdviceTaskTemplates.Resolve(task), importedDeck, related.Values)
-                with { UserQuestion = userQuestion };
+                with { UserQuestion = userQuestion, KnowledgeAsOf = asOf };
+            context = await ConversationHistoryBuilder.AttachAsync(context, _adviceArchive, deckVersionId, requestStartedAt,
+                cancellationToken: cancellation.Token);
             var json = context.Snapshot;
+            json["view_source"] = access.IsHistorical ? "固定历史/回放局面，建议不能当作当前游戏步骤。" : "最近一次实时观察，仍以当前版本核对为准。";
             json["deck_confirmation"] = deckVersionId is not null ? "该局已固定套牌版本；剩余组成仍以追踪证据为准。" : "仅导入背景，尚未确认对局套牌。";
             json["rule_coverage"] = "具体计算覆盖和限制以evaluate_line/find_lethal/validate_choice返回为准。";
             AdviceBox.Text = "正在分析固定局面…";

@@ -1,5 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF></PropertyGroup>
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Version>0.1.0-preview.1</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <Product>HsHelper</Product>
+    <Description>炉石标准天梯猎人助手</Description>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../HsHelper.Core/HsHelper.Core.csproj" />
     <ProjectReference Include="../HsHelper.Ingestion/HsHelper.Ingestion.csproj" />
@@ -8,5 +20,5 @@
     <ProjectReference Include="../HsHelper.Coaching/HsHelper.Coaching.csproj" />
     <ProjectReference Include="../HsHelper.Storage/HsHelper.Storage.csproj" />
   </ItemGroup>
-  <ItemGroup><Content Include="../../samples/decks/beast-hunter.txt" Link="samples/decks/beast-hunter.txt" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><Content Include="../../samples/decks/beast-hunter.txt" Link="samples/decks/beast-hunter.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
 </Project>

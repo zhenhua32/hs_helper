@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace HsHelper.Storage;
@@ -24,12 +25,20 @@ public sealed record AdviceRecordDraft(string MatchId, long StateVersion, long E
     public bool VerifiedLethal { get; init; }
     public IReadOnlyList<ArchivedAdviceAction> Actions { get; init; } = [];
     public IReadOnlyList<AdviceToolEvidence> Evidence { get; init; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Model { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? AnalysisRunId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? RequestIds { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? ConversationArchiveIds { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTimeOffset? KnowledgeAsOf { get; init; }
 }
 
 public sealed record ArchivedAdviceRecord(string Id, DateTimeOffset RecordedAt, AdviceRecordDraft Advice);
 public sealed record AdviceArchiveFilter(string? MatchId = null, long? StateVersion = null,
     long? ThroughEventSequence = null, string? CardBuild = null, string? DeckVersionId = null,
     DateTimeOffset? RecordedBefore = null, int Limit = 100);
+public sealed record AdviceConversationQuery(string MatchId, string? DeckVersionId, string CardBuild,
+    long StateVersion, long EventSequence, DateTimeOffset AsOf, int MaxTurns = 4, DateTimeOffset? MaxKnowledgeAsOf = null);
+public sealed record AdviceHistoryResult(IReadOnlyList<ArchivedAdviceRecord> Records, bool IsTruncated);
 
 /// <summary>Immutable completed advice, with exact state/build/template binding and sanitized allowlisted fields.</summary>
 public sealed class AdviceArchiveStore
@@ -126,6 +135,41 @@ public sealed class AdviceArchiveStore
         return result.AsReadOnly();
     }
 
+    /// <summary>MaxKnowledgeAsOf enables strict history: unknown or later knowledge scopes are excluded.</summary>
+    public async Task<AdviceHistoryResult> GetConversationHistoryAsync(AdviceConversationQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        CoachLocalDatabase.Identifier(query.MatchId); CoachLocalDatabase.Identifier(query.CardBuild);
+        if (query.DeckVersionId is not null) CoachLocalDatabase.Identifier(query.DeckVersionId);
+        if (query.StateVersion < 0 || query.EventSequence < 0 || query.MaxTurns is < 0 or > 4 || query.MaxKnowledgeAsOf > query.AsOf)
+            throw new ArgumentException("连续追问历史的边界或轮数无效。");
+        cancellationToken.ThrowIfCancellationRequested();
+        if (query.MaxTurns == 0) return new(Array.Empty<ArchivedAdviceRecord>(), false);
+        await using var connection = await _database.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id,recorded_at,payload_json FROM coach_advice_records
+            WHERE match_id=$match AND card_build=$build AND state_version<=$version AND event_sequence<=$sequence
+              AND recorded_at<=$at AND
+            """ + " " + (query.DeckVersionId is null ? "deck_version_id IS NULL" : "deck_version_id=$deck") +
+            (query.MaxKnowledgeAsOf.HasValue ? " AND json_type(payload_json,'$.KnowledgeAsOf')='text' AND json_extract(payload_json,'$.KnowledgeAsOf')<=$knowledgeAt" : "") +
+            " ORDER BY recorded_at DESC,id DESC LIMIT $limit";
+        CoachLocalDatabase.Add(command, "$match", query.MatchId); CoachLocalDatabase.Add(command, "$build", query.CardBuild);
+        CoachLocalDatabase.Add(command, "$version", query.StateVersion); CoachLocalDatabase.Add(command, "$sequence", query.EventSequence);
+        CoachLocalDatabase.Add(command, "$at", CoachLocalDatabase.Timestamp(query.AsOf));
+        if (query.DeckVersionId is not null) CoachLocalDatabase.Add(command, "$deck", query.DeckVersionId);
+        if (query.MaxKnowledgeAsOf.HasValue) CoachLocalDatabase.Add(command, "$knowledgeAt", CoachLocalDatabase.Timestamp(query.MaxKnowledgeAsOf.Value));
+        CoachLocalDatabase.Add(command, "$limit", query.MaxTurns + 1);
+        var records = new List<ArchivedAdviceRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) records.Add(new(reader.GetString(0),
+            DateTimeOffset.Parse(reader.GetString(1), CultureInfo.InvariantCulture), Freeze(Read(reader.GetString(2)))));
+        var truncated = records.Count > query.MaxTurns;
+        if (truncated) records.RemoveAt(records.Count - 1);
+        records.Reverse(); return new(records.AsReadOnly(), truncated);
+    }
+
     /// <summary>
     /// Validates, redacts and deeply freezes a complete advice record without opening or writing any database.
     /// Queue only this returned value, so malformed content cannot permanently block durable retries.
@@ -137,6 +181,12 @@ public sealed class AdviceArchiveStore
         CoachLocalDatabase.Identifier(draft.MatchId); CoachLocalDatabase.Identifier(draft.CardBuild);
         CoachLocalDatabase.Identifier(draft.PromptTemplateVersion);
         if (draft.DeckVersionId is not null) CoachLocalDatabase.Identifier(draft.DeckVersionId);
+        if (draft.Model is not null && (string.IsNullOrWhiteSpace(draft.Model) || draft.Model.Length > 200 ||
+            draft.Model.Any(char.IsControl) || draft.Model.Contains("://", StringComparison.Ordinal)))
+            throw new ArgumentException("归档模型标识无效。");
+        if (draft.AnalysisRunId is not null) CoachLocalDatabase.Identifier(draft.AnalysisRunId);
+        var requestIds = ProvenanceIds(draft.RequestIds, 5);
+        var conversationIds = ProvenanceIds(draft.ConversationArchiveIds, 4);
         if (draft.StateVersion < 0 || draft.EventSequence < 0 || draft.Reasons is null || draft.Risks is null ||
             draft.Actions is null || draft.Evidence is null || draft.Reasons.Count > 12 || draft.Risks.Count > 16 ||
             draft.Actions.Count > 30 || draft.Evidence.Count > 32 || draft.Task is null || draft.Task.Length > 80 ||
@@ -169,7 +219,8 @@ public sealed class AdviceArchiveStore
             Reasons = Array.AsReadOnly(draft.Reasons.Select(s => Text(s, 2000, sensitive)).ToArray()),
             Alternative = draft.Alternative is null ? null : Text(draft.Alternative, 2000, sensitive, allowEmpty: true),
             Risks = Array.AsReadOnly(draft.Risks.Select(s => Text(s, 2000, sensitive)).ToArray()),
-            Actions = Array.AsReadOnly(actions), Evidence = Array.AsReadOnly(evidence)
+            Actions = Array.AsReadOnly(actions), Evidence = Array.AsReadOnly(evidence),
+            RequestIds = requestIds, ConversationArchiveIds = conversationIds, KnowledgeAsOf = draft.KnowledgeAsOf?.ToUniversalTime()
         };
     }
 
@@ -213,6 +264,16 @@ public sealed class AdviceArchiveStore
     private static AdviceRecordDraft Freeze(AdviceRecordDraft value) => value with
     {
         Reasons = Array.AsReadOnly(value.Reasons.ToArray()), Risks = Array.AsReadOnly(value.Risks.ToArray()),
-        Actions = Array.AsReadOnly(value.Actions.ToArray()), Evidence = Array.AsReadOnly(value.Evidence.ToArray())
+        Actions = Array.AsReadOnly(value.Actions.ToArray()), Evidence = Array.AsReadOnly(value.Evidence.ToArray()),
+        RequestIds = value.RequestIds is null ? null : Array.AsReadOnly(value.RequestIds.ToArray()),
+        ConversationArchiveIds = value.ConversationArchiveIds is null ? null : Array.AsReadOnly(value.ConversationArchiveIds.ToArray())
     };
+    private static IReadOnlyList<string>? ProvenanceIds(IReadOnlyList<string>? values, int maximum)
+    {
+        if (values is null || values.Count == 0) return null;
+        if (values.Count > maximum || values.Distinct(StringComparer.Ordinal).Count() != values.Count)
+            throw new ArgumentException("归档来源标识超出上限或重复。");
+        foreach (var id in values) CoachLocalDatabase.Identifier(id);
+        return Array.AsReadOnly(values.ToArray());
+    }
 }

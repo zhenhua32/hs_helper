@@ -27,7 +27,8 @@ public partial class MainWindow
             DeckVersionId = deckVersion, Task = context.Task, UserQuestion = context.UserQuestion, Reasons = advice.Reasons, Alternative = advice.Alternative,
             Risks = advice.Risks, Verification = advice.Verification, VerifiedLethal = advice.VerifiedLethal,
             Actions = advice.Actions.Select(a => new ArchivedAdviceAction(a.Kind, a.SourceEntityId, a.TargetEntityId)).ToArray(),
-            Evidence = evidence
+            Evidence = evidence, Model = advice.Model, AnalysisRunId = advice.AnalysisRunId, RequestIds = advice.RequestIds,
+            ConversationArchiveIds = advice.ConversationArchiveIds, KnowledgeAsOf = advice.KnowledgeAsOf
         };
         draft = AdviceArchiveStore.Prepare(draft, [credential]);
         var pending = new PendingAdvice(draft, credential, new(TaskCreationOptions.RunContinuationsAsynchronously), Guid.NewGuid().ToString("N"));
@@ -52,7 +53,7 @@ public partial class MainWindow
     private void ObserveTool(List<AdviceToolEvidence> evidence, GameSnapshot snapshot, CoachToolObservation observation)
     {
         RememberTool(snapshot.MatchId, snapshot.StateVersion, observation.Name, observation.ElapsedMilliseconds,
-            observation.Success, observation.ResultHash);
+            observation.Success, observation.ResultHash, observation);
         var summary = observation.Success ? "查询已完成。" : "工具未完成。";
         if (observation.Success && observation.ResultJson is { } result)
         {
@@ -80,8 +81,11 @@ public partial class MainWindow
         var advice = saved.Advice;
         var choiceOnly = advice.Actions.Count > 0 && advice.Actions.All(a => a.Kind == "choose");
         var label = advice.Verification == "verified" ? choiceOnly ? "选择范围已验证" : "动作已通过本地规则验证" : "策略建议";
+        if (advice.Task.Equals(AdviceTaskKind.DeckPlan.ToString(), StringComparison.Ordinal)) label = "赛前套牌计划";
+        else if (CurrentAccess.IsHistorical) label = "历史复盘 · " + label;
         var text = new StringBuilder($"{label} · 局面 v{advice.StateVersion}\n\n{advice.Summary}\n\n依据\n");
         if (!string.IsNullOrWhiteSpace(advice.UserQuestion)) text.Insert(0, $"本次提问：{advice.UserQuestion}\n\n");
+        if (advice.ConversationArchiveIds is { Count: > 0 }) text.AppendLine($"承接 {advice.ConversationArchiveIds.Count} 条此前解释；当前局面和工具结果优先。\n");
         foreach (var reason in advice.Reasons) text.AppendLine(reason);
         text.AppendLine($"\n备选\n{advice.Alternative ?? "无"}\n\n风险与未知");
         foreach (var risk in advice.Risks) text.AppendLine(risk);
@@ -93,7 +97,8 @@ public partial class MainWindow
         if (advice.VerifiedLethal) text.AppendLine("本地规则确认此序列可斩杀。");
         text.AppendLine($"\n已保存建议记录 · {saved.RecordedAt.ToLocalTime():HH:mm:ss}");
         AdviceBox.Text = text.ToString();
-        _overlayAdvice = advice.Summary + (advice.Risks.Count > 0 ? "\n风险：" + advice.Risks[0] : "");
+        if (advice.MatchId == DisplaySnapshot.MatchId && advice.StateVersion == DisplaySnapshot.StateVersion)
+            _overlayAdvice = advice.Summary + (advice.Risks.Count > 0 ? "\n风险：" + advice.Risks[0] : "");
     }
     private async void AnalyzeDeckPlanClicked(object sender, RoutedEventArgs e) => await Run(() => TrackAnalysisAsync(AnalyzeDeckPlanCoreAsync));
     private async Task AnalyzeDeckPlanCoreAsync()
@@ -122,7 +127,9 @@ public partial class MainWindow
             var snapshot = new GameSnapshot("deck-" + deck.Id, 0, 0, null, null, null, GamePhase.Unknown,
                 FrozenDictionary<int, EntitySnapshot>.Empty, new(false, false, true, false, 0, ["赛前套牌背景，不是实时局面。"]));
             var context = CompactAdviceContextBuilder.Create(snapshot, build, AdviceTaskKind.DeckPlan, deck.Definition, cards)
-                with { UserQuestion = userQuestion };
+                with { UserQuestion = userQuestion, KnowledgeAsOf = asOf };
+            context = await ConversationHistoryBuilder.AttachAsync(context, _adviceArchive, deck.Id, asOf,
+                cancellationToken: cancellation.Token);
             context.Snapshot["planning_opponent_class"] = opponent;
             context.Snapshot["planning_went_first"] = first;
             var library = new CoachLibraryContext(_store, _knowledge, new(snapshot.MatchId, 0, build, deck.Id, asOf, opponent, first, EventSequence: 0));

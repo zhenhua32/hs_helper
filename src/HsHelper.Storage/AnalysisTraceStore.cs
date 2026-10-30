@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 
@@ -18,6 +19,9 @@ public sealed record ModelRequestTrace(string RequestId, string MatchId, long St
     public string PromptTemplateVersion { get; init; } = "hunter-v2";
     public string? CardBuild { get; init; }
     public string? Task { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? AnalysisRunId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public long? EventSequence { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? DeckVersionId { get; init; }
 }
 
 public sealed record ToolExecutionTrace(string TraceId, string MatchId, long StateVersion, string ToolName,
@@ -26,6 +30,11 @@ public sealed record ToolExecutionTrace(string TraceId, string MatchId, long Sta
     public DateTimeOffset RecordedAt { get; init; } = DateTimeOffset.UtcNow;
     /// <summary>Optional SHA-256 of a sanitized result; raw tool results are never persisted here.</summary>
     public string? ResultHash { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Model { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? AnalysisRunId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? RequestId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ToolCallId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public long? EventSequence { get; init; }
 }
 
 public sealed record AnalysisBudgetTotals(string MatchId, int RequestCount, long ChargedTokens);
@@ -197,8 +206,10 @@ public sealed class AnalysisTraceStore
         Identifier(trace.RequestId); Identifier(trace.MatchId); Text(trace.Model, 200); Text(trace.PromptTemplateVersion, 80);
         if (trace.CardBuild is not null) Identifier(trace.CardBuild);
         if (trace.Task is not null) Text(trace.Task, 80);
+        if (trace.AnalysisRunId is not null) Identifier(trace.AnalysisRunId);
+        if (trace.DeckVersionId is not null) Identifier(trace.DeckVersionId);
         if (trace.StateVersion < 0 || trace.Round is < 1 or > 5 || trace.InputTokens < 0 || trace.OutputTokens < 0 ||
-            trace.TotalTokens < 0 || trace.ChargedTokens < 0 || trace.ElapsedMilliseconds < 0 || !Enum.IsDefined(trace.Status) ||
+            trace.TotalTokens < 0 || trace.ChargedTokens < 0 || trace.ElapsedMilliseconds < 0 || trace.EventSequence < 0 || !Enum.IsDefined(trace.Status) ||
             (trace.Status != AnalysisTraceStatus.Completed && trace.ChargedTokens != 0))
             throw new ArgumentException("分析用量或状态无效。");
     }
@@ -206,8 +217,12 @@ public sealed class AnalysisTraceStore
     {
         ArgumentNullException.ThrowIfNull(trace);
         Identifier(trace.TraceId); Identifier(trace.MatchId);
+        if (trace.Model is not null) Text(trace.Model, 200);
+        if (trace.AnalysisRunId is not null) Identifier(trace.AnalysisRunId);
+        if (trace.RequestId is not null) Identifier(trace.RequestId);
+        if (trace.ToolCallId is not null) Identifier(trace.ToolCallId);
         if (!Regex.IsMatch(trace.ToolName ?? "", "^[A-Za-z][A-Za-z0-9_]{0,63}$", RegexOptions.CultureInvariant) ||
-            trace.StateVersion < 0 || trace.ElapsedMilliseconds < 0 || !Enum.IsDefined(trace.Status) ||
+            trace.StateVersion < 0 || trace.ElapsedMilliseconds < 0 || trace.EventSequence < 0 || !Enum.IsDefined(trace.Status) ||
             (trace.ResultHash is not null && !Regex.IsMatch(trace.ResultHash, "^[A-Fa-f0-9]{64}$", RegexOptions.CultureInvariant)))
             throw new ArgumentException("工具审计字段无效。仅接受工具标识、状态与脱敏结果哈希。");
     }

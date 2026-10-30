@@ -52,6 +52,7 @@ public partial class MainWindow
     {
         var state = DisplaySnapshot;
         if (catchingUp || AutoAdviceBox.IsChecked != true || !_timer.IsEnabled || _historyContext is not null || _historyLoading ||
+            CurrentAccess.Kind != SnapshotViewKind.Live || !CurrentAccess.CanAnalyze ||
             !state.Quality.IsStable || !state.Quality.HasLocalPerspective || state.IsSpectating || state.Phase == GamePhase.Complete ||
             (state.ActivePlayerId != state.LocalPlayerId && state.Phase is not (GamePhase.Mulligan or GamePhase.Choice)))
         { _decisionTimer.Stop(); _automaticCandidate = null; return; }
@@ -87,9 +88,10 @@ public partial class MainWindow
         var plays = state.PublicPlays?.Plays.Where(p => state.LocalPlayerId is not null && p.ControllerId is not null && p.ControllerId != state.LocalPlayerId)
             .Select(p => $"#{p.Sequence} {Name(p.CardId)}").ToList() ?? [];
         if (state.PublicPlays is not { IsComplete: true }) plays.Add("记录可能不完整");
-        _overlay.Update(new OverlayState($"{(_historyContext is null ? "实时" : "历史")} · 回合 {state.Turn?.ToString() ?? "?"} · v{state.StateVersion}",
+        _overlay.Update(new OverlayState($"{(CurrentAccess.Kind == SnapshotViewKind.Live ? "最近观察" : "历史/未确认实时")} · 回合 {state.Turn?.ToString() ?? "?"} · v{state.StateVersion}",
             hand, remaining, plays, _overlayAdvice,
-            $"{(state.Quality.IsStable ? "稳定" : "结算中")} · {(state.Quality.IsComplete ? "记录完整" : "记录有缺口")}\n" + string.Join("；", state.Quality.Warnings),
+            $"{(state.Quality.IsStable ? "稳定" : "结算中")} · {(state.Quality.IsComplete ? "记录完整" : "记录有缺口")}\n" +
+                CurrentAccess.Reason + "\n" + string.Join("；", state.Quality.Warnings),
             state.Quality.IsComplete, state.Quality.IsStable));
     }
 }

@@ -163,6 +163,7 @@ public partial class MainWindow
         if (_traces is not null) await FlushTracesAsync();
         await FlushAdviceArchivesAsync();
         await WaitForConfigurationIoAsync();
+        if (_closing && _logSetupWindow is not null) await _logSetupWindow.WaitForPendingWriteAsync();
         if (_store is not null) await RefreshHistoryAsync();
     }
     private async void WindowClosing(object? sender, CancelEventArgs e)

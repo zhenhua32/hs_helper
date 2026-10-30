@@ -14,6 +14,8 @@ public partial class MainWindow
     {
         _lastStateObservedAt = null; _lastLogActivityAt = null; _lastReadAttemptAt = null;
         _currentLogFile = null; _currentLogOffset = 0;
+        _lastSuccessfulReadAt = null; _sourceFileLastWriteAt = null;
+        _sourceFailed = false; _catchingUp = false;
     }
     private void UpdateConnectionStatus()
     {
@@ -21,12 +23,12 @@ public partial class MainWindow
         var mode = _loadingSource ? "正在导入日志" : !_timer.IsEnabled ? "监听已停止" : _currentLogFile is null ? "等待 Power.log" :
             _lastLogActivityAt is { } last && DateTimeOffset.UtcNow - last > TimeSpan.FromSeconds(30) ? "连接中，日志暂未新增" : "正在监听";
         var snapshot = DisplaySnapshot;
-        var deck = _historyContext?.Deck ?? _sourceDeckVersion;
+        var deck = _historyContext is null ? _sourceDeckVersion : _historyContext.Deck;
         var updated = _historyContext is not null ? _historyObservedAt : _lastStateObservedAt;
         var format = snapshot.Format switch { "STANDARD" => "标准", "WILD" => "狂野", null => "模式未知", _ => snapshot.Format };
         var gameType = snapshot.GameType switch { "GT_RANKED" => "天梯", "GT_CASUAL" => "休闲", null => "对局类型未知", _ => "其他对局" };
         ConnectionText.Text = $"{mode} · {format} / {gameType} · " +
-            $"套牌：{deck?.Name ?? "未确认"} · 局面更新时间（本机）：{(updated is { } at ? at.ToLocalTime().ToString("HH:mm:ss") : "暂无")}" +
+            $"套牌：{deck?.Name ?? "本局未绑定"} · 局面更新时间（本机）：{(updated is { } at ? at.ToLocalTime().ToString("HH:mm:ss") : "暂无")}" +
             (_lastReadAttemptAt is { } read ? $" · 最近读取 {read.ToLocalTime():HH:mm:ss}" : "") +
             (_currentLogFile is null ? "" : $"\n{_currentLogOffset:N0} 字节 · {_currentLogFile}");
         if (_historyContext is not null) ConnectionText.Text = "历史局面 · " + ConnectionText.Text;

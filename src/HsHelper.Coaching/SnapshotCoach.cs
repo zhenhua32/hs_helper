@@ -13,7 +13,14 @@ using HsHelper.Rules;
 namespace HsHelper.Coaching;
 
 public sealed record CoachToolObservation(string Name, long ElapsedMilliseconds, bool Success,
-    string? ResultJson, string? ResultHash);
+    string? ResultJson, string? ResultHash)
+{
+    public string? Model { get; init; }
+    public string? AnalysisRunId { get; init; }
+    public string? RequestId { get; init; }
+    public string? ToolCallId { get; init; }
+    public long? EventSequence { get; init; }
+}
 
 /// <summary>All queries and calculations use one immutable frame and one immutable card build.</summary>
 public sealed class SnapshotCoach
@@ -28,6 +35,7 @@ public sealed class SnapshotCoach
     private readonly CoachLibraryContext? _library;
     private readonly AdviceTaskKind? _taskKind;
     private readonly LineEvaluator _rules = new();
+    private readonly AsyncLocal<AgentToolInvocation?> _toolSource = new();
     private bool IsDeckPlanning => _taskKind == AdviceTaskKind.DeckPlan || _snapshot.Phase == GamePhase.Unknown;
 
     public SnapshotCoach(GameSnapshot snapshot, JsonObject context, CardCatalog catalog, string? cardBuild,
@@ -57,12 +65,21 @@ public sealed class SnapshotCoach
             .Concat(_library is null ? [] : CoachLibraryContext.Definitions).ToArray(),
         Budget = budget,
         OnUsage = onUsage,
-        ValidateActions = IsDeckPlanning ? null : ValidateActionsAsync
+        ValidateActions = IsDeckPlanning ? null : ValidateActionsAsync,
+        OnToolInvocation = source =>
+        {
+            if (source.MatchId != _snapshot.MatchId || source.StateVersion != _snapshot.StateVersion ||
+                (source.EventSequence.HasValue && source.EventSequence != _snapshot.EventSequence) ||
+                (source.KnowledgeAsOf.HasValue && _library is not null && source.KnowledgeAsOf != _library.Binding.AsOf))
+                throw new InvalidOperationException("工具来源不属于当前固定局面。");
+            _toolSource.Value = source;
+        }
     };
 
     public async Task<JsonNode> ExecuteAsync(string name, JsonObject arguments, CancellationToken token)
     {
         var stopwatch = Stopwatch.StartNew();
+        var source = _toolSource.Value;
         var success = false;
         string? resultJson = null;
         try
@@ -77,7 +94,10 @@ public sealed class SnapshotCoach
         {
             _toolObserved?.Invoke(name, stopwatch.ElapsedMilliseconds, success);
             _toolCompleted?.Invoke(new(name, stopwatch.ElapsedMilliseconds, success, resultJson,
-                resultJson is null ? null : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resultJson)))));
+                resultJson is null ? null : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resultJson))))
+                { Model = source?.Model, AnalysisRunId = source?.AnalysisRunId, RequestId = source?.RequestId,
+                    ToolCallId = source?.ToolCallId, EventSequence = source?.EventSequence });
+            _toolSource.Value = null;
         }
     }
 

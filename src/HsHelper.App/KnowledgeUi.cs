@@ -163,6 +163,7 @@ public partial class MainWindow
     {
         var a = value.Advice;
         var text = new StringBuilder($"{a.Task} · v{a.StateVersion} · #{a.EventSequence} · {a.Verification}\n{a.Summary}\n\n依据\n");
+        text.Insert(0, $"模型：{a.Model ?? "旧记录未保存来源"} · 模板：{a.PromptTemplateVersion}\n分析：{a.AnalysisRunId ?? "未知"}\n\n");
         if (!string.IsNullOrWhiteSpace(a.UserQuestion)) text.Insert(0, $"当时提问：{a.UserQuestion}\n\n");
         foreach (var reason in a.Reasons) text.AppendLine(reason);
         text.AppendLine($"\n备选\n{a.Alternative ?? "无"}\n\n风险");

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO;
 using HsHelper.Agent;
+using HsHelper.Coaching;
 using HsHelper.Storage;
 
 namespace HsHelper.App;
@@ -23,11 +24,16 @@ public partial class MainWindow
         _pendingRequests.Enqueue(new(usage.RequestId, usage.MatchId, usage.StateVersion, usage.Model, usage.Round,
             usage.InputTokens, usage.OutputTokens, usage.TotalTokens, usage.ChargedTokens, usage.ElapsedMilliseconds,
             usage.Success ? AnalysisTraceStatus.Completed : AnalysisTraceStatus.Failed, usage.ConservativeCharge)
-            { CardBuild = build is null or "" or "unknown" ? null : build, Task = task, PromptTemplateVersion = templateVersion });
+            { CardBuild = usage.CardBuild ?? (build is null or "" or "unknown" ? null : build), Task = task,
+                PromptTemplateVersion = usage.PromptTemplateVersion ?? templateVersion, AnalysisRunId = usage.AnalysisRunId,
+                EventSequence = usage.EventSequence, DeckVersionId = usage.DeckVersionId });
     }
-    private void RememberTool(string match, long version, string name, long elapsed, bool succeeded, string? resultHash = null)
+    private void RememberTool(string match, long version, string name, long elapsed, bool succeeded, string? resultHash = null,
+        CoachToolObservation? observation = null)
         => _pendingTools.Enqueue(new(Guid.NewGuid().ToString("N"), match, version, name, elapsed,
-            succeeded ? AnalysisTraceStatus.Completed : AnalysisTraceStatus.Failed) { ResultHash = resultHash });
+            succeeded ? AnalysisTraceStatus.Completed : AnalysisTraceStatus.Failed) { ResultHash = resultHash,
+                Model = observation?.Model, AnalysisRunId = observation?.AnalysisRunId, RequestId = observation?.RequestId,
+                ToolCallId = observation?.ToolCallId, EventSequence = observation?.EventSequence });
 
     private async Task FlushTracesAsync()
     {

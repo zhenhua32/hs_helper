@@ -13,6 +13,9 @@ public sealed record ActionValidationResult(AdviceValidationStatus Status, bool 
 public sealed record AgentToolDefinition(string Name, string Description, JsonObject Parameters,
     Func<JsonObject, bool> ValidateArguments);
 
+public sealed record AgentToolInvocation(string Model, string AnalysisRunId, string RequestId, string ToolCallId,
+    string Name, string MatchId, long StateVersion, int Round, long? EventSequence = null, DateTimeOffset? KnowledgeAsOf = null);
+
 public sealed record ModelUsage(string MatchId, long StateVersion, string Model, int Round,
     long? InputTokens, long? OutputTokens, long? TotalTokens, long ElapsedMilliseconds, bool Success)
 {
@@ -20,6 +23,11 @@ public sealed record ModelUsage(string MatchId, long StateVersion, string Model,
     public string RequestId { get; init; } = Guid.NewGuid().ToString("N");
     public long ChargedTokens { get; init; }
     public bool ConservativeCharge { get; init; }
+    public string? AnalysisRunId { get; init; }
+    public long? EventSequence { get; init; }
+    public string? CardBuild { get; init; }
+    public string? DeckVersionId { get; init; }
+    public string? PromptTemplateVersion { get; init; }
 }
 
 public sealed class AgentCapabilities
@@ -28,4 +36,5 @@ public sealed class AgentCapabilities
     public Func<IReadOnlyList<AdviceAction>, CancellationToken, Task<ActionValidationResult>>? ValidateActions { get; init; }
     public Action<ModelUsage>? OnUsage { get; init; }
     public AnalysisBudget? Budget { get; init; }
+    public Action<AgentToolInvocation>? OnToolInvocation { get; init; }
 }

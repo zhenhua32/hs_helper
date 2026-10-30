@@ -38,7 +38,8 @@ public static class CompactAdviceContextBuilder
             throw new InvalidOperationException("选择建议需要已确认属于我方的完整候选列表。");
         var template = AdviceTaskTemplates.Get(task);
         return new(snapshot.MatchId, snapshot.StateVersion, task.ToString(), Build(snapshot, build, deck, cards, recentEvents))
-        { TaskKind = task, TemplateVersion = template.Version };
+        { TaskKind = task, TemplateVersion = template.Version, CardBuild = build is null or "" ? "unknown" : build,
+            EventSequence = snapshot.EventSequence };
     }
 
     public static JsonObject Build(GameSnapshot snapshot, string? build, DeckDefinition? deck = null,
