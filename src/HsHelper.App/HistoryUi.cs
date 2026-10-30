@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using HsHelper.Core;
 using HsHelper.Storage;
 
@@ -170,9 +171,21 @@ public partial class MainWindow
     {
         if (_allowClose) return;
         e.Cancel = true;
+        if (_closing) return;
         _closing = true;
-        try { await StopRecordingAsync(); _allowClose = true; Close(); }
-        catch (Exception error) { _closing = false; StatusText.Text = "记录尚未安全保存，请重试关闭：" + error.Message; }
+        try
+        {
+            // Even a fully synchronous save must leave this Closing callback before calling Close again.
+            await System.Windows.Threading.Dispatcher.Yield(DispatcherPriority.Background);
+            await StopRecordingAsync();
+            _allowClose = true;
+            Close();
+        }
+        catch (Exception error)
+        {
+            _allowClose = false; _closing = false;
+            StatusText.Text = "记录尚未安全保存，请重试关闭：" + error.Message;
+        }
     }
 
     private async Task RefreshHistoryAsync()

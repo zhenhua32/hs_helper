@@ -62,9 +62,11 @@ internal static class HiddenWindowSmoke
         Exception? unhandled = null;
         application.DispatcherUnhandledException += (_, e) => { unhandled = e.Exception; e.Handled = true; };
         MainWindow? window = null;
+        var windowClosed = false;
         try
         {
             window = new MainWindow();
+            window.Closed += (_, _) => windowClosed = true;
             using var fakeModel = new PlanningHandler();
             using var rejectCards = new RejectHandler();
             ReplaceClient(window, "_http", new HttpClient(fakeModel));
@@ -131,6 +133,7 @@ internal static class HiddenWindowSmoke
             AssertPassive(window);
             CheckCurrentBuildSync(window, () => unhandled);
             LocalToolsHiddenSmoke.RunOnDispatcher(Path.Combine(Environment.CurrentDirectory, "local-tools"));
+            WindowClosingRegression.RunOnDispatcher(Path.Combine(Environment.CurrentDirectory, "closing"));
             AssertPassive(window);
             Check(unhandled is null, "Dispatcher initialization or a routed action raised an unhandled exception.");
         }
@@ -138,8 +141,8 @@ internal static class HiddenWindowSmoke
         {
             if (window is not null)
             {
-                typeof(MainWindow).GetField("_allowClose", PrivateFields)!.SetValue(window, true);
                 window.Close();
+                WaitUntil(() => windowClosed, "Initialized main window did not close through its persistence workflow.", () => unhandled);
             }
             application.Shutdown();
         }
