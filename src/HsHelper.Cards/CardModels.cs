@@ -23,7 +23,21 @@ public sealed record CardPoolRules(
     DateTimeOffset ValidUntil, string Source, IReadOnlyList<string> AllowedSets,
     IReadOnlyList<string> AllowedCardIds, IReadOnlyList<string> BannedCardIds,
     IReadOnlyList<string> UnreleasedCardIds, bool IsComplete = false,
-    string? Notes = null);
+    string? Notes = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public DeckConstructionEvidence? Construction { get; init; }
+}
+
+/// <summary>Reviewed constraints inherit no legality claims from pool membership; their own scope must match the parent rules.</summary>
+public sealed record DeckConstructionEvidence(string RuleId, string Build, int Format,
+    DateTimeOffset EffectiveFrom, DateTimeOffset ValidUntil, string Source,
+    IReadOnlyList<DeckCardGroupLimit> CardGroups, IReadOnlyList<DeckSideboardRule> Sideboards);
+public sealed record DeckCardGroupLimit(string GroupId, IReadOnlyList<string> CardIds, int MaximumCopies);
+public sealed record DeckSideboardRule(string OwnerCardId, int MaximumCards,
+    IReadOnlyList<string> AllowedCardIds, bool AllowedCardsComplete = false,
+    int? MinimumCards = null, int? MaximumCopiesPerCard = null,
+    bool KeepsOrdinaryMainDeckRules = false, bool IgnoresHeroClass = false);
 
 public sealed record DeckCardDescription(int DbfId, int Count, string? CardId, string Name,
     int? Cost, string CardClass, string Rarity, CardLegality Legality);

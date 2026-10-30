@@ -15,6 +15,7 @@ public static class OfficialStandardPool
         var sets = ReadOfficialSets(officialHtml);
         var ids = new List<string>();
         var counts = new Dictionary<int, int>();
+        var constructionDefinitions = new Dictionary<string, IReadOnlyDictionary<string, string?>>(StringComparer.Ordinal);
         using var reader = XmlReader.Create(cardDefinitions, new XmlReaderSettings
         { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = 64 * 1024 * 1024 });
         reader.MoveToContent();
@@ -29,6 +30,10 @@ public static class OfficialStandardPool
             var tags = entity.Elements("Tag").Where(t => t.Attribute("name") is not null)
                 .GroupBy(t => t.Attribute("name")!.Value, StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g => g.Last().Attribute("value")?.Value, StringComparer.Ordinal);
+            if (cardId is "JAIL_831" or "BE_009" or "BE_013" or "BE_017" or "BE_784")
+            {
+                if (!constructionDefinitions.TryAdd(cardId, tags)) throw new InvalidDataException("构筑证据中的卡牌定义重复。");
+            }
             if (tags.GetValueOrDefault("COLLECTIBLE") != "1" ||
                 !int.TryParse(tags.GetValueOrDefault("CARD_SET"), out var set) || !sets.ContainsKey(set)) continue;
             if (string.IsNullOrWhiteSpace(cardId)) throw new InvalidDataException("标准卡牌定义缺少CardID。");
@@ -45,7 +50,8 @@ public static class OfficialStandardPool
             utc, utc.AddDays(7),
             $"https://hearthstone.blizzard.com/en-gb/cards/ ; https://api.hearthstonejson.com/v1/{build}/CardDefs.base.xml",
             [], ids.OrderBy(x => x, StringComparer.Ordinal).ToArray(), [], [], false,
-            "官方页面明确列出的标准系列与固定build收藏卡计数一致。只确认系列成员；来源未包含完整禁用、单卡上线或国服特殊规则，合法性保持Unknown。图片和池成员不作为完整构筑合法性证明。");
+            "官方页面明确列出的标准系列与固定build收藏卡计数一致。只确认系列成员；来源未包含完整禁用、单卡上线或国服特殊规则，合法性保持Unknown。图片和池成员不作为完整构筑合法性证明。")
+        { Construction = ReviewedConstructionRules.Create(build, utc, utc.AddDays(7), constructionDefinitions) };
     }
 
     private static Dictionary<int, int> ReadOfficialSets(string html)

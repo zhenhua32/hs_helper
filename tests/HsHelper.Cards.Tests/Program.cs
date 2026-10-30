@@ -243,6 +243,7 @@ try
         await ImportRules(catalog, Rules("deck-rules-703", "703", DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1), true));
         Equal(CardLegality.Unknown, (await catalog.DescribeDeckAsync(deck with { Cards = Enumerable.Range(0, 20).Select(i => new DeckCard(100 + i, 2)).ToArray() }, "703")).Legality);
     });
+    await ConstructionChecks.RunAsync(taskRoot, Run);
     await Run("image cache uses verified source and reuses validated PNG offline", async () =>
     {
         var cache = new CardImageCache(Path.Combine(taskRoot, "images"));
@@ -279,6 +280,13 @@ try
             var rules = OfficialStandardPool.CreatePartial(File.ReadAllText(args[2]), definitions, args[1], DateTimeOffset.UtcNow);
             Console.WriteLine($"Official standard pool membership: {rules.AllowedCardIds.Count}; complete legality: {rules.IsComplete}");
             if (rules.AllowedCardIds.Count < 100) throw new InvalidDataException("Expected substantial current pool.");
+            if (args[1] == "255790")
+            {
+                if (rules.Construction?.CardGroups.Single().CardIds.Count != 4 ||
+                    rules.Construction.Sideboards.Single() is not { OwnerCardId: "JAIL_831", MaximumCards: 3, IgnoresHeroClass: true, AllowedCardsComplete: false })
+                    throw new InvalidDataException("Expected reviewed construction tags in the actual fixed-build definitions.");
+                Console.WriteLine("Fixed-build construction: four Old Gods, group maximum 1; JAIL_831 capacity 3, subset membership still unknown.");
+            }
             return Task.CompletedTask;
         });
     }

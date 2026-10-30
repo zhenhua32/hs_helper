@@ -27,7 +27,7 @@ public sealed partial class CardCatalog
         await using (var version = connection.CreateCommand())
         {
             version.CommandText = "PRAGMA user_version";
-            if (Convert.ToInt64(await version.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) > 2)
+            if (Convert.ToInt64(await version.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) > 3)
                 throw new InvalidDataException("卡库由较新版本创建，当前程序不能迁移该数据库。");
         }
         await using var command = connection.CreateCommand();
@@ -54,7 +54,7 @@ public sealed partial class CardCatalog
               effective_from INTEGER NOT NULL, valid_until INTEGER NOT NULL,
               imported_at INTEGER NOT NULL, source TEXT NOT NULL, sha256 TEXT NOT NULL, json TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS pool_rules_version ON card_pool_rules(build,format,effective_from,imported_at);
-            PRAGMA user_version=2;
+            PRAGMA user_version=3;
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
     }

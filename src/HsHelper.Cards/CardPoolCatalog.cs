@@ -20,12 +20,34 @@ public sealed partial class CardCatalog
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
         await using var connection = await OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        if (rules.Construction is not null)
+        {
+            await using var schema = connection.CreateCommand();
+            schema.Transaction = (Microsoft.Data.Sqlite.SqliteTransaction)transaction;
+            schema.CommandText = "PRAGMA user_version";
+            if (Convert.ToInt64(await schema.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) != 3)
+                throw new InvalidDataException("写入构筑证据前必须初始化当前版本卡库，避免旧程序忽略新规则。");
+        }
         await using var existing = connection.CreateCommand();
         existing.Transaction = (Microsoft.Data.Sqlite.SqliteTransaction)transaction;
         existing.CommandText = "SELECT sha256 FROM card_pool_rules WHERE rule_id=$id";
         existing.Parameters.AddWithValue("$id", rules.RuleId);
         var oldHash = await existing.ExecuteScalarAsync(cancellationToken) as string;
         if (oldHash is not null && oldHash != hash) throw new InvalidDataException("该规则版本已有不同内容，请创建新 RuleId 保留历史。");
+        if (rules.Construction is { } construction)
+        {
+            await using var prior = connection.CreateCommand();
+            prior.Transaction = (Microsoft.Data.Sqlite.SqliteTransaction)transaction;
+            prior.CommandText = "SELECT json FROM card_pool_rules WHERE json_extract(json,'$.Construction.RuleId')=$id";
+            prior.Parameters.AddWithValue("$id", construction.RuleId);
+            await using var reader = await prior.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var saved = JsonSerializer.Deserialize<CardPoolRules>(reader.GetString(0), RuleJson)!;
+                if (JsonSerializer.Serialize(saved.Construction) != JsonSerializer.Serialize(construction))
+                    throw new InvalidDataException("该构筑证据 RuleId 已有不同内容，请创建新版本。");
+            }
+        }
         if (oldHash is null)
         {
             await using var command = connection.CreateCommand();
@@ -59,7 +81,7 @@ public sealed partial class CardCatalog
         command.Parameters.AddWithValue("$at", instant.ToUnixTimeMilliseconds());
         var json = await command.ExecuteScalarAsync(cancellationToken) as string;
         if (json is null) return null;
-        var rules = JsonSerializer.Deserialize<CardPoolRules>(json, RuleJson)!;
+        var rules = NormalizeRules(JsonSerializer.Deserialize<CardPoolRules>(json, RuleJson)!);
         // A newer expired rule does not revive an older, superseded rule.
         return instant >= rules.ValidUntil ? null : rules;
     }
@@ -107,7 +129,9 @@ public sealed partial class CardCatalog
         ArgumentNullException.ThrowIfNull(deck);
         ValidateBuild(build, false);
         if (deck.Cards.Count > 500) throw new ArgumentException("套牌条目过多。", nameof(deck));
-        var rules = await GetPoolRulesAsync(build, deck.Format, at, cancellationToken);
+        var instant = at ?? DateTimeOffset.UtcNow;
+        var rules = await GetPoolRulesAsync(build, deck.Format, instant, cancellationToken);
+        var construction = rules?.Construction is { } evidence && instant >= evidence.EffectiveFrom && instant < evidence.ValidUntil ? evidence : null;
         var requestedIds = deck.Cards.Select(c => c.DbfId).Concat(deck.Heroes)
             .Concat(deck.Sideboards.Select(s => s.OwnerDbfId)).Concat(deck.Sideboards.SelectMany(s => s.Cards).Select(c => c.DbfId)).Distinct().ToArray();
         if (requestedIds.Length > 500) throw new ArgumentException("套牌与边栏的卡牌种类过多。", nameof(deck));
@@ -136,7 +160,7 @@ public sealed partial class CardCatalog
             }
             using var raw = JsonDocument.Parse(card.RawJson);
             var rarity = Attribute(raw.RootElement, "rarity");
-            var canOverride = IsConstructionException(raw.RootElement, card.Text);
+            var canOverride = NeedsUnmappedConstructionRule(card, construction);
             hasConstructionExceptions |= canOverride;
             var legality = EvaluateLegality(card, rules);
             described.Add(new(entry.DbfId, entry.Count, card.Id, card.Name, card.Cost, card.CardClass, rarity, legality));
@@ -150,23 +174,57 @@ public sealed partial class CardCatalog
         }
         var total = deck.Cards.Sum(c => (long)c.Count);
         if (hasConstructionExceptions)
-        { unknown = true; issues.Add("套牌包含可能改变构筑规则的卡，需专用规则验证数量和限制。"); }
+        { unknown = true; issues.Add("套牌包含未审核的构筑例外，套牌张数和同名牌上限需专用规则确认。"); }
         else
         {
             if (total != 30) { unknown = true; issues.Add($"普通构筑应为30张，当前{total}张；未识别的构筑例外需要核对。"); }
-            foreach (var card in described.Where(c => c.Count > (c.Rarity == "LEGENDARY" ? 1 : 2)))
+        }
+        // Reviewed sideboard-only effects preserve ordinary limits. Unknown construction may change copies too.
+        if (!hasConstructionExceptions)
+            foreach (var card in described.Where(c => c.Rarity.Length > 0 && c.Count > (c.Rarity == "LEGENDARY" ? 1 : 2)))
             { illegal = true; issues.Add($"{card.Name} 超出普通构筑的同名牌数量限制。"); }
+        foreach (var group in construction?.CardGroups ?? [])
+        {
+            var copies = described.Where(card => card.CardId is not null && group.CardIds.Contains(card.CardId, StringComparer.Ordinal)).Sum(card => (long)card.Count);
+            if (copies > group.MaximumCopies)
+            { illegal = true; issues.Add($"构筑规则 {group.GroupId} 最多允许 {group.MaximumCopies} 张，当前 {copies} 张（证据 {construction!.RuleId}）。"); }
         }
         var sideboards = new List<DeckSideboardDescription>();
+        var seenOwners = new HashSet<int>();
+        foreach (var sideRule in construction?.Sideboards ?? [])
+        {
+            var ownerCard = described.FirstOrDefault(card => card.CardId == sideRule.OwnerCardId);
+            if (ownerCard is null || deck.Sideboards.Any(board => board.OwnerDbfId == ownerCard.DbfId)) continue;
+            if (sideRule.MinimumCards is > 0)
+            { illegal = true; issues.Add($"{ownerCard.Name} 缺少已审核规则要求的边栏。"); }
+            else if (sideRule.MinimumCards is null)
+            { unknown = true; issues.Add($"{ownerCard.Name} 是否允许空边栏尚未确认。"); }
+        }
         foreach (var sideboard in deck.Sideboards)
         {
+            if (sideboard.OwnerDbfId <= 0 || !seenOwners.Add(sideboard.OwnerDbfId))
+            { illegal = true; issues.Add("边栏拥有者无效或重复，不能拆分多个边栏绕过容量限制。"); }
             if (!deck.Cards.Any(c => c.DbfId == sideboard.OwnerDbfId))
             { illegal = true; issues.Add("边栏关联牌不在主牌库中。"); }
+            records.TryGetValue(sideboard.OwnerDbfId, out var owner);
+            var sideRule = construction?.Sideboards.SingleOrDefault(rule => rule.OwnerCardId == owner?.Id);
+            var sideCount = sideboard.Cards.Sum(card => (long)card.Count);
+            if (sideRule is null)
+            { unknown = true; issues.Add("边栏名称与费用已解析，边栏容量与特殊构筑合法性需专用规则核对。"); }
+            else
+            {
+                if (sideCount > sideRule.MaximumCards || sideRule.MinimumCards is { } minimum && sideCount < minimum)
+                { illegal = true; issues.Add($"{owner!.Name} 的边栏张数不符合已审核限制（当前 {sideCount}，最多 {sideRule.MaximumCards}）。"); }
+                if (sideRule.MinimumCards is null && sideCount < sideRule.MaximumCards)
+                { unknown = true; issues.Add($"{owner!.Name} 的边栏最小张数尚未确认。"); }
+                if (sideRule.MaximumCopiesPerCard is null)
+                { unknown = true; issues.Add($"{owner!.Name} 的边栏同名牌限制尚未确认。"); }
+            }
             var sideCards = new List<DeckCardDescription>();
             var sideIds = new HashSet<int>();
             foreach (var entry in sideboard.Cards)
             {
-                if (entry.Count <= 0 || !sideIds.Add(entry.DbfId)) { illegal = true; issues.Add("边栏包含无效数量或重复条目。"); }
+                if (entry.DbfId <= 0 || entry.Count <= 0 || !sideIds.Add(entry.DbfId)) { illegal = true; issues.Add("边栏包含无效数量或重复条目。"); }
                 if (!records.TryGetValue(entry.DbfId, out var card))
                 {
                     unknown = true; issues.Add($"当前卡库缺少边栏 dbfId {entry.DbfId}。");
@@ -177,15 +235,25 @@ public sealed partial class CardCatalog
                 var legality = EvaluateLegality(card, rules);
                 if (legality == CardLegality.Illegal) { illegal = true; issues.Add($"边栏中的 {card.Name} 不在有效卡池或被规则排除。"); }
                 if (legality == CardLegality.Unknown) unknown = true;
+                if (sideRule is not null)
+                {
+                    if (!sideRule.AllowedCardIds.Contains(card.Id, StringComparer.Ordinal))
+                    {
+                        if (sideRule.AllowedCardsComplete) { illegal = true; issues.Add($"{card.Name} 不在 {owner!.Name} 已审核的边栏成员集合中。"); }
+                        else { unknown = true; issues.Add($"{card.Name} 是否属于 {owner!.Name} 的允许边栏子集尚未确认。"); }
+                    }
+                    if (sideRule.MaximumCopiesPerCard is { } maximumCopies && entry.Count > maximumCopies)
+                    { illegal = true; issues.Add($"{card.Name} 超出 {owner!.Name} 的边栏同名牌数量限制。"); }
+                    if (!sideRule.IgnoresHeroClass && heroClass is not null &&
+                        (card.Classes.Count > 0 ? !card.Classes.Contains(heroClass, StringComparer.Ordinal) : card.CardClass != "NEUTRAL" && card.CardClass != heroClass))
+                    { illegal = true; issues.Add($"边栏中的 {card.Name} 的职业与英雄不符，当前边栏规则没有职业豁免。"); }
+                }
                 sideCards.Add(new(entry.DbfId, entry.Count, card.Id, card.Name, card.Cost, card.CardClass,
                     Attribute(raw.RootElement, "rarity"), legality));
             }
-            records.TryGetValue(sideboard.OwnerDbfId, out var owner);
             sideboards.Add(new(sideboard.OwnerDbfId, owner?.Id, owner?.Name ?? $"未知牌 {sideboard.OwnerDbfId}",
                 sideCards.AsReadOnly(), Curve(sideCards)));
         }
-        if (deck.Sideboards.Count > 0)
-        { unknown = true; issues.Add("边栏名称与费用已解析，边栏容量与特殊构筑合法性需专用规则核对。"); }
         var curve = described.Where(c => c.Cost.HasValue && c.Count > 0).GroupBy(c => Math.Min(c.Cost!.Value, 10))
             .OrderBy(g => g.Key).Select(g => new ManaCurveBucket(g.Key, g.Sum(c => c.Count))).ToArray();
         return new DeckDescription(deck.Format, heroClass, described.AsReadOnly(), Array.AsReadOnly(curve),
@@ -224,7 +292,8 @@ public sealed partial class CardCatalog
         {
             EffectiveFrom = rules.EffectiveFrom.ToUniversalTime(), ValidUntil = rules.ValidUntil.ToUniversalTime(),
             AllowedSets = Normalize(rules.AllowedSets), AllowedCardIds = Normalize(rules.AllowedCardIds),
-            BannedCardIds = Normalize(rules.BannedCardIds), UnreleasedCardIds = Normalize(rules.UnreleasedCardIds)
+            BannedCardIds = Normalize(rules.BannedCardIds), UnreleasedCardIds = Normalize(rules.UnreleasedCardIds),
+            Construction = NormalizeConstruction(rules.Construction, rules)
         };
         if (result.AllowedSets.Count == 0 && result.AllowedCardIds.Count == 0) throw new InvalidDataException("规则不能使用空卡池替换已有规则。");
         return result;
