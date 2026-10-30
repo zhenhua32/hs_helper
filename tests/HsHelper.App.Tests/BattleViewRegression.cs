@@ -21,6 +21,7 @@ public static class BattleViewRegression
         yield return ("choice projections freeze producer and consumer option lists", ImmutableChoice);
         yield return ("local result formatting preserves unknown and conditional verification", ResultSemantics);
         yield return ("choice consequence display preserves scope, granted discount and unknown resulting cost", ChoiceEffectDisplay);
+        yield return ("multi-stage choice display distinguishes components, assembled previews and rewind requests", MultiStageDisplay);
         yield return ("end-turn display distinguishes computed damage from pending order and readiness", EndTurnDisplay);
     }
 
@@ -138,6 +139,24 @@ public static class BattleViewRegression
         var invalid = LocalToolResultFormatter.Format("evaluate_choice", JsonNode.Parse("""{"Verification":"Unsupported","IsLegal":null,"CardOutcomes":[],"Unknowns":["来源未知"]}""")!);
         Check(invalid.Contains("候选是否合法：未知", StringComparison.Ordinal) && invalid.Contains("来源未知", StringComparison.Ordinal),
             "Missing choice evidence was presented as legal or resolved.");
+    }
+
+    private static void MultiStageDisplay()
+    {
+        var text = LocalToolResultFormatter.Format("evaluate_choice", JsonNode.Parse("""
+            {"Verification":"Conditional","IsLegal":true,"Crafting":{"Mechanism":"BuildABeast","Stage":"ComponentTwo",
+            "Components":[{"Name":"前一野兽","FromHistory":true,"ObservedCost":2,"ObservedAttack":3,"ObservedHealth":4},
+            {"Name":"当前野兽","FromHistory":false,"ObservedCost":1}],"GrantedCostReduction":3,"ResultingCost":0,"ResultingAttack":null,"AddedToHand":null},
+            "Rewind":{"Stage":"RewindTimeline","RequestsRewind":true,"RestoredMana":10}}
+            """)!);
+        Check(text.Contains("前次实际已选", StringComparison.Ordinal) && text.Contains("费用 0 / 攻击 未知 / 生命 未知", StringComparison.Ordinal) &&
+            text.Contains("数值预览不作为新手牌的当前费用", StringComparison.Ordinal) && text.Contains("不自行恢复法力", StringComparison.Ordinal) &&
+            !text.Contains("恢复法力：10", StringComparison.Ordinal), "Multi-stage display invented a completed product or restored state.");
+        var first = LocalToolResultFormatter.Format("evaluate_choice", JsonNode.Parse("""
+            {"Verification":"Conditional","Crafting":{"Mechanism":"BuildABeast","Stage":"ComponentOne","Components":[],"AddedToHand":false}}
+            """)!);
+        Check(first.Contains("尚未获得成品", StringComparison.Ordinal) && !first.Contains("可直接加入一张成品", StringComparison.Ordinal),
+            "The first component was presented as a new hand card.");
     }
 
     private static void EndTurnDisplay()

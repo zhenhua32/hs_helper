@@ -379,6 +379,36 @@ public static class LocalToolResultFormatter
                 }
             if (result["DirectDeckChange"] is JsonObject change)
                 lines.Add($"牌库直接移出 {change["RemovedCopies"]} 张：{change["TotalCardsBefore"]?.ToString() ?? "未知"} → {change["TotalCardsAfter"]?.ToString() ?? "未知"}；不包含其他触发或后续发现。");
+            if (result["Crafting"] is JsonObject crafting)
+            {
+                lines.Add("制造方式：" + (crafting["Mechanism"]?.ToString() switch
+                { "BuildABeast" => "僵尸兽合成", "Assemble" => "拼装（保留主随从属性，替换文字）", _ => "未知" }));
+                lines.Add("当前阶段：" + (crafting["Stage"]?.ToString() switch
+                { "ComponentOne" => "选择第一组件，尚未获得成品", "ComponentTwo" => "选择第二组件，预览合成的直接后果", _ => "尚未确认，不能提前当作成品" }));
+                if (crafting["Components"] is JsonArray components)
+                    foreach (var component in components.OfType<JsonObject>())
+                        lines.Add($"· {(component["FromHistory"]?.ToString() == "true" ? "前次实际已选" : "本次候选")}：{component["Name"]?.ToString() ?? "未知组件"}；观察费用 {component["ObservedCost"]?.ToString() ?? "未知"} / 攻击 {component["ObservedAttack"]?.ToString() ?? "未知"} / 生命 {component["ObservedHealth"]?.ToString() ?? "未知"}。");
+                if (crafting["GrantedCostReduction"] is { } reduction) lines.Add("合成时授予减费：" + reduction + "。数值预览不作为新手牌的当前费用。");
+                if (crafting["Stage"]?.ToString() == "ComponentTwo")
+                    lines.Add($"合成数值预览：费用 {crafting["ResultingCost"]?.ToString() ?? "未知"} / 攻击 {crafting["ResultingAttack"]?.ToString() ?? "未知"} / 生命 {crafting["ResultingHealth"]?.ToString() ?? "未知"}；成品实体与其他触发等待客户端结算。");
+                lines.Add("本次选择新增手牌：" + (crafting["AddedToHand"]?.ToString() switch
+                { "true" => "可直接加入一张成品", "false" => "没有新增（组件阶段或手牌已满）", _ => "未知" }));
+            }
+            if (result["Rewind"] is JsonObject rewind)
+            {
+                lines.Add("迅猛龙先锋选择阶段：" + (rewind["Stage"]?.ToString() switch
+                { "DiscoverBeast" => "野兽候选", "DarkGift" => "黑暗之赐", "KeepTimeline" => "维持当前时间线", "RewindTimeline" => "请求回溯重做", _ => "未知" }));
+                if (rewind["DirectCardName"] is { } beast) lines.Add("已选野兽：" + beast + "；不据此假定新增手牌。");
+                if (rewind["GrantedDarkGiftName"] is { } gift) lines.Add("所选黑暗之赐：" + gift);
+                if (rewind["AttackDelta"] is not null || rewind["HealthDelta"] is not null)
+                    lines.Add($"授予属性增量：攻击 {rewind["AttackDelta"]?.ToString() ?? "无额外增量"} / 生命 {rewind["HealthDelta"]?.ToString() ?? "无额外增量"}；最终属性等待结算。");
+                if (rewind["GrantedEffectText"] is { } effect) lines.Add("授予效果：" + effect.ToString().Replace("<b>", "", StringComparison.Ordinal).Replace("</b>", "", StringComparison.Ordinal));
+                if (rewind["DestinationAfterGift"]?.ToString() == "DeckTop") lines.Add("所选赐福将目标置于我方牌库顶，不能按直接加入手牌计算。");
+                if (rewind["GrantedCostReduction"] is { } reduction) lines.Add("已确认授予减费：" + reduction + "；入手后当前费用等待结算。");
+                if (rewind["RequestsRewind"]?.ToString() == "true")
+                    lines.Add("仅确认回溯请求；不自行恢复法力、手牌、旧局面或随机结果。");
+                if (rewind["KeepsTimeline"]?.ToString() == "true") lines.Add("维持当前已观察结果；不重复生成发现牌。");
+            }
             foreach (var (label, key) in new[] { ("失败原因", "Errors"), ("成立条件", "Assumptions"), ("未知与未结算", "Unknowns"), ("已覆盖规则", "RuleCoverage") })
                 if (result[key] is JsonArray { Count: > 0 } values)
                     lines.Add(label + "：\n" + string.Join("\n", values.Select(value => "· " + value)));

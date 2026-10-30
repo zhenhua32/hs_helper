@@ -176,8 +176,18 @@ public sealed class SnapshotCoach
 
     private async Task<IReadOnlyDictionary<string, CardRecord>> RuleCardsAsync(CancellationToken token)
     {
+        var history = _snapshot.ChoiceHistory;
+        var ownChoice = ChoiceVisibility.ConfirmedOwn(_snapshot);
+        var relevantHistoryIds = ownChoice is not null && history is { IsComplete: true, TruncatedThroughSequence: 0 } &&
+            history.MatchId == _snapshot.MatchId && history.StateVersion == _snapshot.StateVersion && history.EventSequence == _snapshot.EventSequence
+            ? history.Entries.Where(entry => entry is not null && entry.Options is not null && entry.IsComplete && entry.PlayerId == ownChoice.PlayerId &&
+                entry.SourceEntityId == ownChoice.SourceEntityId && entry.ChosenAtEventSequence > 0 &&
+                entry.ChosenAtEventSequence < ownChoice.OfferedAtEventSequence)
+                .SelectMany(entry => entry.Options.Where(option => option is not null).Select(option => option.CardId)).OfType<string>()
+            : [];
         var ids = _snapshot.Entities.Values.Select(e => e.CardId).OfType<string>()
             .Concat(_snapshot.Choice?.Options.Select(o => o.CardId).OfType<string>() ?? [])
+            .Concat(relevantHistoryIds)
             .Concat(LineEvaluator.RequiredRelatedCardIds).Distinct().ToArray();
         var cards = (await _catalog.GetByIdsAsync(ids, _build!, cancellationToken: token)).ToDictionary(c => c.Id);
         var related = cards.Values.SelectMany(c => c.Entourage).Distinct().Where(id => !cards.ContainsKey(id)).Take(200).ToArray();
@@ -251,7 +261,7 @@ public sealed class SnapshotCoach
         new AgentToolDefinition("get_recent_events", "查询固定决策点及以前的匿名事件摘要。", Schema("""{"type":"object","properties":{},"required":[],"additionalProperties":false}"""), Empty),
         new AgentToolDefinition("validate_choice", "只验证当前我方选择的候选范围和数量，不模拟选择后效果，也不能证明斩杀。", Schema("""{"type":"object","properties":{"choice_id":{"type":"integer","minimum":1},"selected_entity_ids":{"type":"array","maxItems":30,"items":{"type":"integer","minimum":1}}},"required":["choice_id","selected_entity_ids"],"additionalProperties":false}"""),
             args => args.Count == 2 && Integer(args["choice_id"], 1, int.MaxValue) && args["selected_entity_ids"] is JsonArray { Count: <= 30 } ids && ids.All(id => Integer(id, 1, int.MaxValue))),
-        new AgentToolDefinition("evaluate_choice", "核算已确认来源的当前选择直接后果：入手、授予减费与直接牌库变化。不生成随机候选，不推断入手后的当前费用，也不提供后续可执行步骤。", Schema("""{"type":"object","properties":{"choice_id":{"type":"integer","minimum":1},"selected_entity_ids":{"type":"array","maxItems":30,"items":{"type":"integer","minimum":1}}},"required":["choice_id","selected_entity_ids"],"additionalProperties":false}"""),
+        new AgentToolDefinition("evaluate_choice", "核算已确认来源的当前选择直接后果，包括入手、授予减费、直接牌库变化、拼装与回溯阶段。组件和按钮不当作入手卡；不生成随机候选、不恢复未观察的旧局面、不提供后续可执行步骤。", Schema("""{"type":"object","properties":{"choice_id":{"type":"integer","minimum":1},"selected_entity_ids":{"type":"array","maxItems":30,"items":{"type":"integer","minimum":1}}},"required":["choice_id","selected_entity_ids"],"additionalProperties":false}"""),
             args => args.Count == 2 && Integer(args["choice_id"], 1, int.MaxValue) && args["selected_entity_ids"] is JsonArray { Count: <= 30 } ids && ids.All(id => Integer(id, 1, int.MaxValue))),
         new AgentToolDefinition("calculate_draw_odds", "仅在牌库组成有完整证据时，计算无放回抽牌概率。未知时返回限制。", Schema("""{"type":"object","properties":{"card_id":{"type":"string"},"draws":{"type":"integer","minimum":1,"maximum":30}},"required":["card_id","draws"],"additionalProperties":false}"""),
             args => args.Count == 2 && args["card_id"] is JsonValue id && id.TryGetValue<string>(out var card) && !string.IsNullOrWhiteSpace(card) && card.Length <= 100 && Integer(args["draws"], 1, 30)),

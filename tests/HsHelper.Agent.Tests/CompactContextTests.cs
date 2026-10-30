@@ -17,6 +17,7 @@ static class CompactContextTests
         yield return ("compact context uses only current own confirmed choices", () => Sync(Choices));
         yield return ("invalid choice identities never enter model context and choice requests make zero HTTP", ChoicePrivacyBoundaries);
         yield return ("spectator contexts omit both players' private cards tracking and private events", () => Sync(SpectatorPrivacy));
+        yield return ("raw completed choice history stays local in ordinary and spectator contexts", () => Sync(ChoiceHistoryPrivacy));
         yield return ("confirmed choices copy option lists and existing entity ownership is authoritative", () => Sync(ChoiceCopy));
         yield return ("compact context filters future events and retains public play multiplicity", () => Sync(EventBoundary));
         yield return ("compact context fails closed on unconfirmed perspectives and stale tracking", () => Sync(UnconfirmedPerspective));
@@ -35,6 +36,18 @@ static class CompactContextTests
     private static EntitySnapshot Entity(int id, string? card, string zone, int controller, params (string, string)[] extra)
         => new(id, card, EntityKind.Card, new Dictionary<string, string>(extra.Select(pair => new KeyValuePair<string, string>(pair.Item1, pair.Item2)))
         { ["ZONE"] = zone, ["CONTROLLER"] = controller.ToString() }.ToFrozenDictionary());
+    private static void ChoiceHistoryPrivacy()
+    {
+        const string probe = "PRIVATE_CHOICE_HISTORY_PROBE";
+        var frame = State();
+        var entry = new ChoiceHistoryEntry(90, 2, "GENERAL", 999, probe, 1, 1, 70, 80,
+            [new(998, probe, 2, 1)], [], [998], true);
+        frame = frame with { ChoiceHistory = new(frame.MatchId, frame.StateVersion, frame.EventSequence, [entry], true, 0, [probe]) };
+        foreach (var candidate in new[] { frame, frame with { IsSpectating = true }, frame with { LocalPlayerId = null } })
+            Check(!CompactAdviceContextBuilder.Build(candidate, "255790").ToJsonString().Contains(probe, StringComparison.Ordinal),
+                "Raw private choice history entered the compact model context.");
+    }
+
     private static GameSnapshot State() => new("compact-fixture", 100, 100, 5, 1, 1, GamePhase.Main,
         new[]
         {

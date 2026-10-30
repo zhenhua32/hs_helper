@@ -51,6 +51,9 @@ public static class CompactAdviceContextBuilder
             entity.Zone == "PLAY" || local.HasValue && entity.ControllerId == local && entity.Zone is "HAND" or "SECRET")
             .OrderBy(entity => entity.Id).ToArray();
         var choice = OwnChoice(snapshot);
+        var choiceSourceCardId = choice?.SourceEntityId is { } sourceId && snapshot.Entities.TryGetValue(sourceId, out var source) &&
+            source.Kind == EntityKind.Card && source.ControllerId == local && source.Zone is "PLAY" or "GRAVEYARD" &&
+            choice.SourceCardId == source.CardId ? source.CardId : null;
         var contextLimits = new List<string>();
         if (snapshot.Choice is not null && choice is null)
             contextLimits.Add("当前选择的视角、稳定性或候选证据未通过核对，已省略其候选身份。");
@@ -66,6 +69,7 @@ public static class CompactAdviceContextBuilder
             contextLimits.Add("牌库追踪附加信息与当前视角、对局、局面版本或卡库版本不匹配，已省略其组成与数量。");
         var cardIds = visible.Select(entity => entity.CardId).OfType<string>()
             .Concat(choice?.Options.Select(option => option.CardId).OfType<string>() ?? [])
+            .Concat(choiceSourceCardId is null ? [] : new[] { choiceSourceCardId })
             .Concat(plays.Select(play => play.CardId).OfType<string>())
             .Concat(tracking?.KnownRemaining.Keys ?? []).ToHashSet(StringComparer.Ordinal);
         var dbfIds = (deck?.Cards.Select(card => card.DbfId) ?? [])
@@ -103,8 +107,13 @@ public static class CompactAdviceContextBuilder
             choice = choice is null ? null : new
             {
                 confirmed = true, id = choice.Id, player_id = choice.PlayerId, type = choice.Type, source_entity_id = choice.SourceEntityId,
+                source_card_id = choiceSourceCardId,
                 count_min = choice.CountMin, count_max = choice.CountMax,
-                options = choice.Options.OrderBy(option => option.Position).Select(option => new { entity_id = option.EntityId, card_id = option.CardId, position = option.Position }).ToArray()
+                options = choice.Options.OrderBy(option => option.Position).Select(option => new
+                {
+                    entity_id = option.EntityId, card_id = option.CardId, position = option.Position,
+                    observed_tags = snapshot.Entities.TryGetValue(option.EntityId, out var candidate) ? Tags(candidate) : null
+                }).ToArray()
             },
             imported_deck = deck is null ? null : new
             {

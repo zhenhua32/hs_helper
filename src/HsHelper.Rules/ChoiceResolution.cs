@@ -22,8 +22,10 @@ public sealed record ChoiceResolutionEvaluation(string MatchId, long StateVersio
     int? HandLimit, ChoiceDirectDeckChange? DirectDeckChange, IReadOnlyList<string> Errors,
     IReadOnlyList<string> Assumptions, IReadOnlyList<string> Unknowns, IReadOnlyList<string> RuleCoverage)
 {
-    public bool SelectionOnly => CardOutcomes.Count == 0;
-    public bool ResolvesEffects => CardOutcomes.Count > 0;
+    public CraftChoiceOutcome? Crafting { get; init; }
+    public RewindChoiceResolution? Rewind { get; init; }
+    public bool SelectionOnly => !ResolvesEffects;
+    public bool ResolvesEffects => CardOutcomes.Count > 0 || Crafting?.ResolvesEffects == true || Rewind?.ResolvesEffects == true;
     public bool CanEvaluateFollowupActions => false;
 }
 
@@ -61,6 +63,8 @@ public sealed partial class LineEvaluator
         int? handBefore = null, handAfter = null, handLimit = null;
         ChoiceDirectDeckChange? deckChange = null;
         var outcomes = new List<ChoiceCardOutcome>();
+        CraftChoiceOutcome? crafting = null;
+        RewindChoiceResolution? rewind = null;
         if (validation.Verification != LineVerification.Verified)
         {
             unknowns.AddRange(validation.Assumptions);
@@ -76,21 +80,13 @@ public sealed partial class LineEvaluator
         { unknowns.Add("候选集合存在归属冲突，不能可靠推导选择后效果。"); return Result(LineVerification.Unsupported, true); }
         if (choice.SourceEntityId is not { } sourceId || !snapshot.Entities.TryGetValue(sourceId, out var source) ||
             source.Kind != EntityKind.Card || source.ControllerId != snapshot.LocalPlayerId ||
-            source.Zone is not ("PLAY" or "GRAVEYARD") || source.CardId is null)
+            source.Zone is not ("PLAY" or "GRAVEYARD") || source.CardId is null ||
+            choice.SourceCardId != source.CardId)
         { unknowns.Add("未确认我方已使用的选择来源，不能把手中、牌库中或对手的卡当作已触发的来源。"); return Result(LineVerification.Unsupported, true); }
         sourceEntityId = source.Id; sourceCardId = source.CardId;
         if (!cards.TryGetValue(source.CardId, out var sourceCard) || sourceCard.Id != source.CardId || string.IsNullOrWhiteSpace(sourceCard.Name))
         { unknowns.Add("固定版本卡库缺少选择来源的资料，不能核对其效果。"); return Result(LineVerification.Unsupported, true); }
         sourceName = sourceCard.Name;
-        var origin = source.CardId switch
-        {
-            "CORE_DS1_184" when sourceCard.Type == "SPELL" => "Deck",
-            "JAIL_831" when sourceCard.Type == "MINION" => "Sideboard",
-            "TLC_824" when sourceCard.Type == "SPELL" => "DiscoverPool",
-            _ => null
-        };
-        if (origin is null)
-        { unknowns.Add("该来源的发现、拼装或回溯效果尚未展开。"); return Result(LineVerification.Unsupported, true); }
         var option = choice.Options.Single(option => option.EntityId == selected[0]);
         if (string.IsNullOrWhiteSpace(option.CardId))
         { unknowns.Add("所选候选身份未知，不能虚构入手卡牌。"); return Result(LineVerification.Unsupported, true); }
@@ -114,6 +110,32 @@ public sealed partial class LineEvaluator
         bool? added = handBefore.HasValue && handLimit.HasValue ? handBefore.Value < handLimit.Value : null;
         handAfter = added switch { true => handBefore + 1, false => handBefore, _ => null };
         if (!handLimit.HasValue) unknowns.Add("当前手牌上限未观察到，不能确认是否会因满手而无法加入。");
+        if (source.CardId is "BE_044" or "TLC_EVENT_400")
+        {
+            crafting = CraftChoiceRules.Evaluate(snapshot, option.EntityId, cards);
+            coverage.AddRange(crafting.RuleCoverage); unknowns.AddRange(crafting.Unknowns);
+            handAfter = crafting.AddedToHand switch { true => added == true ? handBefore + 1 : null, false => handBefore, _ => null };
+            return Result(crafting.ResolvesEffects ? LineVerification.Conditional : LineVerification.Unsupported, true);
+        }
+        if (source.CardId is "CORE_EDR_004_2026" or "CORE_EDR_004")
+        {
+            rewind = RewindChoiceRules.Evaluate(snapshot, source, option, cards);
+            if (rewind is not null)
+            {
+                coverage.AddRange(rewind.RuleCoverage); unknowns.AddRange(rewind.Unknowns);
+                handAfter = null;
+                return Result(rewind.ResolvesEffects ? LineVerification.Conditional : LineVerification.Unsupported, true);
+            }
+        }
+        var origin = source.CardId switch
+        {
+            "CORE_DS1_184" when sourceCard.Type == "SPELL" => "Deck",
+            "JAIL_831" when sourceCard.Type == "MINION" => "Sideboard",
+            "TLC_824" when sourceCard.Type == "SPELL" => "DiscoverPool",
+            _ => null
+        };
+        if (origin is null)
+        { unknowns.Add("该来源的发现、拼装或回溯效果尚未展开。"); return Result(LineVerification.Unsupported, true); }
         if (origin == "Deck")
         {
             var tracking = snapshot.DeckTracking;
@@ -161,8 +183,10 @@ public sealed partial class LineEvaluator
         ChoiceResolutionEvaluation Result(LineVerification verification, bool? legal) => new(
             snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence, snapshot.Choice?.Id,
             verification, legal, sourceEntityId, sourceCardId, sourceName,
-            Array.AsReadOnly(selected), Array.AsReadOnly(outcomes.ToArray()), handBefore, outcomes.Count > 0 ? handAfter : null, handLimit, deckChange,
+            Array.AsReadOnly(selected), Array.AsReadOnly(outcomes.ToArray()), handBefore,
+            outcomes.Count > 0 || crafting?.ResolvesEffects == true || rewind?.ResolvesEffects == true ? handAfter : null, handLimit, deckChange,
             Array.AsReadOnly(errors.ToArray()), Array.AsReadOnly(assumptions.ToArray()),
-            Array.AsReadOnly(unknowns.Distinct(StringComparer.Ordinal).ToArray()), Array.AsReadOnly(coverage.Distinct(StringComparer.Ordinal).ToArray()));
+            Array.AsReadOnly(unknowns.Distinct(StringComparer.Ordinal).ToArray()), Array.AsReadOnly(coverage.Distinct(StringComparer.Ordinal).ToArray()))
+            { Crafting = crafting, Rewind = rewind };
     }
 }

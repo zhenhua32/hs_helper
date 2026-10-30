@@ -82,7 +82,7 @@ public static class LocalToolsHiddenSmoke
             entities[1] = entities[1] with { Tags = entities[1].Tags.Append(new KeyValuePair<string, string>("MAXHANDSIZE", "10")).ToFrozenDictionary() };
             entities[98] = new(98, "CORE_DS1_184", EntityKind.Card,
                 new Dictionary<string, string> { ["CONTROLLER"] = "1", ["ZONE"] = "GRAVEYARD", ["CARDTYPE"] = "SPELL" }.ToFrozenDictionary());
-            var trackingChoice = choiceFrame with { Entities = entities.ToFrozenDictionary(), Choice = choiceFrame.Choice! with { SourceEntityId = 98 } };
+            var trackingChoice = choiceFrame with { Entities = entities.ToFrozenDictionary(), Choice = choiceFrame.Choice! with { SourceEntityId = 98, SourceCardId = "CORE_DS1_184" } };
             window.UpdateBinding(trackingChoice, BattleViewRegression.Build, isHistorical: true); Await(window.BindingReady);
             choices = Control<ListBox>(window, "LocalChoicesList"); choices.SelectedIndex = 1;
             Click(Control<Button>(window, "LocalEvaluateChoiceButton"));

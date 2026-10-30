@@ -651,6 +651,8 @@ Run("stale unavailable duplicate foreign or out-of-range choices are rejected", 
 });
 
 foreach (var (name, run) in ChoiceResolutionChecks.Cases(cards)) Run(name, run);
+foreach (var (name, run) in CraftChoiceChecks.Cases(cards)) Run(name, run);
+foreach (var (name, run) in RewindChoiceChecks.Cases()) Run(name, run);
 
 if (args.Length == 1)
 {

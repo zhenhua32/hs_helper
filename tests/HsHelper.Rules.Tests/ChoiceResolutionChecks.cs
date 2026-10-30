@@ -85,6 +85,8 @@ internal static class ChoiceResolutionChecks
         {
             frame with { ClientBuild = "900001" },
             frame with { Choice = frame.Choice! with { SourceEntityId = null } },
+            frame with { Choice = frame.Choice! with { SourceCardId = null } },
+            frame with { Choice = frame.Choice! with { SourceCardId = "JAIL_831" } },
             frame with { Choice = frame.Choice! with { Type = "DREDGE" } },
             Frame("VANILLA", "PLAY"),
             frame with { Phase = GamePhase.Mulligan }
@@ -177,6 +179,13 @@ internal static class ChoiceResolutionChecks
         }
         var missing = Evaluate(frame with { Choice = frame.Choice! with { Options = null! } }, cards);
         Check(missing.IsLegal is null && !missing.ResolvesEffects, "A missing option list crashed or became a resolved choice.");
+        var malformed = frame.Entities[40] with { Tags = null! };
+        Check(!Evaluate(Replace(frame, malformed), cards).ResolvesEffects,
+            "A malformed entity reached consequence evaluation through the common choice guard.");
+        var nullOption = frame with { Choice = frame.Choice! with { Options = [null!] } };
+        Check(!Evaluate(nullOption, cards).ResolvesEffects &&
+            new LineEvaluator().ValidateChoice(nullOption, [40], 7).Verification == LineVerification.Unsupported,
+            "A malformed candidate bypassed validation or crashed before the special rule guard.");
     }
 
     private static void Immutable(IReadOnlyDictionary<string, CardRecord> cards)
@@ -205,7 +214,7 @@ internal static class ChoiceResolutionChecks
                 .ToFrozenDictionary(entity => entity.Id), new(true, true, true, true, 0, []))
         {
             ClientBuild = LineEvaluator.AuditedBuild,
-            Choice = new(7, 1, "GENERAL", 30, 1, 1, [new(40, "EDR_227", 1, 1), new(41, "EDR_480", 1, 2)], true)
+            Choice = new(7, 1, "GENERAL", 30, 1, 1, [new(40, "EDR_227", 1, 1), new(41, "EDR_480", 1, 2)], true) { SourceCardId = source }
         };
         return frame with { DeckTracking = new(frame.MatchId, frame.StateVersion, "deck-a", LineEvaluator.AuditedBuild, 4,
             new Dictionary<string, int> { ["EDR_227"] = 2, ["EDR_480"] = 1, ["KEEP"] = 1 }, 0, true, []) };

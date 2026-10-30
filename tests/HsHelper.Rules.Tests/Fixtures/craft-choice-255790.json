@@ -1,0 +1,26 @@
+{
+  "build": "255790",
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "zombeastMechanicSource": "https://news.blizzard.com/en-gb/article/20888401/join-the-knights-of-the-frozen-throne",
+  "assembleMechanicSource": "https://www.reddit.com/r/hearthstone/comments/1wf8f4k/assemble_a_new_keyword_in_reign_of_the_black/",
+  "cards": [
+    {
+      "artist": "James Ryman",
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 120648,
+      "flavor": "劫日快乐，失落之城！",
+      "howToEarn": "打开<i>安戈洛龟途</i>卡牌包后可解锁。",
+      "howToEarnGolden": "打开<i>安戈洛龟途</i>金色包后可解锁。",
+      "id": "TLC_EVENT_400",
+      "mechanics": ["SIDE_QUEST"],
+      "name": "围攻城门",
+      "rarity": "EPIC",
+      "set": "EVENT",
+      "text": "<b>支线任务：</b>使用亡灵或野兽牌，总计3张。<b>奖励：</b>制造一个自定义的僵尸兽，其法力值消耗减少（3）点。",
+      "type": "SPELL"
+    }
+  ]
+}

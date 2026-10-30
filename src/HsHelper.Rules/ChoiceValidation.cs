@@ -35,8 +35,8 @@ public sealed partial class LineEvaluator
             else coverage.Add("current-choice-owner");
             if (!choice.IsReady) { unsupported = true; assumptions.Add("候选详情尚未读取完成。"); }
             else coverage.Add("ready-choice-options");
-            if (choice.CountMin < 0 || choice.CountMax < choice.CountMin || choice.CountMax > choice.Options.Count ||
-                choice.Options.Any(option => option.EntityId <= 0) || choice.Options.Select(option => option.EntityId).Distinct().Count() != choice.Options.Count)
+            if (choice.Options is null || choice.CountMin < 0 || choice.CountMax < choice.CountMin || choice.CountMax > choice.Options.Count ||
+                choice.Options.Any(option => option is null || option.EntityId <= 0) || choice.Options.Select(option => option.EntityId).Distinct().Count() != choice.Options.Count)
             { unsupported = true; assumptions.Add("候选集合或选择数量约束不完整或存在冲突。"); }
             else
             {

@@ -1,0 +1,288 @@
+{
+  "build": "255790",
+  "locale": "zhCN",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "cards": [
+    {
+      "artist": "Zoltan Boros",
+      "attack": 4,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 119798,
+      "flavor": "这块陨石离我们太近了吧！",
+      "health": 2,
+      "howToEarn": "打开<i>深暗领域</i>卡牌包后可解锁。",
+      "howToEarnGolden": "打开<i>深暗领域</i>金色包后可解锁。",
+      "id": "CORE_EDR_004",
+      "mechanics": [
+        "BATTLECRY",
+        "DISCOVER"
+      ],
+      "name": "迅猛龙先锋",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "EPIC",
+      "set": "LEGACY",
+      "text": "<b>回溯</b>。<b>战吼：</b><b>发现</b>一张具有<b>黑暗之赐</b>的野兽牌。<b>延系：</b>其法力值消耗减少（1）点。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Zoltan Boros",
+      "attack": 4,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "countAsCopyOfDbfId": 119798,
+      "dbfId": 131356,
+      "flavor": "这块陨石离我们太近了吧！",
+      "health": 2,
+      "howToEarn": "完成教学后解锁。",
+      "howToEarnGolden": "总计赢得2500场对战后解锁。",
+      "id": "CORE_EDR_004_2026",
+      "mechanics": [
+        "BATTLECRY",
+        "DISCOVER"
+      ],
+      "name": "迅猛龙先锋",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "EPIC",
+      "set": "CORE",
+      "text": "<b>回溯</b>。<b>战吼：</b><b>发现</b>一张具有<b>黑暗之赐</b>的野兽牌。<b>延系：</b>其法力值消耗减少（1）点。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Vlad Botos",
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 113796,
+      "hideCost": true,
+      "id": "EDR_100t",
+      "name": "起床怒气",
+      "referencedTags": [
+        "LIFESTEAL"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "+3攻击力和<b>吸血</b>。",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 113797,
+      "hideCost": true,
+      "id": "EDR_100t1",
+      "name": "休憩饱足",
+      "referencedTags": [
+        "ELUSIVE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "+2/+2和<b>扰魔</b>。",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "HUNTER",
+      "cost": 0,
+      "dbfId": 115658,
+      "hideCost": true,
+      "id": "EDR_100t10",
+      "name": "梦魇之鳞",
+      "set": "EMERALD_DREAM",
+      "text": "拥有一道承受3次伤害才会破灭的<b>圣盾</b>。",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 120225,
+      "hideCost": true,
+      "id": "EDR_100t13",
+      "mechanics": [
+        "DIVINE_SHIELD",
+        "WINDFURY"
+      ],
+      "name": "鹰身人之爪",
+      "set": "EMERALD_DREAM",
+      "text": "<b>圣盾</b>，<b>风怒</b>",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 113798,
+      "hideCost": true,
+      "id": "EDR_100t2",
+      "name": "短小利爪",
+      "set": "EMERALD_DREAM",
+      "text": "法力值消耗减少（2）点，但拥有-2攻击力。",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 113799,
+      "hideCost": true,
+      "id": "EDR_100t3",
+      "name": "衣甲厚实",
+      "referencedTags": [
+        "TAUNT"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "+4生命值和<b>嘲讽</b>。",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 113800,
+      "hideCost": true,
+      "id": "EDR_100t4",
+      "name": "心中的恶魔",
+      "set": "EMERALD_DREAM",
+      "text": "<b>亡语：</b>抽两张牌。",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 113801,
+      "hideCost": true,
+      "id": "EDR_100t5",
+      "name": "活体梦魇",
+      "set": "EMERALD_DREAM",
+      "text": "当你使用本牌时，召唤一个它的2/2的复制。",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 113802,
+      "hideCost": true,
+      "id": "EDR_100t6",
+      "mechanics": [
+        "CHARGE"
+      ],
+      "name": "梦境行者",
+      "set": "EMERALD_DREAM",
+      "text": "<b>冲锋</b>",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 113882,
+      "hideCost": true,
+      "id": "EDR_100t7",
+      "name": "粗暴唤醒",
+      "set": "EMERALD_DREAM",
+      "text": "本随从的<b>战吼</b>会触发两次。",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 113884,
+      "hideCost": true,
+      "id": "EDR_100t8",
+      "name": "甜美梦境",
+      "set": "EMERALD_DREAM",
+      "text": "+4/+5。\n将本牌置于你的\n牌库顶。",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 113886,
+      "hideCost": true,
+      "id": "EDR_100t9",
+      "mechanics": [
+        "REBORN"
+      ],
+      "name": "回荡恐怖",
+      "set": "EMERALD_DREAM",
+      "text": "<b>复生</b>。<b>复生</b>时会具有所有生命值和附加效果。",
+      "type": "SPELL"
+    },
+    {
+      "artist": "Patrik Bjorkstrom",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 114020,
+      "flavor": "所谓物以类聚，那么幽爪熊该和谁一起冬眠？",
+      "health": 2,
+      "id": "EDR_227",
+      "mechanics": [
+        "DEATHRATTLE",
+        "RUSH"
+      ],
+      "name": "幽爪熊",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。<b>亡语：</b><b>灌注</b>你的英雄技能。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Eva Widermann",
+      "attack": 9,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 9,
+      "dbfId": 114254,
+      "elite": true,
+      "flavor": "以勇猛果决而闻名于世，且拥有的名号众多，其中包括洛戈什，还有巨狼。",
+      "health": 9,
+      "id": "EDR_480",
+      "mechanics": [
+        "AURA",
+        "RUSH"
+      ],
+      "name": "戈德林",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。友方野兽造成的伤害翻倍。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Vika Yarova",
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 119589,
+      "hideCost": true,
+      "id": "TIME_000ta",
+      "name": "维持时间线",
+      "set": "TIME_TRAVEL",
+      "text": "什么都不做。<i>这条时间线很\n完美！</i>",
+      "type": "SPELL"
+    },
+    {
+      "artist": "Vika Yarova",
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 119636,
+      "hideCost": true,
+      "id": "TIME_000tb",
+      "name": "回溯时间线",
+      "set": "TIME_TRAVEL",
+      "text": "<b>回溯</b>这张牌的效果。",
+      "type": "SPELL"
+    }
+  ]
+}
