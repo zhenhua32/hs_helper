@@ -365,6 +365,15 @@ public static class LocalToolResultFormatter
         if (evaluation["Result"] is JsonObject state)
         {
             lines.Add("模拟后可用法力：" + state["AvailableMana"]);
+            if (state["OpponentDefeatedByPayment"]?.GetValue<bool>() == true)
+                lines.Add("对手因生命支付达到零生命，已停止计算该牌后续效果。");
+            if (state["NextCardCostsOpponentHealth"]?.GetValue<bool>() == true)
+                lines.Add("下一张牌将以对手生命支付（当前费用必须不超过10，仍需满足出牌条件）。");
+            else if (state.ContainsKey("NextCardCostsOpponentHealth") && state["NextCardCostsOpponentHealth"] is null)
+                lines.Add("下一张牌的生命支付效果：未确认。");
+            if (state["OpponentHealthPayments"] is JsonArray payments)
+                foreach (var payment in payments.OfType<JsonObject>())
+                    lines.Add($"· {entityName(payment["CardEntityId"]!.GetValue<int>())}：由{entityName(payment["PayingHeroEntityId"]!.GetValue<int>())}的生命支付 {payment["Cost"]}（生命 {payment["HealthBefore"]} → {payment["HealthAfter"]}，护甲不参与支付，支付不视为伤害）。");
             if (state["Entities"] is JsonArray entities)
                 foreach (var entity in entities.OfType<JsonObject>().Where(e => e["Type"]?.ToString() is "HERO" or "MINION"))
                     lines.Add($"· {entityName(entity["EntityId"]!.GetValue<int>())}：攻击 {entity["Attack"]?.ToString() ?? "未知"} / 生命 {entity["RemainingHealth"]?.ToString() ?? "未知"} / 护甲 {entity["Armor"]}；{(entity["IsAlive"]?.GetValue<bool>() == true ? "存活" : "已离场")}");

@@ -17,13 +17,14 @@ public sealed partial class LineEvaluator
     // State tag names: https://github.com/HearthSim/python-hearthstone/blob/master/hearthstone/enums.py.
     public const string AuditedBuild = "255790";
     public static IReadOnlyList<string> RequiredRelatedCardIds { get; } = Array.AsReadOnly(new[]
-        { "EDR_850p", "EDR_850pe1", "EDR_850pe5", "DINO_421e" });
+        { "EDR_850p", "EDR_850pe1", "EDR_850pe5", "DINO_421e", "EDR_489e1", "EDR_489e2" });
     public static IReadOnlyList<string> CoverageSummary { get; } = Array.AsReadOnly(new[]
     {
         "基础攻击、嘲讽、圣盾、免疫、冻结、风怒、冲锋、突袭、剧毒、吸血、护甲和观察到的当前费用",
         "build255790：基础稳固射击、硬币、奥术射击、杀戮命令、猎人印记、精灵弓箭手、安装爆炸陷阱、戈德林伤害翻倍",
         "build255790：苦花骑士、振翅守卫与幽爪熊灌注；单一已知候选野兽的巨狼祝福；无法确认灌注参数时保留条件",
         "build255790：熔岩猎犬入场、突袭及击杀最后敌方随从后对唯一敌方英雄的分配伤害；多个候选仍保留随机限制",
+        "build255790：阿迦玛甘入场与下一张牌的对手生命支付，当前费用上限10；未知剩余效力不由本体推断",
         "未知奥秘、未覆盖光环/触发、亡语与复生会降低为有条件结果；发现与随机选项不自行生成，选择范围可单独核验",
         "斩杀搜索有限深度，未找到结果不代表不存在；只有完整已覆盖序列可标记已验证斩杀"
     });
@@ -110,7 +111,7 @@ public sealed partial class LineEvaluator
         }
         return new(false, [], null, nodes, false, SearchCoverage + " 未找到已验证方案不表示不存在斩杀。");
     }
-    private const string SearchCoverage = "有限深度搜索，枚举攻击、稳固射击、已支持直伤、猎人印记及已覆盖的幽爪熊/戈德林/熔岩猎犬入场；不枚举随机、发现、抽牌或完整召唤组合。";
+    private const string SearchCoverage = "有限深度搜索，枚举攻击、稳固射击、已支持直伤、猎人印记及已覆盖随从入场，包括阿迦玛甘生命支付组合；不枚举随机、发现、抽牌或完整召唤组合。";
 
     private static IEnumerable<PlannedAction> SearchCandidates(SimulatedState state, int? local,
         IReadOnlyDictionary<string, CardRecord> cards)
@@ -123,11 +124,14 @@ public sealed partial class LineEvaluator
                 foreach (var target in targets) yield return new(ActionKind.Attack, source.EntityId, target.EntityId);
             if (source.Type == "HERO_POWER" && source.Zone == "PLAY" && source.CardId is { } hp && SteadyShot.Contains(hp) && source.Cost <= state.AvailableMana)
                 yield return new(ActionKind.HeroPower, source.EntityId);
-            if (source.Zone != "HAND" || source.Cost > state.AvailableMana || source.CardId is not { } id || !cards.ContainsKey(id)) continue;
+            if (source.Zone != "HAND" || (state.NextCardCostsOpponentHealth != true && source.Cost > state.AvailableMana) ||
+                source.CardId is not { } id || !cards.ContainsKey(id)) continue;
             if (ArcaneShot.Contains(id) || KillCommand.Contains(id) || HuntersMark.Contains(id))
                 foreach (var target in targets.Where(e => !HuntersMark.Contains(id) || e.Type == "MINION"))
                     yield return new(ActionKind.PlayCard, source.EntityId, target.EntityId);
-            if (SearchableRushBodies.Contains(id)) yield return new(ActionKind.PlayCard, source.EntityId);
+            if (SearchableRushBodies.Contains(id) || id == "EDR_489" ||
+                (state.NextCardCostsOpponentHealth == true && AuditedHunterBodies.Contains(id)))
+                yield return new(ActionKind.PlayCard, source.EntityId);
         }
     }
 
@@ -220,8 +224,7 @@ public sealed partial class LineEvaluator
         if (state.Has(source, "CANT_PLAY")) { state.Invalid("该手牌当前不能使用。"); return; }
         var profile = state.Profile(source);
         if (profile is null) { state.Unsupported("UNKNOWN_CARD_EFFECT", "当前卡库缺少这张手牌的效果。"); return; }
-        if (source.Cost is null) { state.Unsupported("UNKNOWN_CURRENT_COST", "手牌当前费用未知，不能使用基础印刷费用代替。"); return; }
-        if (source.Cost > state.Mana) { state.Invalid("当前法力不足。"); return; }
+        if (!state.CanAffordCard(source)) return;
         var id = source.CardId!;
         if (TryPlayBeastHunter(state, action, source, profile)) return;
         if ((id == "GAME_005" || ArcaneShot.Contains(id) || KillCommand.Contains(id) || HuntersMark.Contains(id) ||
@@ -239,6 +242,7 @@ public sealed partial class LineEvaluator
             { target = state.Target(action.TargetEntityId); if (target is null || !state.CanTarget(target, "BATTLECRY")) return; }
             else if (action.TargetEntityId is not null) { state.Invalid("该随从不需要目标。"); return; }
             if (!state.Summon(source, profile)) return;
+            if (state.OpponentDefeatedByPayment) return;
             if (target is not null) state.Damage(source, target, 1, false);
             state.ResolveDeaths(); state.Coverage.Add(ElvenArcher.Contains(id) ? "elven-archer-battlecry-1" : "simple-minion-summon");
             return;
@@ -248,6 +252,7 @@ public sealed partial class LineEvaluator
         {
             if (action.TargetEntityId is not null) { state.Invalid("硬币不需要目标。"); return; }
             if (!state.Pay(source)) return;
+            if (state.OpponentDefeatedByPayment) return;
             source.Zone = "GRAVEYARD";
             var gain = Math.Max(0, Math.Min(1, state.MaximumMana - state.Mana));
             state.Mana += gain;
@@ -260,6 +265,7 @@ public sealed partial class LineEvaluator
             var ownSecrets = state.Entities.Values.Where(e => e.Alive && e.Controller == state.Local && e.Zone == "SECRET" && state.Profile(e)?.Mechanics.Contains("SECRET") == true).ToArray();
             if (ownSecrets.Length >= 5 || ownSecrets.Any(e => e.CardId == id)) { state.Invalid("奥秘已达上限或存在同名奥秘。"); return; }
             if (!state.Pay(source)) return;
+            if (state.OpponentDefeatedByPayment) return;
             source.Zone = "SECRET"; state.Coverage.Add("explosive-trap-install-only"); return;
         }
         if (!ArcaneShot.Contains(id) && !KillCommand.Contains(id) && !HuntersMark.Contains(id))
@@ -267,6 +273,7 @@ public sealed partial class LineEvaluator
         var targetEntity = state.Target(action.TargetEntityId); if (targetEntity is null || !state.CanTarget(targetEntity, "SPELL")) return;
         if (HuntersMark.Contains(id) && targetEntity.Type != "MINION") { state.Invalid("猎人印记需要随从目标。"); return; }
         if (!state.Pay(source)) return;
+        if (state.OpponentDefeatedByPayment) return;
         source.Zone = "GRAVEYARD";
         if (HuntersMark.Contains(id))
         { targetEntity.MaximumHealth = 1; targetEntity.Health = 1; state.Coverage.Add("hunters-mark-set-health-1"); return; }
@@ -351,6 +358,7 @@ public sealed partial class LineEvaluator
             ManaKnown = Player?.Int("RESOURCES") is not null;
             Mana = Math.Max(0, (Player?.Int("RESOURCES") ?? 0) - (Player?.Int("RESOURCES_USED") ?? 0) - (Player?.Int("OVERLOAD_LOCKED") ?? 0) + (Player?.Int("TEMP_RESOURCES") ?? 0));
             MaximumMana = Player?.Int("MAXRESOURCES") ?? 10;
+            InitializeOpponentHealthPayment();
             Coverage.Add("complete-state-default-zero-flags");
         }
 
@@ -430,6 +438,7 @@ public sealed partial class LineEvaluator
         public bool Pay(Entity source)
         {
             if (source.Cost is null) { Unsupported("UNKNOWN_CURRENT_COST", "当前费用未知。"); return false; }
+            if (PayWithOpponentHealth(source) is { } alternate) return alternate;
             if (source.Cost < 0 || source.Cost > Mana) { Invalid("当前法力不足或费用无效。"); return false; }
             Mana -= source.Cost.Value;
             Player!.Flags["RESOURCES_USED"] = (Player.Int("RESOURCES_USED") ?? 0) + source.Cost.Value;
@@ -503,7 +512,8 @@ public sealed partial class LineEvaluator
             {
                 if (entity.Type == "ENCHANTMENT" && entity.Int("ATTACHED") is > 0 && entity.Zone != "GRAVEYARD")
                 {
-                    if (IsObservedStatEnchantment(entity)) Coverage.Add("observed-stat-only-enchantment:" + entity.CardId);
+                    if (IsObservedOpponentHealthEnchantment(entity)) Coverage.Add("EDR_489-observed-player-or-hero-enchantment");
+                    else if (IsObservedStatEnchantment(entity)) Coverage.Add("observed-stat-only-enchantment:" + entity.CardId);
                     else Conditional("存在尚未单独审计的附魔，假设它不额外改变伤害、目标、支付或触发顺序。", "UNMAPPED_ATTACHED_ENCHANTMENT");
                     continue;
                 }
@@ -528,8 +538,6 @@ public sealed partial class LineEvaluator
                 if (profile.Mechanics.Contains("TRIGGER_VISUAL")) Conditional("场上触发效果尚未完整模拟，结果带条件。", "UNKNOWN_TRIGGER");
                 if (_snapshot.ClientBuild == "255790" && entity.CardId is { } id && (BattlecryOnlyBodies.Contains(id) || ElvenArcher.Contains(id)))
                 {
-                    if (id == "EDR_489" && action.Kind == ActionKind.PlayCard)
-                    { Unsupported("AGAMAGGAN_PAYMENT", "阿迦玛甘可能留下下一张牌的生命支付效果，未确认该效果消耗前不能使用普通法力支付规则。"); return; }
                     continue;
                 }
                 if (_snapshot.ClientBuild == "255790" && entity.CardId is "EDR_480" or "EDR_227" or "DINO_421") continue;
@@ -559,7 +567,10 @@ public sealed partial class LineEvaluator
                 verification == LineVerification.Verified && potential, potential, Applied, _errors.AsReadOnly(),
                 _assumptions.OrderBy(x => x, StringComparer.Ordinal).ToArray(), _unsupported.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
                 Coverage.OrderBy(x => x, StringComparer.Ordinal).ToArray(), new(Mana, Array.AsReadOnly(entities))
-                { HeroPowerChanges = Array.AsReadOnly(_heroPowerChanges.ToArray()) });
+                { HeroPowerChanges = Array.AsReadOnly(_heroPowerChanges.ToArray()),
+                    NextCardCostsOpponentHealth = _nextCardCostsOpponentHealth,
+                    OpponentDefeatedByPayment = OpponentDefeatedByPayment,
+                    OpponentHealthPayments = Array.AsReadOnly(_opponentHealthPayments.ToArray()) });
         }
 
         private static FrozenDictionary<string, int> ResultFlags(Entity entity)

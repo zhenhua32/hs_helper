@@ -447,6 +447,165 @@ Run("silenced or explicitly suppressed battlecries do not apply native imbue", (
     var noTrigger = Eval(WithWolf(Fixture(suppressed), 2), new PlannedAction(ActionKind.PlayCard, 30));
     Equal(LineVerification.Verified, noTrigger.Verification); Equal(0, noTrigger.Result.HeroPowerChanges.Count);
 });
+Run("real agamaggan arms exactly the next card using current cost and freezes payment evidence", () =>
+{
+    var snapshot = Fixture(Hand(30, "EDR_489", 2), ObservedHand(31, "DINO_421", 5, 8, 8));
+    var before = JsonSerializer.Serialize(snapshot);
+    var armed = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30));
+    Equal(LineVerification.Verified, armed.Verification); Equal<bool?>(true, armed.Result.NextCardCostsOpponentHealth);
+    Equal(8, armed.Result.AvailableMana); Equal(20, Find(armed, 11).RemainingHealth);
+    var paid = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 31));
+    Equal(LineVerification.Verified, paid.Verification); Equal<bool?>(false, paid.Result.NextCardCostsOpponentHealth);
+    Equal(8, paid.Result.AvailableMana); Equal(15, Find(paid, 11).RemainingHealth);
+    var receipt = paid.Result.OpponentHealthPayments.Single();
+    Equal(31, receipt.CardEntityId); Equal("DINO_421", receipt.CardId); Equal(11, receipt.PayingHeroEntityId);
+    Equal(5, receipt.Cost); Equal(20, receipt.HealthBefore); Equal(15, receipt.HealthAfter);
+    Equal(before, JsonSerializer.Serialize(snapshot));
+    using var json = JsonDocument.Parse(JsonSerializer.Serialize(paid));
+    Equal(5, json.RootElement.GetProperty("Result").GetProperty("OpponentHealthPayments")[0].GetProperty("Cost").GetInt32());
+    try { ((IList<OpponentHealthPayment>)paid.Result.OpponentHealthPayments).Clear(); throw new Exception("Payment evidence was mutable."); }
+    catch (NotSupportedException) { }
+});
+Run("agamaggan health payment ignores armor immunity shield damage doubling and lifesteal", () =>
+{
+    var beast = Entity(31, "DINO_421", 1, "HAND", "MINION", [("COST", 8), ("ATK", 8), ("HEALTH", 8), ("LIFESTEAL", 1)]);
+    var snapshot = Replace(Fixture(Hand(30, "EDR_489", 1), beast, Minion(22, "EDR_480", 1, 9, 9)),
+        Hero(11, 2, 20, 0, 50, 0, ("IMMUNE", 1), ("DIVINE_SHIELD", 1)));
+    var result = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 31));
+    Equal(LineVerification.Verified, result.Verification); Equal(12, Find(result, 11).RemainingHealth);
+    Equal(50, Find(result, 11).Armor); Equal(1, Find(result, 11).Flags["IMMUNE"]);
+    Equal(1, Find(result, 11).Flags["DIVINE_SHIELD"]); Equal(25, Find(result, 10).RemainingHealth);
+    Equal(9, result.Result.AvailableMana);
+});
+Run("hero powers retain agamaggan payment and a zero-cost card consumes it without health loss", () =>
+{
+    var snapshot = Fixture(Hand(30, "EDR_489", 2), Hand(31, "GAME_005", 0), Hand(32, "DINO_421", 8));
+    var power = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.HeroPower, 12));
+    Equal(LineVerification.Verified, power.Verification); Equal<bool?>(true, power.Result.NextCardCostsOpponentHealth);
+    Equal(6, power.Result.AvailableMana); Equal(18, Find(power, 11).RemainingHealth); Equal(0, power.Result.OpponentHealthPayments.Count);
+    var coin = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.HeroPower, 12), new PlannedAction(ActionKind.PlayCard, 31));
+    Equal(LineVerification.Verified, coin.Verification); Equal<bool?>(false, coin.Result.NextCardCostsOpponentHealth);
+    Equal(7, coin.Result.AvailableMana); Equal(18, Find(coin, 11).RemainingHealth);
+    Equal(0, coin.Result.OpponentHealthPayments.Single().Cost);
+    var spent = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.HeroPower, 12),
+        new PlannedAction(ActionKind.PlayCard, 31), new PlannedAction(ActionKind.PlayCard, 32));
+    Equal(LineVerification.Invalid, spent.Verification); Equal(1, spent.Result.OpponentHealthPayments.Count);
+});
+Run("agamaggan payment is consumed once and a second agamaggan can arm another payment", () =>
+{
+    var snapshot = Fixture(Hand(30, "EDR_489", 1), Hand(31, "EDR_489", 10), Hand(32, "DINO_421", 8), Hand(33, "EDR_480", 9));
+    var result = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 31),
+        new PlannedAction(ActionKind.PlayCard, 32), new PlannedAction(ActionKind.PlayCard, 33));
+    Equal(LineVerification.Verified, result.Verification); Equal(2, Find(result, 11).RemainingHealth);
+    Equal(0, result.Result.AvailableMana); Equal(2, result.Result.OpponentHealthPayments.Count);
+    Equal<bool?>(false, result.Result.NextCardCostsOpponentHealth);
+    Equal(10, result.Result.OpponentHealthPayments[0].Cost); Equal(8, result.Result.OpponentHealthPayments[1].Cost);
+});
+Run("agamaggan rejects costs over ten instead of capping health or charging a mana remainder", () =>
+{
+    var snapshot = Fixture(Hand(30, "EDR_489", 0), Hand(31, "DINO_421", 11));
+    var result = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 31));
+    Equal(LineVerification.Invalid, result.Verification); Equal(20, Find(result, 11).RemainingHealth);
+    Equal(10, result.Result.AvailableMana); Equal(0, result.Result.OpponentHealthPayments.Count);
+    Equal<bool?>(true, result.Result.NextCardCostsOpponentHealth);
+    var unknown = Replace(snapshot, Entity(31, "DINO_421", 1, "HAND", "MINION", []));
+    Equal(LineVerification.Unsupported, Eval(unknown, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 31)).Verification);
+});
+Run("agamaggan cannot spend opponent health for an illegal target or a full minion board", () =>
+{
+    var target = Fixture(Hand(30, "EDR_489", 1), Hand(31, "CORE_DS1_185", 1));
+    var invalid = Eval(target, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 31, 999));
+    Equal(LineVerification.Invalid, invalid.Verification); Equal(20, Find(invalid, 11).RemainingHealth);
+    Equal(0, invalid.Result.OpponentHealthPayments.Count); Equal<bool?>(true, invalid.Result.NextCardCostsOpponentHealth);
+    var full = Fixture([Hand(30, "EDR_489", 1), Hand(31, "DINO_421", 8),
+        .. Enumerable.Range(40, 6).Select(id => Minion(id, "VANILLA", 1, 1, 1))]);
+    var blocked = Eval(full, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 31));
+    Equal(LineVerification.Invalid, blocked.Verification); Equal(20, Find(blocked, 11).RemainingHealth);
+    Equal(0, blocked.Result.OpponentHealthPayments.Count); Equal("HAND", Find(blocked, 31).Zone);
+});
+Run("lethal opponent health payment stops before the card's battlecry or spell effect", () =>
+{
+    var snapshot = Replace(Fixture(Hand(30, "EDR_489", 1), Hand(31, "EDR_226", 2), Hand(32, "CORE_DS1_185", 1)), Hero(11, 2, 1));
+    var minion = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 31));
+    Equal(LineVerification.Verified, minion.Verification); Equal(true, minion.IsLethal);
+    Equal(-1, Find(minion, 11).RemainingHealth); Equal(false, Find(minion, 11).IsAlive); Equal(0, minion.Result.HeroPowerChanges.Count);
+    Equal(true, minion.Result.OpponentDefeatedByPayment); Equal("HAND", Find(minion, 31).Zone);
+    Equal("HERO_05bp", Find(minion, 12).CardId); Equal(0, minion.UnsupportedMechanics.Count);
+    var spell = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 32, 10));
+    Equal(LineVerification.Verified, spell.Verification); Equal(true, spell.IsLethal);
+    Equal(25, Find(spell, 10).RemainingHealth); Equal(0, Find(spell, 11).RemainingHealth);
+    Equal("HAND", Find(spell, 32).Zone);
+    var coin = Eval(Replace(snapshot, Hand(33, "GAME_005", 1)), new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 33));
+    Equal(LineVerification.Verified, coin.Verification); Equal(true, coin.IsLethal);
+    Equal(9, coin.Result.AvailableMana); Equal(0, Find(coin, 2).Flags.GetValueOrDefault("TEMP_RESOURCES"));
+    Equal("HAND", Find(coin, 33).Zone);
+    var trap = Eval(Replace(snapshot, Hand(34, "CORE_EX1_610", 2)), new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 34));
+    Equal(LineVerification.Verified, trap.Verification); Equal(true, trap.IsLethal);
+    Equal("HAND", Find(trap, 34).Zone); Equal(false, trap.RuleCoverage.Contains("explosive-trap-install-only"));
+    Equal(LineVerification.Invalid, Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 31),
+        new PlannedAction(ActionKind.HeroPower, 12)).Verification);
+});
+Run("observed active agamaggan enchantments bind to the local player or hero and are consumed", () =>
+{
+    foreach (var (card, attached) in new[] { ("EDR_489e1", 2), ("EDR_489e2", 10) })
+    {
+        var effect = Entity(50, card, 1, "PLAY", "ENCHANTMENT", [("ATTACHED", attached)]);
+        var snapshot = Replace(Fixture(Hand(31, "DINO_421", 8), effect), Player(2, 1, 0, 10));
+        var before = JsonSerializer.Serialize(snapshot);
+        var result = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 31));
+        Equal(LineVerification.Verified, result.Verification); Equal(12, Find(result, 11).RemainingHealth);
+        Equal(0, result.Result.AvailableMana); Equal(false, Find(result, 50).IsAlive); Equal("GRAVEYARD", Find(result, 50).Zone);
+        Equal<bool?>(false, result.Result.NextCardCostsOpponentHealth); Equal(before, JsonSerializer.Serialize(snapshot));
+    }
+});
+Run("stale moved or dead agamaggan enchantments never enable free cards", () =>
+{
+    foreach (var zone in new[] { "GRAVEYARD", "REMOVEDFROMGAME" })
+    {
+        var stale = Entity(50, "EDR_489e1", 1, zone, "ENCHANTMENT", [("ATTACHED", 2)]);
+        var result = Eval(Replace(Fixture(Hand(31, "DINO_421", 8), stale), Player(2, 1, 0, 10)), new PlannedAction(ActionKind.PlayCard, 31));
+        Equal(LineVerification.Invalid, result.Verification); Equal(20, Find(result, 11).RemainingHealth);
+    }
+    var dead = Entity(50, "EDR_489e1", 1, "PLAY", "ENCHANTMENT", [("ATTACHED", 2), ("HEALTH", 0)]);
+    Equal(LineVerification.Invalid, Eval(Replace(Fixture(Hand(31, "DINO_421", 8), dead), Player(2, 1, 0, 10)), new PlannedAction(ActionKind.PlayCard, 31)).Verification);
+});
+Run("agamaggan bodies or incomplete conflicting enchantments do not prove an active payment", () =>
+{
+    foreach (var zone in new[] { "PLAY", "GRAVEYARD" })
+    {
+        var body = Entity(50, "EDR_489", 1, zone, "MINION", [("ATK", 9), ("HEALTH", 9), ("SILENCED", 1)]);
+        var result = Eval(Fixture(Hand(31, "DINO_421", 8), body), new PlannedAction(ActionKind.PlayCard, 31));
+        Equal(LineVerification.Unsupported, result.Verification); Equal<bool?>(null, result.Result.NextCardCostsOpponentHealth);
+        Equal(20, Find(result, 11).RemainingHealth); Equal(0, result.Result.OpponentHealthPayments.Count);
+    }
+    var misplaced = Entity(50, "EDR_489e1", 1, "PLAY", "ENCHANTMENT", [("ATTACHED", 11)]);
+    Equal(LineVerification.Unsupported, Eval(Fixture(Hand(31, "DINO_421", 8), misplaced), new PlannedAction(ActionKind.PlayCard, 31)).Verification);
+    var valid = Entity(50, "EDR_489e1", 1, "PLAY", "ENCHANTMENT", [("ATTACHED", 2)]);
+    var duplicate = Entity(51, "EDR_489e2", 1, "SETASIDE", "ENCHANTMENT", [("ATTACHED", 10)]);
+    Equal(LineVerification.Unsupported, Eval(Fixture(Hand(31, "DINO_421", 8), valid, duplicate), new PlannedAction(ActionKind.PlayCard, 31)).Verification);
+    var missingData = cards.Where(pair => pair.Key != "EDR_489e1").ToDictionary();
+    Equal(LineVerification.Unsupported, evaluator.EvaluateLine(Fixture(Hand(31, "DINO_421", 8), valid), [new(ActionKind.PlayCard, 31)], missingData).Verification);
+    Equal(LineVerification.Unsupported, Eval(Fixture(Hand(31, "DINO_421", 8), valid) with { ClientBuild = "999999" }, new PlannedAction(ActionKind.PlayCard, 31)).Verification);
+});
+Run("suppressed agamaggan battlecries and an opponent's agamaggan never arm local payment", () =>
+{
+    var source = Entity(30, "EDR_489", 1, "HAND", "MINION", [("COST", 1), ("BATTLECRY", 0)]);
+    var result = Eval(Fixture(source, Hand(31, "DINO_421", 8)), new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.PlayCard, 31));
+    Equal(LineVerification.Verified, result.Verification); Equal(1, result.Result.AvailableMana);
+    Equal(20, Find(result, 11).RemainingHealth); Equal(0, result.Result.OpponentHealthPayments.Count);
+    var opponent = Eval(Fixture(Minion(50, "EDR_489", 2, 9, 9), Hand(31, "DINO_421", 8)), new PlannedAction(ActionKind.PlayCard, 31));
+    Equal(LineVerification.Verified, opponent.Verification); Equal(2, opponent.Result.AvailableMana);
+});
+Run("bounded lethal search includes agamaggan combos even when the following card exceeds remaining mana", () =>
+{
+    var snapshot = Replace(Fixture(Hand(30, "EDR_489", 10), Hand(31, "EDR_480", 9)),
+        Hero(11, 2, 5, 0, 50, 0, ("IMMUNE", 1), ("DIVINE_SHIELD", 1)));
+    var result = evaluator.FindLethal(snapshot, cards, maximumDepth: 2, maximumNodes: 200);
+    Equal(true, result.VerifiedLethalFound); Equal(LineVerification.Verified, result.Evaluation!.Verification);
+    Equal(30, result.Actions[0].SourceEntityId); Equal(31, result.Actions[1].SourceEntityId);
+    Equal(0, result.Evaluation.Result.AvailableMana); Equal(-4, Find(result.Evaluation, 11).RemainingHealth);
+    Equal(50, Find(result.Evaluation, 11).Armor); Equal(false, result.IsExhaustive);
+});
 Run("audited stat-only enchantments use current observations without double applying buffs", () =>
 {
     var hand = ObservedHand(30, "EDR_227", 0, 11, 5);

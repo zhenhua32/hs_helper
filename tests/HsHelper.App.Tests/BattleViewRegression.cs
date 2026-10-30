@@ -108,6 +108,17 @@ public static class BattleViewRegression
         Check(search.Contains("不代表没有斩杀", StringComparison.Ordinal) && search.Contains("5000", StringComparison.Ordinal), "Bounded search absence became proof of no lethal.");
         var choice = LocalToolResultFormatter.Format("validate_choice", JsonNode.Parse("""{"Verification":"Verified","IsLegal":true,"Errors":[],"Assumptions":[],"RuleCoverage":["candidate-count"]}""")!);
         Check(choice.Contains("不模拟选择后效果", StringComparison.Ordinal), "Choice validation claimed effect simulation.");
+        var payment = LocalToolResultFormatter.Format("evaluate_line", JsonNode.Parse("""{"Verification":"Verified","Result":{"AvailableMana":0,"NextCardCostsOpponentHealth":false,"OpponentHealthPayments":[{"CardEntityId":30,"PayingHeroEntityId":11,"Cost":4,"HealthBefore":7,"HealthAfter":3}],"Entities":[]}}""")!);
+        Check(payment.Contains("生命支付 4", StringComparison.Ordinal) && payment.Contains("7 → 3", StringComparison.Ordinal) &&
+            payment.Contains("护甲不参与支付", StringComparison.Ordinal) && payment.Contains("不视为伤害", StringComparison.Ordinal),
+            "Health payment was hidden or described as ordinary armor-absorbed damage.");
+        var pending = LocalToolResultFormatter.Format("evaluate_line", JsonNode.Parse("""{"Result":{"NextCardCostsOpponentHealth":true}}""")!);
+        Check(pending.Contains("不超过10", StringComparison.Ordinal) && pending.Contains("仍需满足出牌条件", StringComparison.Ordinal),
+            "An armed health payment was presented as unrestricted card availability.");
+        var unconfirmed = LocalToolResultFormatter.Format("evaluate_line", JsonNode.Parse("""{"Result":{"NextCardCostsOpponentHealth":null}}""")!);
+        Check(unconfirmed.Contains("生命支付效果：未确认", StringComparison.Ordinal), "Unknown payment availability was presented as active or consumed.");
+        var stopped = LocalToolResultFormatter.Format("evaluate_line", JsonNode.Parse("""{"Result":{"OpponentDefeatedByPayment":true}}""")!);
+        Check(stopped.Contains("已停止计算该牌后续效果", StringComparison.Ordinal), "Payment lethal did not explain why later card effects remain unresolved.");
     }
 
     private static void DeckEvidence()

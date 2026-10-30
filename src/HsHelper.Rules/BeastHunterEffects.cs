@@ -6,7 +6,7 @@ public sealed partial class LineEvaluator
 {
     // Text/stat provenance: fixed build 255790 cards.json and CardDefs.base.xml.
     // Imbue semantics: https://hearthstone.blizzard.com/en-us/expansions-adventures/into-the-emerald-dream
-    private static readonly HashSet<string> AuditedHunterBodies = ["EDR_852", "EDR_800", "EDR_227", "EDR_226", "FIR_921", "EDR_480", "DINO_421", "FIR_953"];
+    private static readonly HashSet<string> AuditedHunterBodies = ["EDR_852", "EDR_800", "EDR_227", "EDR_226", "FIR_921", "EDR_480", "DINO_421", "FIR_953", "EDR_489"];
     private static readonly HashSet<string> SearchableRushBodies = ["EDR_227", "EDR_480", "FIR_953"];
 
     private static bool TryPlayBeastHunter(Runtime state, PlannedAction action, Entity source, Profile profile)
@@ -17,6 +17,8 @@ public sealed partial class LineEvaluator
         if (action.TargetEntityId is not null) { state.Invalid("该随从的入场不需要指定目标。"); return true; }
         var battlecryActive = state.Has(source, "BATTLECRY");
         if (!state.Summon(source, profile)) return true;
+        if (state.OpponentDefeatedByPayment) return true;
+        if (battlecryActive && id == "EDR_489") state.ArmOpponentHealthPayment();
         if (battlecryActive && id is "EDR_852" or "EDR_800" or "EDR_226")
         {
             if (id == "EDR_226") state.Conditional("入场与灌注已计算；抽取野兽的身份、实体与牌库顺序未知，抽牌尚未结算，不能据此安排抽到的牌。", "UNRESOLVED_BEAST_DRAW");
@@ -106,6 +108,7 @@ public sealed partial class LineEvaluator
             { Invalid("我方随从区已满。"); return false; }
             if (profile.Attack is null || profile.Health is null) { Unsupported("UNKNOWN_BASE_STATS", "入场随从的基础属性缺失。"); return false; }
             if (!Pay(source)) return false;
+            if (OpponentDefeatedByPayment) return true;
             source.Zone = "PLAY"; source.Attack ??= profile.Attack; source.MaximumHealth ??= profile.Health; source.Health = source.MaximumHealth;
             source.Type = "MINION"; source.Attacks = 0;
             source.Flags = source.Flags.Where(flag => StaticKeywords.Contains(flag.Key) || flag.Key == "SILENCED").ToDictionary(StringComparer.Ordinal);

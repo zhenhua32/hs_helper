@@ -10,9 +10,15 @@ public sealed record SimulatedEntity(int EntityId, string? CardId, string Type, 
     int AttacksUsed, bool IsAlive, FrozenDictionary<string, int> Flags);
 public sealed record HeroPowerChange(int ControllerId, int EntityId, string? PreviousCardId, string? CurrentCardId,
     int? PreviousLevel, int? CurrentLevel, bool AvailabilityKnown, string Reason);
+public sealed record OpponentHealthPayment(int CardEntityId, string CardId, int PayingHeroEntityId,
+    int Cost, int HealthBefore, int HealthAfter);
 public sealed record SimulatedState(int AvailableMana, IReadOnlyList<SimulatedEntity> Entities)
 {
     public IReadOnlyList<HeroPowerChange> HeroPowerChanges { get; init; } = [];
+    public bool? NextCardCostsOpponentHealth { get; init; }
+    /// <summary>Resolution stopped at lethal payment; the submitted card retains its last observed state.</summary>
+    public bool OpponentDefeatedByPayment { get; init; }
+    public IReadOnlyList<OpponentHealthPayment> OpponentHealthPayments { get; init; } = [];
 }
 public sealed record LineEvaluation(string MatchId, long StateVersion, LineVerification Verification,
     bool? IsLegal, bool IsLethal, bool PotentialLethal, int AppliedActions,
