@@ -23,6 +23,7 @@ public sealed partial class LineEvaluator
         "基础攻击、嘲讽、圣盾、免疫、冻结、风怒、冲锋、突袭、剧毒、吸血、护甲和观察到的当前费用",
         "build255790：基础稳固射击、硬币、奥术射击、杀戮命令、猎人印记、精灵弓箭手、安装爆炸陷阱、戈德林伤害翻倍",
         "build255790：苦花骑士、振翅守卫与幽爪熊灌注；单一已知候选野兽的巨狼祝福；无法确认灌注参数时保留条件",
+        "build255790：熔岩猎犬入场、突袭及击杀最后敌方随从后对唯一敌方英雄的分配伤害；多个候选仍保留随机限制",
         "未知奥秘、未覆盖光环/触发、亡语与复生会降低为有条件结果；发现与随机选项不自行生成，选择范围可单独核验",
         "斩杀搜索有限深度，未找到结果不代表不存在；只有完整已覆盖序列可标记已验证斩杀"
     });
@@ -109,7 +110,7 @@ public sealed partial class LineEvaluator
         }
         return new(false, [], null, nodes, false, SearchCoverage + " 未找到已验证方案不表示不存在斩杀。");
     }
-    private const string SearchCoverage = "有限深度搜索，仅枚举攻击、稳固射击、已支持直伤及猎人印记；不枚举随机、发现、抽牌或完整召唤组合。";
+    private const string SearchCoverage = "有限深度搜索，枚举攻击、稳固射击、已支持直伤、猎人印记及已覆盖的幽爪熊/戈德林/熔岩猎犬入场；不枚举随机、发现、抽牌或完整召唤组合。";
 
     private static IEnumerable<PlannedAction> SearchCandidates(SimulatedState state, int? local,
         IReadOnlyDictionary<string, CardRecord> cards)
@@ -126,6 +127,7 @@ public sealed partial class LineEvaluator
             if (ArcaneShot.Contains(id) || KillCommand.Contains(id) || HuntersMark.Contains(id))
                 foreach (var target in targets.Where(e => !HuntersMark.Contains(id) || e.Type == "MINION"))
                     yield return new(ActionKind.PlayCard, source.EntityId, target.EntityId);
+            if (SearchableRushBodies.Contains(id)) yield return new(ActionKind.PlayCard, source.EntityId);
         }
     }
 
@@ -182,9 +184,8 @@ public sealed partial class LineEvaluator
                 if (state.Has(weapon, "WINDFURY")) state.Conditional("假设武器损毁后的额外攻击次数没有其他来源；后续攻击需要实际局面核对。", "WEAPON_ATTACK_LIMIT_CHANGE");
             }
         }
-        if (source.CardId == "FIR_953" && target.Type == "MINION" && source.Health > 0 && !state.Silenced(source))
-            state.Conditional("熔岩猎犬存活攻击后的随机分配伤害未展开；结果仅为该触发前的交换。", "FIR_953_RANDOM_AFTER_ATTACK");
         state.ResolveDeaths();
+        state.ResolveMagmaHoundAfterAttack(source, target);
         state.Coverage.UnionWith(["attack-targets", "taunt", "attack-count", "rush-charge", "simultaneous-combat", "armor", "divine-shield", "poisonous", "lifesteal"]);
     }
 
@@ -441,6 +442,16 @@ public sealed partial class LineEvaluator
         {
             if (amount <= 0 || Has(target, "IMMUNE")) return 0;
             if (target.Health is null) { Unsupported("UNKNOWN_DAMAGE_TARGET", "受伤角色生命值未知。"); return 0; }
+            amount = ModifyBeastDamage(source, amount);
+            if (Has(target, "DIVINE_SHIELD")) { target.Flags["DIVINE_SHIELD"] = 0; return 0; }
+            var armor = Math.Min(target.Armor, amount); target.Armor -= armor;
+            target.Health -= amount - armor;
+            var poisonous = Has(source, "POISONOUS") || (source.Type == "HERO" && Weapon(source.Controller) is { } weapon && Has(weapon, "POISONOUS"));
+            if (poisonous && target.Type == "MINION") target.Health = 0;
+            return amount;
+        }
+        private int ModifyBeastDamage(Entity source, int amount)
+        {
             if (IsBeast(source))
             {
                 var gods = Entities.Values.Count(e => e.Alive && e.Zone == "PLAY" && e.Controller == source.Controller && e.CardId == "EDR_480" && !Silenced(e) && !Has(e, "DORMANT"));
@@ -449,11 +460,6 @@ public sealed partial class LineEvaluator
                 else for (var i = 0; i < gods; i++) amount = checked(amount * 2);
                 if (gods > 0) Coverage.Add("goldrinn-friendly-beast-double-damage");
             }
-            if (Has(target, "DIVINE_SHIELD")) { target.Flags["DIVINE_SHIELD"] = 0; return 0; }
-            var armor = Math.Min(target.Armor, amount); target.Armor -= armor;
-            target.Health -= amount - armor;
-            var poisonous = Has(source, "POISONOUS") || (source.Type == "HERO" && Weapon(source.Controller) is { } weapon && Has(weapon, "POISONOUS"));
-            if (poisonous && target.Type == "MINION") target.Health = 0;
             return amount;
         }
         public void HealLifesteal(Entity source, int dealt)
@@ -463,7 +469,7 @@ public sealed partial class LineEvaluator
             var hero = Hero(source.Controller);
             if (hero?.Health is null || hero.MaximumHealth is null) { Conditional("吸血恢复目标的生命上限未知。", "LIFESTEAL_TARGET"); return; }
             if (Has(hero, "CANT_BE_HEALED")) return;
-            hero.Health = Math.Min(hero.MaximumHealth.Value, hero.Health.Value + dealt);
+            hero.Health = (int)Math.Min(hero.MaximumHealth.Value, (long)hero.Health.Value + dealt);
         }
         public void ResolveDeaths()
         {
@@ -518,7 +524,7 @@ public sealed partial class LineEvaluator
                     Conditional("假设未覆盖的持续光环不改变费用、伤害或目标。", "UNKNOWN_AURA");
                 if (_snapshot.ClientBuild == "255790" && entity.CardId == "CORE_TTN_866") { Coverage.Add("CORE_TTN_866-end-turn-trigger-not-entered"); continue; }
                 if (_snapshot.ClientBuild == "255790" && entity.CardId == "EDR_849" && action.Kind != ActionKind.PlayCard) continue;
-                if (_snapshot.ClientBuild == "255790" && entity.CardId == "FIR_953" && (action.Kind != ActionKind.Attack || action.SourceEntityId != entity.Id)) continue;
+                if (_snapshot.ClientBuild == "255790" && entity.CardId == "FIR_953") continue;
                 if (profile.Mechanics.Contains("TRIGGER_VISUAL")) Conditional("场上触发效果尚未完整模拟，结果带条件。", "UNKNOWN_TRIGGER");
                 if (_snapshot.ClientBuild == "255790" && entity.CardId is { } id && (BattlecryOnlyBodies.Contains(id) || ElvenArcher.Contains(id)))
                 {

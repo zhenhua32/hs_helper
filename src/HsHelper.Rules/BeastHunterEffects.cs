@@ -6,7 +6,8 @@ public sealed partial class LineEvaluator
 {
     // Text/stat provenance: fixed build 255790 cards.json and CardDefs.base.xml.
     // Imbue semantics: https://hearthstone.blizzard.com/en-us/expansions-adventures/into-the-emerald-dream
-    private static readonly HashSet<string> AuditedHunterBodies = ["EDR_852", "EDR_800", "EDR_227", "EDR_226", "FIR_921", "EDR_480", "DINO_421"];
+    private static readonly HashSet<string> AuditedHunterBodies = ["EDR_852", "EDR_800", "EDR_227", "EDR_226", "FIR_921", "EDR_480", "DINO_421", "FIR_953"];
+    private static readonly HashSet<string> SearchableRushBodies = ["EDR_227", "EDR_480", "FIR_953"];
 
     private static bool TryPlayBeastHunter(Runtime state, PlannedAction action, Entity source, Profile profile)
     {
@@ -52,6 +53,37 @@ public sealed partial class LineEvaluator
     private sealed partial class Runtime
     {
         private readonly List<HeroPowerChange> _heroPowerChanges = [];
+
+        public void ResolveMagmaHoundAfterAttack(Entity source, Entity target)
+        {
+            if (source.CardId != "FIR_953" || target.Type != "MINION" || !source.Alive ||
+                source.Zone != "PLAY" || source.Health is not > 0 || Silenced(source)) return;
+            if (_snapshot.ClientBuild != AuditedBuild)
+            { Conditional("当前版本的熔岩猎犬攻击后触发尚未审计，未展开分配伤害。", "UNAUDITED_MAGMA_HOUND_BUILD"); return; }
+            var enemies = Entities.Values.Where(e => e.Alive && e.Zone == "PLAY" && e.Controller != source.Controller &&
+                e.Type is "HERO" or "MINION" && !Has(e, "DORMANT") && !Has(e, "UNTOUCHABLE")).ToArray();
+            if (enemies.Length != 1 || enemies[0].Id != EnemyHero?.Id)
+            { Conditional("熔岩猎犬攻击后的伤害仍有多个或未确认的敌方候选，未选择随机分配结果；当前交换不包含该分配伤害。", "FIR_953_RANDOM_AFTER_ATTACK"); return; }
+            var hero = enemies[0];
+            if (source.Attack is null or < 0 || hero.Health is null || hero.Armor < 0)
+            { Conditional("熔岩猎犬攻击力或敌方英雄当前生命/护甲未知，未展开分配伤害。", "UNKNOWN_MAGMA_HOUND_DAMAGE"); return; }
+
+            var shots = source.Attack.Value;
+            // Split damage is a sequence of one-damage packets. A shield blocks only one packet;
+            // the sequence stops when the enemy hero dies, including for Lifesteal accounting.
+            if (shots > 0 && !Has(hero, "IMMUNE") && Has(hero, "DIVINE_SHIELD"))
+            { Damage(source, hero, 1, false); shots--; }
+            if (shots > 0 && !Has(hero, "IMMUNE") && hero.Health > 0)
+            {
+                var perShot = ModifyBeastDamage(source, 1);
+                var shotsToLethal = ((long)hero.Health.Value + hero.Armor + perShot - 1) / perShot;
+                shots = (int)Math.Min(shots, shotsToLethal);
+                var dealt = Damage(source, hero, shots, false);
+                HealLifesteal(source, dealt);
+            }
+            ResolveDeaths();
+            Coverage.Add("FIR_953-single-enemy-split-damage");
+        }
 
         private bool IsObservedStatEnchantment(Entity enchantment)
         {

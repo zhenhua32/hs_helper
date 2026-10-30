@@ -83,6 +83,8 @@ Run("lifesteal uses dealt damage including overkill and respects maximum health"
     Equal(29, Find(result, 10).RemainingHealth);
     var big = Eval(Fixture(Minion(21, "LIFE", 1, 20, 6), Minion(20, "VANILLA", 2, 1, 2)), new PlannedAction(ActionKind.Attack, 21, 20));
     Equal(30, Find(big, 10).RemainingHealth);
+    var enormous = Eval(Fixture(Minion(21, "LIFE", 1, int.MaxValue, 6), Minion(20, "VANILLA", 2, 1, 2)), new PlannedAction(ActionKind.Attack, 21, 20));
+    Equal(30, Find(enormous, 10).RemainingHealth);
 });
 Run("armor is consumed before hero health", () =>
 {
@@ -156,7 +158,7 @@ Run("deathrattle and random after-attack effects cannot become verified lethal",
 {
     var death = Eval(Fixture(Minion(21, "VANILLA", 1, 4, 6), Minion(20, "DEATH", 2, 1, 3)), new PlannedAction(ActionKind.Attack, 21, 20));
     Equal(LineVerification.Conditional, death.Verification); Equal(false, death.IsLethal);
-    var random = Eval(Fixture(Minion(21, "FIR_953", 1, 5, 8), Minion(20, "VANILLA", 2, 1, 3)), new PlannedAction(ActionKind.Attack, 21, 20));
+    var random = Eval(Fixture(Minion(21, "FIR_953", 1, 5, 8), Minion(20, "VANILLA", 2, 1, 8)), new PlannedAction(ActionKind.Attack, 21, 20));
     Equal(LineVerification.Conditional, random.Verification);
     Equal(true, random.UnsupportedMechanics.Contains("FIR_953_RANDOM_AFTER_ATTACK"));
 });
@@ -360,6 +362,80 @@ Run("real goldrinn can be summoned then rush with its own damage aura", () =>
     var result = Eval(Fixture(Hand(30, "EDR_480", 9), Minion(20, "VANILLA", 2, 1, 18)),
         new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.Attack, 30, 20));
     Equal(LineVerification.Verified, result.Verification); Equal(false, Find(result, 20).IsAlive); Equal(8, Find(result, 30).RemainingHealth);
+});
+Run("real magma hound can rush and split damage deterministically after the last opposing minion dies", () =>
+{
+    var snapshot = Fixture(Hand(30, "FIR_953", 8), Minion(20, "VANILLA", 2, 1, 5));
+    var before = JsonSerializer.Serialize(snapshot);
+    var result = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.Attack, 30, 20));
+    Equal(LineVerification.Verified, result.Verification); Equal(2, result.Result.AvailableMana);
+    Equal(false, Find(result, 20).IsAlive); Equal(7, Find(result, 30).RemainingHealth);
+    Equal(15, Find(result, 11).RemainingHealth);
+    Equal(true, result.RuleCoverage.Contains("FIR_953-single-enemy-split-damage"));
+    Equal(before, JsonSerializer.Serialize(snapshot));
+    Equal(LineVerification.Invalid, Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30, 11)).Verification);
+    Equal(LineVerification.Invalid, Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.Attack, 30, 11)).Verification);
+});
+Run("magma hound preserves random targets and does not trigger after dying silence or attacking a hero", () =>
+{
+    var random = Eval(Fixture(Minion(21, "FIR_953", 1, 5, 8), Minion(20, "VANILLA", 2, 1, 8)),
+        new PlannedAction(ActionKind.Attack, 21, 20));
+    Equal(LineVerification.Conditional, random.Verification); Equal(20, Find(random, 11).RemainingHealth);
+    Equal(3, Find(random, 20).RemainingHealth); Equal(true, random.UnsupportedMechanics.Contains("FIR_953_RANDOM_AFTER_ATTACK"));
+    var died = Eval(Fixture(Minion(21, "FIR_953", 1, 5, 1), Minion(20, "VANILLA", 2, 1, 5)),
+        new PlannedAction(ActionKind.Attack, 21, 20));
+    Equal(LineVerification.Verified, died.Verification); Equal(20, Find(died, 11).RemainingHealth);
+    var silent = Eval(Fixture(Minion(21, "FIR_953", 1, 5, 8, ("SILENCED", 1)), Minion(20, "VANILLA", 2, 1, 5)),
+        new PlannedAction(ActionKind.Attack, 21, 20));
+    Equal(LineVerification.Verified, silent.Verification); Equal(20, Find(silent, 11).RemainingHealth);
+    var face = Eval(Fixture(Minion(21, "FIR_953", 1, 5, 8)), new PlannedAction(ActionKind.Attack, 21, 11));
+    Equal(LineVerification.Verified, face.Verification); Equal(15, Find(face, 11).RemainingHealth);
+    var unknownBuild = Eval(Fixture(Minion(21, "FIR_953", 1, 5, 8), Minion(20, "VANILLA", 2, 1, 5)) with { ClientBuild = "999999" },
+        new PlannedAction(ActionKind.Attack, 21, 20));
+    Equal(LineVerification.Conditional, unknownBuild.Verification);
+    Equal(true, unknownBuild.UnsupportedMechanics.Contains("UNAUDITED_MAGMA_HOUND_BUILD"));
+});
+Run("magma hound damage packets respect divine shield immunity and goldrinn without spell damage", () =>
+{
+    var snapshot = Replace(Fixture(Minion(21, "FIR_953", 1, 5, 8), Minion(20, "VANILLA", 2, 1, 10),
+        Minion(22, "EDR_480", 1, 9, 9), Minion(23, "SPELLPOWER", 1, 1, 3, ("SPELLPOWER", 10))),
+        Hero(11, 2, 20, 0, 3, 0, ("DIVINE_SHIELD", 1)));
+    var result = Eval(snapshot, new PlannedAction(ActionKind.Attack, 21, 20));
+    Equal(LineVerification.Verified, result.Verification); Equal(false, Find(result, 20).IsAlive);
+    Equal(15, Find(result, 11).RemainingHealth); Equal(0, Find(result, 11).Armor);
+    Equal(0, Find(result, 11).Flags["DIVINE_SHIELD"]);
+    var immune = Eval(Replace(snapshot, Hero(11, 2, 20, 0, 3, 0, ("IMMUNE", 1), ("DIVINE_SHIELD", 1))),
+        new PlannedAction(ActionKind.Attack, 21, 20));
+    Equal(LineVerification.Verified, immune.Verification); Equal(20, Find(immune, 11).RemainingHealth);
+    Equal(3, Find(immune, 11).Armor); Equal(1, Find(immune, 11).Flags["DIVINE_SHIELD"]);
+});
+Run("magma hound stops damage and lifesteal packets when the opposing hero dies", () =>
+{
+    var snapshot = Replace(Fixture(Minion(21, "FIR_953", 1, 2, 8, ("LIFESTEAL", 1)), Minion(20, "VANILLA", 2, 1, 3),
+        Minion(22, "EDR_480", 1, 9, 9)), Hero(10, 1, 30, 20), Hero(11, 2, 1));
+    var result = Eval(snapshot, new PlannedAction(ActionKind.Attack, 21, 20));
+    Equal(LineVerification.Verified, result.Verification); Equal(true, result.IsLethal);
+    Equal(-1, Find(result, 11).RemainingHealth); Equal(16, Find(result, 10).RemainingHealth);
+    var huge = Replace(Fixture(Minion(21, "FIR_953", 1, int.MaxValue, 8), Minion(20, "VANILLA", 2, 0, 1)), Hero(11, 2, 20));
+    var bounded = Eval(huge, new PlannedAction(ActionKind.Attack, 21, 20));
+    Equal(LineVerification.Verified, bounded.Verification); Equal(0, Find(bounded, 11).RemainingHealth);
+    var overflow = Eval(Replace(huge, Minion(22, "EDR_480", 1, 9, 9)), new PlannedAction(ActionKind.Attack, 21, 20));
+    Equal(LineVerification.Unsupported, overflow.Verification); Equal(false, overflow.IsLethal);
+    Equal(true, overflow.UnsupportedMechanics.Contains("EVALUATION_LIMIT"));
+});
+Run("bounded lethal search includes audited rush summons and keeps unresolved magma outcomes unverified", () =>
+{
+    var snapshot = Replace(Fixture(Hand(30, "FIR_953", 8), Minion(20, "TAUNT", 2, 1, 5)), Hero(11, 2, 5));
+    var result = evaluator.FindLethal(snapshot, cards, maximumDepth: 2, maximumNodes: 200);
+    Equal(true, result.VerifiedLethalFound); Equal(false, result.IsExhaustive);
+    Equal(ActionKind.PlayCard, result.Actions[0].Kind); Equal(30, result.Actions[0].SourceEntityId);
+    Equal(ActionKind.Attack, result.Actions[1].Kind); Equal(20, result.Actions[1].TargetEntityId);
+    var uncertain = Replace(snapshot, Minion(22, "VANILLA", 2, 1, 1));
+    Equal(false, evaluator.FindLethal(uncertain, cards, maximumDepth: 2, maximumNodes: 200).VerifiedLethalFound);
+    var secret = Replace(snapshot, Entity(40, null, 2, "SECRET", "SPELL", []));
+    Equal(false, evaluator.FindLethal(secret, cards, maximumDepth: 2, maximumNodes: 200).VerifiedLethalFound);
+    var reborn = Replace(snapshot, Minion(20, "TAUNT", 2, 1, 5, ("REBORN", 1)));
+    Equal(false, evaluator.FindLethal(reborn, cards, maximumDepth: 2, maximumNodes: 200).VerifiedLethalFound);
 });
 Run("silenced or explicitly suppressed battlecries do not apply native imbue", () =>
 {

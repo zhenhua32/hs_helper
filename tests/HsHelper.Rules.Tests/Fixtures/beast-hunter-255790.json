@@ -379,6 +379,32 @@
       "set": "EMERALD_DREAM",
       "text": "法力值消耗减少。",
       "type": "ENCHANTMENT"
+    },
+    {
+      "artist": "Juan Calle",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 8,
+      "dbfId": 115751,
+      "flavor": "千万不要提起零食，不然他的熔涎肯定淌得到处都是。",
+      "health": 8,
+      "id": "FIR_953",
+      "isMiniSet": true,
+      "mechanics": [
+        "RUSH",
+        "TRIGGER_VISUAL"
+      ],
+      "name": "熔岩猎犬",
+      "race": "BEAST",
+      "races": [
+        "ELEMENTAL",
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。在本随从攻击随从并存活下来后，&造成等同于本随从攻击力的伤害，随机分配到所有敌人身上。",
+      "type": "MINION"
     }
   ]
 }
