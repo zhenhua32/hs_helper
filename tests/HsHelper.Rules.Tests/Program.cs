@@ -650,6 +650,8 @@ Run("stale unavailable duplicate foreign or out-of-range choices are rejected", 
     Equal(LineVerification.Verified, evaluator.ValidateChoice(mulligan, []).Verification);
 });
 
+foreach (var (name, run) in ChoiceResolutionChecks.Cases(cards)) Run(name, run);
+
 if (args.Length == 1)
 {
     Run("optional real build-255790 goldrinn and beast card data", () =>
@@ -668,6 +670,7 @@ if (args.Length == 1)
         Equal(LineVerification.Verified, result.Verification); Equal(true, result.IsLethal);
     });
 }
+foreach (var (name, run) in EndTurnRegression.Cases()) Run(name, run);
 Console.WriteLine($"Rules regression: {passed} passed, {failed} failed.");
 return failed == 0 ? 0 : 1;
 

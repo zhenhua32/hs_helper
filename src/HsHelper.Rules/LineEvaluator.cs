@@ -25,6 +25,7 @@ public sealed partial class LineEvaluator
         "build255790：苦花骑士、振翅守卫与幽爪熊灌注；单一已知候选野兽的巨狼祝福；无法确认灌注参数时保留条件",
         "build255790：熔岩猎犬入场、突袭及击杀最后敌方随从后对唯一敌方英雄的分配伤害；多个候选仍保留随机限制",
         "build255790：阿迦玛甘入场与下一张牌的对手生命支付，当前费用上限10；未知剩余效力不由本体推断",
+        "build255790：神秘恐魔入场及己方回合结束；唯一敌方随从展开强制战斗，多目标/多触发顺序与未实证计数字段保留条件",
         "未知奥秘、未覆盖光环/触发、亡语与复生会降低为有条件结果；发现与随机选项不自行生成，选择范围可单独核验",
         "斩杀搜索有限深度，未找到结果不代表不存在；只有完整已覆盖序列可标记已验证斩杀"
     });
@@ -45,8 +46,8 @@ public sealed partial class LineEvaluator
         cancellationToken.ThrowIfCancellationRequested();
         var state = new Runtime(snapshot, cards);
         if (actions.Count is 0 or > 16) state.Invalid("动作序列需要包含1至16步。");
-        else if (!snapshot.Quality.IsComplete || !snapshot.Quality.IsStable || !snapshot.Quality.HasLocalPerspective)
-            state.Unsupported("INCOMPLETE_SNAPSHOT", "局面不完整、未稳定或我方视角尚未确认。");
+        else if (!snapshot.Quality.IsComplete || !snapshot.Quality.IsStable || !snapshot.Quality.HasLocalPerspective || snapshot.IsSpectating)
+            state.Unsupported("INCOMPLETE_SNAPSHOT", "局面不完整、未稳定、我方视角尚未确认或正在观战。");
         else if (snapshot.Phase != GamePhase.Main) state.Invalid("当前不是可评估主要动作的回合阶段。");
         else if (snapshot.LocalPlayerId is null || snapshot.ActivePlayerId is null)
             state.Unsupported("UNKNOWN_ACTIVE_PLAYER", "行动方未知。");
@@ -58,6 +59,7 @@ public sealed partial class LineEvaluator
             foreach (var action in actions)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (state.TurnEnded) { state.Invalid("己方回合已经结束，不能在未观察下一决策点前继续安排动作。"); break; }
                 if (state.EnemyHero!.Health <= 0 || state.OwnHero!.Health <= 0)
                 { state.Invalid("英雄已达到零生命，不能继续执行后续动作。"); break; }
                 if (!Enum.IsDefined(action.Kind)) { state.Invalid("未知动作类型。"); break; }
@@ -70,6 +72,7 @@ public sealed partial class LineEvaluator
                         case ActionKind.Attack: Attack(state, action); break;
                         case ActionKind.PlayCard: Play(state, action); break;
                         case ActionKind.HeroPower: UseHeroPower(state, action); break;
+                        case ActionKind.EndTurn: EndTurn(state, action); break;
                     }
                 }
                 catch (Exception error) when (error is OverflowException or RegexMatchTimeoutException)
@@ -111,12 +114,12 @@ public sealed partial class LineEvaluator
         }
         return new(false, [], null, nodes, false, SearchCoverage + " 未找到已验证方案不表示不存在斩杀。");
     }
-    private const string SearchCoverage = "有限深度搜索，枚举攻击、稳固射击、已支持直伤、猎人印记及已覆盖随从入场，包括阿迦玛甘生命支付组合；不枚举随机、发现、抽牌或完整召唤组合。";
+    private const string SearchCoverage = "有限深度搜索，枚举攻击、稳固射击、已支持直伤、猎人印记及已覆盖随从入场，包括阿迦玛甘生命支付组合与神秘恐魔结束回合；不枚举随机、发现、抽牌或完整召唤组合。";
 
     private static IEnumerable<PlannedAction> SearchCandidates(SimulatedState state, int? local,
         IReadOnlyDictionary<string, CardRecord> cards)
     {
-        if (local is null) yield break;
+        if (local is null || state.TurnEnded) yield break;
         var targets = state.Entities.Where(e => e.IsAlive && e.Zone == "PLAY" && e.ControllerId != local && e.Type is "HERO" or "MINION").ToArray();
         foreach (var source in state.Entities.Where(e => e.IsAlive && e.ControllerId == local))
         {
@@ -129,10 +132,13 @@ public sealed partial class LineEvaluator
             if (ArcaneShot.Contains(id) || KillCommand.Contains(id) || HuntersMark.Contains(id))
                 foreach (var target in targets.Where(e => !HuntersMark.Contains(id) || e.Type == "MINION"))
                     yield return new(ActionKind.PlayCard, source.EntityId, target.EntityId);
-            if (SearchableRushBodies.Contains(id) || id == "EDR_489" ||
+            if (SearchableRushBodies.Contains(id) || id is "EDR_489" or "CORE_TTN_866" ||
                 (state.NextCardCostsOpponentHealth == true && AuditedHunterBodies.Contains(id)))
                 yield return new(ActionKind.PlayCard, source.EntityId);
         }
+        if (state.Entities.Any(e => e.IsAlive && e.Zone == "PLAY" && e.ControllerId == local && e.CardId == "CORE_TTN_866") &&
+            state.Entities.FirstOrDefault(e => e.Type == "PLAYER" && e.Flags.GetValueOrDefault("PLAYER_ID") == local) is { } player)
+            yield return new(ActionKind.EndTurn, player.EntityId);
     }
 
     private static void Attack(Runtime state, PlannedAction action)
@@ -226,6 +232,7 @@ public sealed partial class LineEvaluator
         if (profile is null) { state.Unsupported("UNKNOWN_CARD_EFFECT", "当前卡库缺少这张手牌的效果。"); return; }
         if (!state.CanAffordCard(source)) return;
         var id = source.CardId!;
+        if (TryPlayMythicalTerror(state, action, source, profile)) return;
         if (TryPlayBeastHunter(state, action, source, profile)) return;
         if ((id == "GAME_005" || ArcaneShot.Contains(id) || KillCommand.Contains(id) || HuntersMark.Contains(id) ||
             ExplosiveTrap.Contains(id) || ElvenArcher.Contains(id)) && !state.RequireAuditedBuild()) return;
@@ -289,10 +296,11 @@ public sealed partial class LineEvaluator
         state.Unsupported("UNKNOWN_COMBAT_STATS", "当前攻击力或生命值未知，不能确认交换结果。"); return false;
     }
 
-    private sealed class Profile(string type, int? attack, int? health, HashSet<string> mechanics, string text, HashSet<string> races, int spellDamage)
+    private sealed class Profile(string type, int? attack, int? health, HashSet<string> mechanics, string text, HashSet<string> races, int spellDamage, string? nativeRace)
     {
         public string Type { get; } = type; public int? Attack { get; } = attack; public int? Health { get; } = health;
         public HashSet<string> Mechanics { get; } = mechanics; public string Text { get; } = text;
+        public string? NativeRace { get; } = nativeRace;
         public HashSet<string> Races { get; } = races; public int SpellDamage { get; } = spellDamage;
     }
     private sealed class Entity
@@ -383,10 +391,12 @@ public sealed partial class LineEvaluator
                 var mechanics = raw.RootElement.TryGetProperty("mechanics", out var list) && list.ValueKind == JsonValueKind.Array
                     ? list.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString()!).ToHashSet(StringComparer.Ordinal) : [];
                 var races = new HashSet<string>(StringComparer.Ordinal);
-                if (raw.RootElement.TryGetProperty("race", out var race) && race.ValueKind == JsonValueKind.String) races.Add(race.GetString()!);
+                string? nativeRace = null;
+                if (raw.RootElement.TryGetProperty("race", out var race) && race.ValueKind == JsonValueKind.String)
+                { nativeRace = race.GetString(); races.Add(nativeRace!); }
                 if (raw.RootElement.TryGetProperty("races", out var raceList) && raceList.ValueKind == JsonValueKind.Array)
                     foreach (var item in raceList.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String)) races.Add(item.GetString()!);
-                return _profiles[entity.CardId] = new(card.Type, Number("attack"), Number("health"), mechanics, card.Text, races, Number("spellDamage") ?? 0);
+                return _profiles[entity.CardId] = new(card.Type, Number("attack"), Number("health"), mechanics, card.Text, races, Number("spellDamage") ?? 0, nativeRace);
             }
             catch (JsonException) { return _profiles[entity.CardId] = null; }
         }
@@ -399,7 +409,16 @@ public sealed partial class LineEvaluator
         }
         public bool CombatHas(Entity entity, string keyword) => Has(entity, keyword) ||
             (entity.Type == "HERO" && Weapon(entity.Controller) is { } weapon && Has(weapon, keyword));
-        public bool IsBeast(Entity entity) => entity.Int("CARDRACE") is { } race ? race is 20 or 26 : Profile(entity)?.Races.Overlaps(["BEAST", "ALL"]) == true;
+        public bool IsBeast(Entity entity)
+        {
+            var profile = Profile(entity);
+            if (entity.Int("CARDRACE") is not { } race) return profile?.Races.Overlaps(["BEAST", "ALL"]) == true;
+            if (race is 20 or 26) return true;
+            // Only this pinned dual-race card preserves BEAST alongside its observed native DEMON tag.
+            // A different observed primary race never regains BEAST from printed metadata.
+            return _snapshot.ClientBuild == AuditedBuild && entity.CardId == "CORE_TTN_866" && race == 15 &&
+                profile?.NativeRace == "DEMON" && profile.Races.SetEquals(["DEMON", "BEAST"]);
+        }
         public bool SimpleProfile(Profile profile) => profile.Mechanics.All(StaticKeywords.Contains) &&
             string.IsNullOrWhiteSpace(Regex.Replace(profile.Text, "<[^>]+>|\\$|法术伤害\\s*\\+\\d+|Spell Damage\\s*\\+\\d+|[\\s。；，,.!！:：]|嘲讽|圣盾|冲锋|突袭|风怒|吸血|剧毒|潜行|扰魔|复生|Taunt|Divine Shield|Charge|Rush|Windfury|Lifesteal|Poisonous|Stealth|Elusive|Reborn", "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)));
 
@@ -532,7 +551,8 @@ public sealed partial class LineEvaluator
                 if (profile is null) { Conditional("场上存在缺少卡牌效果资料的实体，可能影响动作。", "UNKNOWN_BOARD_CARD"); continue; }
                 if (profile.Mechanics.Contains("AURA") && entity.CardId != "EDR_480")
                     Conditional("假设未覆盖的持续光环不改变费用、伤害或目标。", "UNKNOWN_AURA");
-                if (_snapshot.ClientBuild == "255790" && entity.CardId == "CORE_TTN_866") { Coverage.Add("CORE_TTN_866-end-turn-trigger-not-entered"); continue; }
+                if (_snapshot.ClientBuild == "255790" && entity.CardId == "CORE_TTN_866")
+                { Coverage.Add(action.Kind == ActionKind.EndTurn ? "CORE_TTN_866-end-turn-trigger-inspected" : "CORE_TTN_866-end-turn-trigger-not-entered"); continue; }
                 if (_snapshot.ClientBuild == "255790" && entity.CardId == "EDR_849" && action.Kind != ActionKind.PlayCard) continue;
                 if (_snapshot.ClientBuild == "255790" && entity.CardId == "FIR_953") continue;
                 if (profile.Mechanics.Contains("TRIGGER_VISUAL")) Conditional("场上触发效果尚未完整模拟，结果带条件。", "UNKNOWN_TRIGGER");
@@ -570,7 +590,11 @@ public sealed partial class LineEvaluator
                 { HeroPowerChanges = Array.AsReadOnly(_heroPowerChanges.ToArray()),
                     NextCardCostsOpponentHealth = _nextCardCostsOpponentHealth,
                     OpponentDefeatedByPayment = OpponentDefeatedByPayment,
-                    OpponentHealthPayments = Array.AsReadOnly(_opponentHealthPayments.ToArray()) });
+                    OpponentHealthPayments = Array.AsReadOnly(_opponentHealthPayments.ToArray()),
+                    TurnEnded = TurnEnded, EndTurnTriggersResolved = EndTurnTriggersResolved,
+                    ForcedAttacks = Array.AsReadOnly(_forcedAttacks.ToArray()),
+                    PendingForcedAttacks = Array.AsReadOnly(_pendingForcedAttacks.ToArray()),
+                    UnresolvedEndTurnFields = Array.AsReadOnly(_unresolvedEndTurnFields.Order(StringComparer.Ordinal).ToArray()) });
         }
 
         private static FrozenDictionary<string, int> ResultFlags(Entity entity)

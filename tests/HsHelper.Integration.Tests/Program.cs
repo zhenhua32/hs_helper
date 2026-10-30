@@ -224,6 +224,7 @@ Pass("uncovered secrets downgrade model plans and remove concrete actions and le
 
 await CoachLibraryIntegration.RunAsync(temp, catalog, firstDeck, before, Pass);
 await CoachPrivacyIntegration.RunAsync(catalog, before, Pass);
+await ChoiceEffectIntegration.RunAsync(temp, Pass);
 
 if (args.Length == 2)
 {

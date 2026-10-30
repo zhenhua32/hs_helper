@@ -46,12 +46,14 @@ public static class CompactAdviceContextBuilder
         IEnumerable<CardRecord>? cards = null, IEnumerable<ObservedGameEvent>? recentEvents = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        var local = snapshot.Quality.HasLocalPerspective ? snapshot.LocalPlayerId : null;
+        var local = ChoiceVisibility.ConfirmedLocalPlayer(snapshot);
         var visible = snapshot.Entities.Values.Where(entity => entity.Kind is EntityKind.Game or EntityKind.Player ||
             entity.Zone == "PLAY" || local.HasValue && entity.ControllerId == local && entity.Zone is "HAND" or "SECRET")
             .OrderBy(entity => entity.Id).ToArray();
         var choice = OwnChoice(snapshot);
         var contextLimits = new List<string>();
+        if (snapshot.Choice is not null && choice is null)
+            contextLimits.Add("当前选择的视角、稳定性或候选证据未通过核对，已省略其候选身份。");
         var playTracking = snapshot.PublicPlays is { } publicPlays && publicPlays.MatchId == snapshot.MatchId &&
             publicPlays.StateVersion == snapshot.StateVersion ? publicPlays : null;
         if (snapshot.PublicPlays is not null && playTracking is null)
@@ -133,9 +135,7 @@ public static class CompactAdviceContextBuilder
         }, Json)!.AsObject();
     }
 
-    private static CurrentChoiceSnapshot? OwnChoice(GameSnapshot snapshot) => snapshot.Phase is GamePhase.Choice or GamePhase.Mulligan &&
-        snapshot.Quality.HasLocalPerspective && snapshot.LocalPlayerId.HasValue &&
-        snapshot.Choice is { IsReady: true, Options.Count: > 0 } choice && choice.PlayerId == snapshot.LocalPlayerId ? choice : null;
+    private static CurrentChoiceSnapshot? OwnChoice(GameSnapshot snapshot) => ChoiceVisibility.ConfirmedOwn(snapshot);
 
     private static SortedDictionary<string, string> Tags(EntitySnapshot entity)
     {
@@ -161,7 +161,7 @@ public static class CompactAdviceContextBuilder
     {
         if (observed.CardId is null) return null;
         if (observed.FromZone is "PLAY" or "GRAVEYARD" || observed.ToZone is "PLAY" or "GRAVEYARD" ||
-            snapshot.Quality.HasLocalPerspective && snapshot.LocalPlayerId.HasValue && observed.ControllerId == snapshot.LocalPlayerId ||
+            ChoiceVisibility.ConfirmedLocalPlayer(snapshot) is { } local && observed.ControllerId == local ||
             plays.Any(play => play.EntityId == observed.EntityId && play.CardId == observed.CardId)) return observed.CardId;
         return observed.EntityId is { } id && snapshot.Entities.TryGetValue(id, out var entity) &&
             entity.Zone is "PLAY" or "GRAVEYARD" && entity.CardId == observed.CardId ? observed.CardId : null;

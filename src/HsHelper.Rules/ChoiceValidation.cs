@@ -16,6 +16,12 @@ public sealed partial class LineEvaluator
         var coverage = new List<string>();
         var unsupported = false;
         var choice = snapshot.Choice;
+        if (ChoiceVisibility.ConfirmedOwn(snapshot) is { } confirmed) choice = confirmed;
+        else
+        {
+            unsupported = true;
+            assumptions.Add("候选、已有实体与玩家视角尚未共同通过当前选择资格校验，不能将冲突或未稳定的选择当作已确认。");
+        }
         if (!snapshot.Quality.IsComplete || !snapshot.Quality.IsStable || !snapshot.Quality.HasLocalPerspective || snapshot.IsSpectating)
         { unsupported = true; assumptions.Add("选择需要完整、稳定且已确认我方身份的玩家视角。"); }
         if (snapshot.Phase is not (GamePhase.Choice or GamePhase.Mulligan)) errors.Add("当前不是可提交选择的阶段。");

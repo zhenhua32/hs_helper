@@ -32,6 +32,7 @@ public sealed class LocalToolsWindow : Window
     private readonly TextBlock _choiceLabel = new() { TextWrapping = TextWrapping.Wrap };
     private readonly ListBox _choices = new() { MinHeight = 55, MaxHeight = 140, SelectionMode = SelectionMode.Multiple, DisplayMemberPath = nameof(EntityOption.Text) };
     private readonly Button _validateChoice = new() { Content = "仅验证所选候选与数量" };
+    private readonly Button _evaluateChoice = new() { Content = "评估选择直接后果" };
     private readonly Button _cancel = new() { Content = "取消计算", IsEnabled = false };
     private readonly TextBox _result = new() { IsReadOnly = true, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, MinHeight = 160, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     private readonly List<LocalAction> _line = [];
@@ -61,7 +62,7 @@ public sealed class LocalToolsWindow : Window
         Title = "本地计算 · 无需模型"; Width = 950; Height = 820; MinWidth = 640; MinHeight = 460;
         NameScope.SetNameScope(this, new NameScope());
         Content = BuildContent();
-        _kind.ItemsSource = new[] { new KindOption("play", "使用手牌"), new KindOption("attack", "角色攻击"), new KindOption("hero_power", "英雄技能") };
+        _kind.ItemsSource = new[] { new KindOption("play", "使用手牌"), new KindOption("attack", "角色攻击"), new KindOption("hero_power", "英雄技能"), new KindOption("end_turn", "结束回合") };
         _kind.SelectedIndex = 0;
         _kind.SelectionChanged += (_, _) => RefreshSources();
         _odds.Click += (_, _) =>
@@ -94,6 +95,13 @@ public sealed class LocalToolsWindow : Window
             var selected = new JsonArray();
             foreach (var option in _choices.SelectedItems.OfType<EntityOption>()) selected.Add(option.Id);
             _ = RunToolAsync("validate_choice", new() { ["choice_id"] = choice.Id, ["selected_entity_ids"] = selected });
+        };
+        _evaluateChoice.Click += (_, _) =>
+        {
+            if (OwnChoice() is not { } choice) return;
+            var selected = new JsonArray();
+            foreach (var option in _choices.SelectedItems.OfType<EntityOption>()) selected.Add(option.Id);
+            _ = RunToolAsync("evaluate_choice", new() { ["choice_id"] = choice.Id, ["selected_entity_ids"] = selected });
         };
         _cancel.Click += (_, _) => CancelCalculation();
         Closed += (_, _) => { _closed = true; Invalidate("计算窗口已关闭。"); };
@@ -180,7 +188,7 @@ public sealed class LocalToolsWindow : Window
         RefreshSources();
         if (OwnChoice() is { } choice)
         {
-            _choiceLabel.Text = $"当前我方选择 #{choice.Id}，选择 {choice.CountMin}～{choice.CountMax} 个；仅验证候选和数量，不结算选择后效果。";
+            _choiceLabel.Text = $"当前我方选择 #{choice.Id}，选择 {choice.CountMin}～{choice.CountMax} 个。可仅核对范围，或评估已覆盖来源的直接后果；预览不是已经发生的局面。";
             _choices.ItemsSource = choice.Options.OrderBy(option => option.Position ?? int.MaxValue)
                 .Select(option => new EntityOption(option.EntityId, CardName(option.CardId) + $" #{option.EntityId}")).ToArray();
             foreach (var option in _choices.Items.OfType<EntityOption>().Where(option => selectedChoices.Contains(option.Id))) _choices.SelectedItems.Add(option);
@@ -189,15 +197,24 @@ public sealed class LocalToolsWindow : Window
         RefreshEnabled();
     }
 
-    private CurrentChoiceSnapshot? OwnChoice() => _snapshot.Quality.HasLocalPerspective && _snapshot.LocalPlayerId.HasValue &&
-        _snapshot.Phase is GamePhase.Choice or GamePhase.Mulligan && _snapshot.Choice is { IsReady: true } choice &&
-        choice.PlayerId == _snapshot.LocalPlayerId ? choice : null;
+    private CurrentChoiceSnapshot? OwnChoice() => _view is { Choice: { } current } && _view.MatchId == _snapshot.MatchId &&
+        _view.StateVersion == _snapshot.StateVersion && _snapshot.Choice is { } choice && current.Id == choice.Id ? choice : null;
 
     private void RefreshSources()
     {
         if (_view is null) return;
         var selectedSource = (_source.SelectedItem as EntityOption)?.Id;
         var kind = (_kind.SelectedItem as KindOption)?.Kind;
+        if (kind == "end_turn")
+        {
+            var players = _snapshot.Phase == GamePhase.Main && _snapshot.Quality.HasLocalPerspective && _snapshot.LocalPlayerId.HasValue && !_snapshot.IsSpectating ? _snapshot.Entities.Values.Where(entity =>
+                entity.Kind == EntityKind.Player && entity.GetIntTag("PLAYER_ID") == _snapshot.LocalPlayerId).Take(2).ToArray() : [];
+            _source.ItemsSource = players is [var player] ? new[] { new EntityOption(player.Id, "结束我方回合") } : Array.Empty<EntityOption>();
+            _source.SelectedIndex = _source.Items.Count > 0 ? 0 : -1;
+            _target.SelectedIndex = 0;
+            RefreshEnabled();
+            return;
+        }
         IEnumerable<BattleCardView> sources = kind switch
         {
             "play" => _view.Local.Hand,
@@ -214,7 +231,7 @@ public sealed class LocalToolsWindow : Window
     {
         if (!IsBindingValid || _source.SelectedItem is not EntityOption source || _kind.SelectedItem is not KindOption kind) return;
         if (_line.Count >= 16) { _result.Text = "最多验证 16 个候选动作；较长序列请分段核对。"; return; }
-        var target = _target.SelectedItem as EntityOption;
+        var target = kind.Kind == "end_turn" ? null : _target.SelectedItem as EntityOption;
         _line.Add(new(kind.Kind, source.Id, target is { Id: > 0 } ? target.Id : null,
             $"{kind.Text}：{source.Text}" + (target is { Id: > 0 } ? " → " + target.Text : "")));
         RefreshLine();
@@ -276,7 +293,9 @@ public sealed class LocalToolsWindow : Window
         _evaluate.IsEnabled = ready && _line.Count > 0; _lethal.IsEnabled = ready;
         _add.IsEnabled = ready && _source.Items.Count > 0; _remove.IsEnabled = ready && _line.Count > 0;
         _kind.IsEnabled = _source.IsEnabled = _target.IsEnabled = _actions.IsEnabled = ready;
-        _validateChoice.IsEnabled = ready && OwnChoice() is not null; _choices.IsEnabled = _validateChoice.IsEnabled;
+        if ((_kind.SelectedItem as KindOption)?.Kind == "end_turn") _target.IsEnabled = false;
+        _validateChoice.IsEnabled = ready && OwnChoice() is not null;
+        _evaluateChoice.IsEnabled = _validateChoice.IsEnabled; _choices.IsEnabled = _validateChoice.IsEnabled;
         _cancel.IsEnabled = _calculation is not null;
     }
 
@@ -297,13 +316,14 @@ public sealed class LocalToolsWindow : Window
         body.Children.Add(_actions); body.Children.Add(Row(_remove, _evaluate));
         body.Children.Add(Row(Label("搜索深度"), _depth, Label("节点上限"), _nodes, _lethal));
         body.Children.Add(new TextBlock { Text = "我方当前选择", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
-        body.Children.Add(_choiceLabel); body.Children.Add(_choices); body.Children.Add(Row(_validateChoice, _cancel));
+        body.Children.Add(_choiceLabel); body.Children.Add(_choices); body.Children.Add(Row(_validateChoice, _evaluateChoice, _cancel));
         body.Children.Add(_result);
         Register("LocalBindingText", _binding); Register("LocalQualityText", _quality); Register("LocalDeckText", _deck);
         Register("LocalCardBox", _card); Register("LocalDrawsBox", _draws); Register("LocalOddsButton", _odds);
         Register("LocalKindBox", _kind); Register("LocalSourceBox", _source); Register("LocalTargetBox", _target);
         Register("LocalAddActionButton", _add); Register("LocalActionsList", _actions); Register("LocalEvaluateButton", _evaluate);
         Register("LocalLethalButton", _lethal); Register("LocalChoicesList", _choices); Register("LocalValidateChoiceButton", _validateChoice);
+        Register("LocalEvaluateChoiceButton", _evaluateChoice);
         Register("LocalCancelButton", _cancel); Register("LocalResultBox", _result);
         return new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
@@ -338,6 +358,33 @@ public static class LocalToolResultFormatter
             lines.Add(result["reason"]?.ToString() ?? "");
             return string.Join("\n", lines);
         }
+        if (tool == "evaluate_choice")
+        {
+            lines.Add("选择直接后果预览（尚未发生，不作为后续出牌或斩杀证明）");
+            lines.Add("候选是否合法：" + (result["IsLegal"]?.ToString() switch { "true" => "是", "false" => "否", _ => "未知" }));
+            lines.Add("直接后果验证：" + (result["Verification"]?.ToString() switch
+            { "Verified" => "已核算列出的直接后果", "Conditional" => "有条件 / 仍有未知", "Invalid" => "无效选择", _ => "未覆盖 / 信息不足" }));
+            lines.Add("选择来源：" + (result["SourceName"]?.ToString() ?? "尚未确认"));
+            lines.Add($"手牌数量（仅本次直接变化）：{result["HandCountBefore"]?.ToString() ?? "未知"} → {result["HandCountAfter"]?.ToString() ?? "未知"}；上限 {result["HandLimit"]?.ToString() ?? "未知"}");
+            if (result["CardOutcomes"] is JsonArray outcomes)
+                foreach (var outcome in outcomes.OfType<JsonObject>())
+                {
+                    var destination = outcome["AddedToHand"]?.ToString() switch
+                    { "true" => "直接加入手牌", "false" => "不能加入手牌（手牌已满）", _ => "是否入手尚未确认" };
+                    var origin = outcome["Origin"]?.ToString() switch
+                    { "Deck" => "牌库", "Sideboard" => "边栏", "DiscoverPool" => "发现池", _ => "未知来源" };
+                    lines.Add($"· {outcome["Name"]?.ToString() ?? "未知卡牌"}：来自{origin}；{destination}。");
+                    if (outcome["GrantedCostReduction"] is { } reduction) lines.Add("  授予减费：" + reduction + "；不从候选费用重复扣减。");
+                    lines.Add("  入手后当前费用：" + (outcome["ResultingCost"]?.ToString() ?? "未知，等待客户端结算"));
+                }
+            if (result["DirectDeckChange"] is JsonObject change)
+                lines.Add($"牌库直接移出 {change["RemovedCopies"]} 张：{change["TotalCardsBefore"]?.ToString() ?? "未知"} → {change["TotalCardsAfter"]?.ToString() ?? "未知"}；不包含其他触发或后续发现。");
+            foreach (var (label, key) in new[] { ("失败原因", "Errors"), ("成立条件", "Assumptions"), ("未知与未结算", "Unknowns"), ("已覆盖规则", "RuleCoverage") })
+                if (result[key] is JsonArray { Count: > 0 } values)
+                    lines.Add(label + "：\n" + string.Join("\n", values.Select(value => "· " + value)));
+            lines.Add("不能据此继续执行后续动作；请等待选择完成后的新局面。");
+            return string.Join("\n", lines);
+        }
         var evaluation = result;
         if (tool == "find_lethal")
         {
@@ -365,6 +412,19 @@ public static class LocalToolResultFormatter
         if (evaluation["Result"] is JsonObject state)
         {
             lines.Add("模拟后可用法力：" + state["AvailableMana"]);
+            if (state["TurnEnded"]?.GetValue<bool>() == true)
+                lines.Add("本地模拟已结束我方回合；仅计算本次回合末边界，不推断对手起手或后续回合。");
+            if (state["UnresolvedEndTurnFields"] is JsonArray { Count: > 0 })
+                lines.Add("普通攻击次数或就绪状态未推导，仍保留最近观察值，不能用于后续动作验证。");
+            if (state["ForcedAttacks"] is JsonArray forcedAttacks)
+                foreach (var attack in forcedAttacks.OfType<JsonObject>())
+                    lines.Add($"· 强制战斗：{entityName(attack["SourceEntityId"]!.GetValue<int>())} → {entityName(attack["TargetEntityId"]!.GetValue<int>())}；造成 {attack["DamageToTarget"]?.ToString() ?? "未知"} / 受到 {attack["DamageToSource"]?.ToString() ?? "未知"} 点伤害。");
+            if (state["PendingForcedAttacks"] is JsonArray pendingAttacks)
+                foreach (var pending in pendingAttacks.OfType<JsonObject>())
+                {
+                    var candidates = (pending["CandidateSourceEntityIds"] as JsonArray ?? []).Select(id => entityName(id!.GetValue<int>()));
+                    lines.Add("尚未展开的强制战斗候选：" + string.Join("、", candidates) + "；" + pending["Reason"]);
+                }
             if (state["OpponentDefeatedByPayment"]?.GetValue<bool>() == true)
                 lines.Add("对手因生命支付达到零生命，已停止计算该牌后续效果。");
             if (state["NextCardCostsOpponentHealth"]?.GetValue<bool>() == true)
@@ -386,5 +446,5 @@ public static class LocalToolResultFormatter
         }
     }
 
-    private static string ActionName(string? kind) => kind switch { "Attack" => "攻击", "PlayCard" => "使用手牌", "HeroPower" => "英雄技能", _ => "动作" };
+    private static string ActionName(string? kind) => kind switch { "Attack" => "攻击", "PlayCard" => "使用手牌", "HeroPower" => "英雄技能", "EndTurn" => "结束回合", _ => "动作" };
 }

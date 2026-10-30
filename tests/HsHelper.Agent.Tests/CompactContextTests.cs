@@ -15,6 +15,9 @@ static class CompactContextTests
         yield return ("compact context removes deck slots, hidden identities, names and raw JSON", () => Sync(Privacy));
         yield return ("compact context preserves live modifiers, complete card text and unknown quality", () => Sync(DynamicState));
         yield return ("compact context uses only current own confirmed choices", () => Sync(Choices));
+        yield return ("invalid choice identities never enter model context and choice requests make zero HTTP", ChoicePrivacyBoundaries);
+        yield return ("spectator contexts omit both players' private cards tracking and private events", () => Sync(SpectatorPrivacy));
+        yield return ("confirmed choices copy option lists and existing entity ownership is authoritative", () => Sync(ChoiceCopy));
         yield return ("compact context filters future events and retains public play multiplicity", () => Sync(EventBoundary));
         yield return ("compact context fails closed on unconfirmed perspectives and stale tracking", () => Sync(UnconfirmedPerspective));
         yield return ("future reveal ledgers and cross-state deck composition never enter old model contexts", () => Sync(FutureNestedState));
@@ -77,7 +80,7 @@ static class CompactContextTests
 
     private static void Choices()
     {
-        var own = State() with { Phase = GamePhase.Choice, Choice = new(7, 1, "GENERAL", 10, 1, 1, [new(90, "OPTION", 1, 0)], true) };
+        var own = ChoiceState();
         var compact = CompactAdviceContextBuilder.Create(own, "123", AdviceTaskKind.Choice);
         Check(compact.Snapshot["choice"]!["confirmed"]!.GetValue<bool>() && compact.TemplateVersion.EndsWith("/choice"), "Ready own choice missing");
         foreach (var other in new[] { own with { Choice = own.Choice! with { PlayerId = 2 } }, own with { Choice = own.Choice! with { IsReady = false } }, own with { LocalPlayerId = null } })
@@ -86,6 +89,73 @@ static class CompactContextTests
             try { CompactAdviceContextBuilder.Create(other, "123", AdviceTaskKind.Choice); throw new Exception("Unconfirmed choice task accepted"); }
             catch (InvalidOperationException) { }
         }
+    }
+
+    private static GameSnapshot ChoiceState() => State() with
+    {
+        Phase = GamePhase.Choice, Quality = new(true, true, true, true, 0, []),
+        Choice = new(7, 1, "GENERAL", 10, 1, 1, [new(90, "CHOICE_ONLY_PROBE", 1, 0)], true)
+    };
+
+    private static async Task ChoicePrivacyBoundaries()
+    {
+        var own = ChoiceState();
+        var duplicatePlayers = own.Entities.Values.Append(new EntitySnapshot(200, null, EntityKind.Player,
+            new Dictionary<string, string> { ["PLAYER_ID"] = "1" }.ToFrozenDictionary())).ToFrozenDictionary(entity => entity.Id);
+        foreach (var rejected in new[]
+        {
+            own with { IsSpectating = true }, own with { Quality = own.Quality with { IsComplete = false } },
+            own with { Quality = own.Quality with { IsStable = false } }, own with { Quality = own.Quality with { OpenBlockCount = 1 } },
+            own with { Quality = own.Quality with { HasLocalPerspective = false } }, own with { LocalPlayerId = null },
+            own with { Entities = duplicatePlayers }, own with { Choice = own.Choice! with { IsReady = false } },
+            own with { Choice = own.Choice! with { PlayerId = 2 } }, own with { Choice = own.Choice! with { CountMin = -1 } },
+            own with { Choice = own.Choice! with { CountMax = 2 } },
+            own with { Choice = own.Choice! with { Options = [new(90, "CHOICE_ONLY_PROBE", 2, 0)] } },
+            own with { Choice = own.Choice! with { Options = [new(90, "CHOICE_ONLY_PROBE", 1, 0), new(90, "CHOICE_ONLY_PROBE", 1, 1)] } },
+            own with { Entities = own.Entities.Values.Append(Entity(90, null, "SETASIDE", 2)).ToFrozenDictionary(entity => entity.Id) },
+            own with { Entities = own.Entities.Values.Append(Entity(90, "CONFLICTING_IDENTITY", "SETASIDE", 1)).ToFrozenDictionary(entity => entity.Id) }
+        })
+        {
+            var projected = CompactAdviceContextBuilder.Build(rejected, "123", cards: [Card("CHOICE_ONLY_PROBE")]);
+            Check(projected["choice"] is null && !projected.ToJsonString().Contains("CHOICE_ONLY_PROBE", StringComparison.Ordinal),
+                "A rejected choice identity entered the initial or lazy model context.");
+            var handler = new FakeHandler((_, _) => Reply(Final()));
+            try { await Analyze(handler, CompactAdviceContextBuilder.Create(rejected, "123", AdviceTaskKind.Choice)); throw new Exception("Rejected choice reached HTTP."); }
+            catch (InvalidOperationException) { Check(handler.Calls == 0, "Choice qualification occurred after a provider request."); }
+        }
+    }
+
+    private static void SpectatorPrivacy()
+    {
+        var original = ChoiceState();
+        var spectator = original with
+        {
+            IsSpectating = true,
+            DeckTracking = new(original.MatchId, original.StateVersion, "deck", "123", 1,
+                new Dictionary<string, int> { ["SPECTATOR_PRIVATE_DECK"] = 1 }, 0, true, []),
+            RecentEvents = [new(original.EventSequence, "CardRevealed", 10, 1, "SPECTATOR_PRIVATE_EVENT", null, null, "anonymous")]
+        };
+        var compact = CompactAdviceContextBuilder.Build(spectator, "123", cards: [Card("A"), Card("SPECTATOR_PRIVATE_DECK"), Card("CHOICE_ONLY_PROBE")]);
+        var text = compact.ToJsonString();
+        Check(compact["local_player_id"] is null && compact["choice"] is null && compact["deck_tracking"] is null &&
+            compact["entities"]!.AsArray().All(entity => entity!["id"]!.GetValue<int>() != 10) &&
+            !text.Contains("PRIVATE_", StringComparison.Ordinal) && !text.Contains("CHOICE_ONLY_PROBE", StringComparison.Ordinal),
+            "Spectating reused a manually supplied player ID to export private cards, deck or recent events.");
+        Check(compact["entities"]!.AsArray().Any(entity => entity!["id"]!.GetValue<int>() == 11), "Spectating discarded public board information.");
+    }
+
+    private static void ChoiceCopy()
+    {
+        var frame = ChoiceState(); var options = frame.Choice!.Options.ToList();
+        frame = frame with { Choice = frame.Choice with { Options = options } };
+        var confirmed = ChoiceVisibility.ConfirmedOwn(frame)!;
+        options.Clear();
+        Check(confirmed.Options.Count == 1, "A mutable producer list changed already confirmed options.");
+        try { ((IList<ChoiceOptionSnapshot>)confirmed.Options).Clear(); throw new Exception("Confirmed options allowed consumer writes."); }
+        catch (NotSupportedException) { }
+        var opposing = ChoiceState();
+        opposing = opposing with { Entities = opposing.Entities.Values.Append(Entity(90, null, "SETASIDE", 2)).ToFrozenDictionary(entity => entity.Id) };
+        Check(ChoiceVisibility.ConfirmedOwn(opposing) is null, "An option's claimed owner overrode its existing opposing entity.");
     }
 
     private static void EventBoundary()
@@ -170,6 +240,7 @@ static class CompactContextTests
         {
             var state = State() with { Phase = kind switch { AdviceTaskKind.Mulligan => GamePhase.Mulligan, AdviceTaskKind.Choice => GamePhase.Choice, _ => GamePhase.Main },
                 Choice = new(7, 1, "GENERAL", 10, 1, 1, [new(90, "OPTION", 1, 0)], true) };
+            if (kind == AdviceTaskKind.Choice) state = state with { Quality = new(true, true, true, true, 0, []) };
             var context = CompactAdviceContextBuilder.Create(state, "123", kind, Deck(), [Card()]);
             var handler = new FakeHandler((_, _) => Reply(Final()));
             await Analyze(handler, context);

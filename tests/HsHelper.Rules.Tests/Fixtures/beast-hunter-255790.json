@@ -471,6 +471,32 @@
       "spellSchool": "FIRE",
       "text": "<b>奥秘：</b>当你的英雄受到攻击，对所有敌人造成$2点伤害。",
       "type": "SPELL"
+    },
+    {
+      "artist": "Matt Dixon",
+      "attack": 6,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 6,
+      "dbfId": 125998,
+      "elite": true,
+      "faction": "HORDE",
+      "flavor": "鼠王被粗暴地逐出暴风城下水道之后，又自封为达拉然下水道的王者。这下梵妮莎和她的团队捡了个便宜——鼠王的私运通道直通紫罗兰监狱……",
+      "health": 5,
+      "id": "JAIL_831",
+      "mechanics": [
+        "BATTLECRY",
+        "DISCOVER"
+      ],
+      "name": "下水道之王",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "ESCAPEFROM_VIOLET_HOLD",
+      "text": "构筑套牌时，选择三张私藏的野兽牌。<b>战吼：</b>从中<b>发现</b>一张，其法力值消耗减少（3）点。",
+      "type": "MINION"
     }
   ]
 }

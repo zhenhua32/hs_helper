@@ -20,6 +20,8 @@ public static class BattleViewRegression
         yield return ("choice identities stay hidden for stale, opposing or unconfirmed candidates", ChoicePrivacy);
         yield return ("choice projections freeze producer and consumer option lists", ImmutableChoice);
         yield return ("local result formatting preserves unknown and conditional verification", ResultSemantics);
+        yield return ("choice consequence display preserves scope, granted discount and unknown resulting cost", ChoiceEffectDisplay);
+        yield return ("end-turn display distinguishes computed damage from pending order and readiness", EndTurnDisplay);
     }
 
     private static void ObservedBattle()
@@ -119,6 +121,36 @@ public static class BattleViewRegression
         Check(unconfirmed.Contains("生命支付效果：未确认", StringComparison.Ordinal), "Unknown payment availability was presented as active or consumed.");
         var stopped = LocalToolResultFormatter.Format("evaluate_line", JsonNode.Parse("""{"Result":{"OpponentDefeatedByPayment":true}}""")!);
         Check(stopped.Contains("已停止计算该牌后续效果", StringComparison.Ordinal), "Payment lethal did not explain why later card effects remain unresolved.");
+    }
+
+    private static void ChoiceEffectDisplay()
+    {
+        var text = LocalToolResultFormatter.Format("evaluate_choice", JsonNode.Parse("""
+            {"Verification":"Conditional","IsLegal":true,"SourceName":"下水道之王","IsLethal":true,
+             "HandCountBefore":1,"HandCountAfter":2,"HandLimit":10,
+             "CardOutcomes":[{"Name":"阿迦玛甘","Origin":"Sideboard","AddedToHand":true,"GrantedCostReduction":3,"ResultingCost":null}],
+             "Unknowns":["后续触发等待新日志"],"Errors":[],"Assumptions":[],"RuleCoverage":[]}
+            """)!);
+        Check(text.Contains("尚未发生", StringComparison.Ordinal) && text.Contains("来自边栏", StringComparison.Ordinal) &&
+            text.Contains("授予减费：3", StringComparison.Ordinal) && text.Contains("入手后当前费用：未知", StringComparison.Ordinal) &&
+            text.Contains("不能据此继续执行后续动作", StringComparison.Ordinal) && !text.Contains("已验证斩杀", StringComparison.Ordinal),
+            "Choice preview turned an unknown resulting cost or later actions into verified facts.");
+        var invalid = LocalToolResultFormatter.Format("evaluate_choice", JsonNode.Parse("""{"Verification":"Unsupported","IsLegal":null,"CardOutcomes":[],"Unknowns":["来源未知"]}""")!);
+        Check(invalid.Contains("候选是否合法：未知", StringComparison.Ordinal) && invalid.Contains("来源未知", StringComparison.Ordinal),
+            "Missing choice evidence was presented as legal or resolved.");
+    }
+
+    private static void EndTurnDisplay()
+    {
+        var text = LocalToolResultFormatter.Format("evaluate_line", JsonNode.Parse("""
+            {"Verification":"Conditional","IsLegal":true,"AppliedActions":1,"Result":{"AvailableMana":2,"TurnEnded":true,
+             "UnresolvedEndTurnFields":["entity:20:EXHAUSTED"],
+             "ForcedAttacks":[{"SourceEntityId":20,"TargetEntityId":31,"DamageToTarget":3,"DamageToSource":6}],
+             "PendingForcedAttacks":[{"CandidateSourceEntityIds":[21,22],"Reason":"order unknown"}]}}
+            """)!);
+        Check(text.Contains("本地模拟已结束", StringComparison.Ordinal) && text.Contains("不推断对手起手", StringComparison.Ordinal) &&
+            text.Contains("造成 3 / 受到 6", StringComparison.Ordinal) && text.Contains("order unknown", StringComparison.Ordinal) &&
+            text.Contains("仍保留最近观察值", StringComparison.Ordinal), "End-turn display lost its damage, order or unprojected-state scope.");
     }
 
     private static void DeckEvidence()

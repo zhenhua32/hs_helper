@@ -59,6 +59,7 @@ internal static class CoachPrivacyIntegration
             ("find_lethal", new() { ["maximum_depth"] = 1, ["maximum_nodes"] = 10 }),
             ("calculate_draw_odds", new() { ["card_id"] = SyntheticFixture.CardId(1), ["draws"] = 1 }),
             ("validate_choice", new() { ["choice_id"] = 1, ["selected_entity_ids"] = new JsonArray(100) }),
+            ("evaluate_choice", new() { ["choice_id"] = 1, ["selected_entity_ids"] = new JsonArray(100) }),
             ("get_recent_events", new())
         };
         foreach (var (name, args) in forbiddenTools) await Throws<ArgumentException>(() => planning.ExecuteAsync(name, args, default));

@@ -1,7 +1,10 @@
 using System.Diagnostics;
+using System.Collections.Frozen;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -19,7 +22,14 @@ public static class LocalToolsHiddenSmoke
         Directory.CreateDirectory(directory);
         var catalog = new CardCatalog(Path.Combine(directory, "local-tools-cards.db"));
         Await(catalog.InitializeAsync());
-        using (var cards = new MemoryStream(Encoding.UTF8.GetBytes(BattleViewRegression.CardsJson())))
+        var cardDefinitions = JsonNode.Parse(BattleViewRegression.CardsJson())!.AsArray();
+        var workspace = new DirectoryInfo(AppContext.BaseDirectory);
+        while (workspace is not null && !File.Exists(Path.Combine(workspace.FullName, "AGENTS.md"))) workspace = workspace.Parent;
+        using (var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(workspace!.FullName,
+            "tests", "HsHelper.Rules.Tests", "Fixtures", "beast-hunter-255790.json"))))
+            cardDefinitions.Add(JsonNode.Parse(fixture.RootElement.GetProperty("cards").EnumerateArray()
+                .Single(card => card.GetProperty("id").GetString() == "CORE_DS1_184").GetRawText()));
+        using (var cards = new MemoryStream(Encoding.UTF8.GetBytes(cardDefinitions.ToJsonString())))
             Await(catalog.ImportAsync(cards, BattleViewRegression.Build, source: "synthetic://hidden-local-tools"));
         var frame = BattleViewRegression.Frame();
         var window = new LocalToolsWindow(frame, BattleViewRegression.Build, catalog);
@@ -68,9 +78,44 @@ public static class LocalToolsHiddenSmoke
             WaitUntil(() => !window.HasPendingCalculation && window.ResultText.Contains("仅核对候选范围与数量", StringComparison.Ordinal), "Choice count validation did not display its limited coverage.");
             Check(window.ResultText.Contains("历史局面", StringComparison.Ordinal) && window.ResultText.Contains("已验证", StringComparison.Ordinal), "Historical choice result lost its as-of binding.");
 
+            var entities = choiceFrame.Entities.ToDictionary();
+            entities[1] = entities[1] with { Tags = entities[1].Tags.Append(new KeyValuePair<string, string>("MAXHANDSIZE", "10")).ToFrozenDictionary() };
+            entities[98] = new(98, "CORE_DS1_184", EntityKind.Card,
+                new Dictionary<string, string> { ["CONTROLLER"] = "1", ["ZONE"] = "GRAVEYARD", ["CARDTYPE"] = "SPELL" }.ToFrozenDictionary());
+            var trackingChoice = choiceFrame with { Entities = entities.ToFrozenDictionary(), Choice = choiceFrame.Choice! with { SourceEntityId = 98 } };
+            window.UpdateBinding(trackingChoice, BattleViewRegression.Build, isHistorical: true); Await(window.BindingReady);
+            choices = Control<ListBox>(window, "LocalChoicesList"); choices.SelectedIndex = 1;
+            Click(Control<Button>(window, "LocalEvaluateChoiceButton"));
+            WaitUntil(() => !window.HasPendingCalculation && window.ResultText.Contains("选择来源：追踪术", StringComparison.Ordinal),
+                "Choice-effect button did not execute fixed-build direct consequences.");
+            Check(window.ResultText.Contains("直接加入手牌", StringComparison.Ordinal) && window.ResultText.Contains("入手后当前费用：未知", StringComparison.Ordinal) &&
+                window.ResultText.Contains("不能据此继续执行", StringComparison.Ordinal), "Local choice UI invented a current cost or following action.");
+            foreach (var rejected in new[]
+            {
+                trackingChoice with { IsSpectating = true },
+                trackingChoice with { Quality = trackingChoice.Quality with { IsStable = false } },
+                trackingChoice with { Quality = trackingChoice.Quality with { IsComplete = false } },
+                trackingChoice with { Quality = trackingChoice.Quality with { OpenBlockCount = 1 } },
+                trackingChoice with { Choice = trackingChoice.Choice! with { Id = 0 } },
+                trackingChoice with { Choice = trackingChoice.Choice! with { Options = [new(101, "PRIVATE_LOCAL_CHOICE", 2, 1)] } }
+            })
+            {
+                window.UpdateBinding(rejected, BattleViewRegression.Build); Await(window.BindingReady);
+                Check(Control<ListBox>(window, "LocalChoicesList").Items.Count == 0 &&
+                    !Control<Button>(window, "LocalValidateChoiceButton").IsEnabled && !Control<Button>(window, "LocalEvaluateChoiceButton").IsEnabled,
+                    "An unconfirmed/foreign choice remained visible or calculable through the local-window projection.");
+            }
+
             window.UpdateBinding(choiceFrame with { Phase = GamePhase.Main }, BattleViewRegression.Build); Await(window.BindingReady);
             Check(Control<ListBox>(window, "LocalChoicesList").Items.Count == 0 && !Control<Button>(window, "LocalValidateChoiceButton").IsEnabled,
                 "Residual choice remained available in Main phase.");
+            window.UpdateBinding(frame, BattleViewRegression.Build); Await(window.BindingReady);
+            kinds = Control<ComboBox>(window, "LocalKindBox"); kinds.SelectedIndex = 3;
+            Check(Control<ComboBox>(window, "LocalSourceBox").Items.Count == 1 && !Control<ComboBox>(window, "LocalTargetBox").IsEnabled,
+                "Local end-turn source was not bound uniquely to the current player or allowed a target.");
+            Click(Control<Button>(window, "LocalAddActionButton")); Click(Control<Button>(window, "LocalEvaluateButton"));
+            WaitUntil(() => !window.HasPendingCalculation && window.ResultText.Contains("本地模拟已结束我方回合", StringComparison.Ordinal),
+                "Local end-turn action did not reach the rule boundary or its explanation.");
             window.UpdateBinding(frame with { Quality = frame.Quality with { IsComplete = false }, DeckTracking = frame.DeckTracking! with { IsExact = false, UnknownCount = 3 } }, BattleViewRegression.Build);
             Await(window.BindingReady);
             Click(Control<Button>(window, "LocalOddsButton"));

@@ -116,7 +116,7 @@ static class CapabilitiesTests
         { ValidateActions = (actions, _) => { captured = actions; return Task.FromResult(new ActionValidationResult(AdviceValidationStatus.Verified, true, true)); } });
         Check(captured is [{ Kind: "attack", SourceEntityId: 10, TargetEntityId: 20 }] && result.Actions.Count == 1 && result.Verification == "verified" && result.VerifiedLethal, "Trusted validator result lost.");
         Check(result.Actions is not List<AdviceAction>, "Returned action list is mutable.");
-        var normalized = await Analyze(new FakeHandler((_, _) => Reply(Final(Advice("""[{"Kind":"PlayCard","SourceEntityId":10},{"kind":"hero-power","sourceEntityId":11},{"kind":"end_turn"}]""")))), Validation(AdviceValidationStatus.Verified));
+        var normalized = await Analyze(new FakeHandler((_, _) => Reply(Final(Advice("""[{"Kind":"PlayCard","SourceEntityId":10},{"kind":"hero-power","sourceEntityId":11},{"kind":"end_turn","source_entity_id":2}]""")))), Validation(AdviceValidationStatus.Verified));
         Check(normalized.Actions.Select(a => a.Kind).SequenceEqual(new[] { "play", "hero_power", "end_turn" }), "Action aliases not normalized.");
     }
     private static async Task UnverifiedActions()
@@ -134,7 +134,7 @@ static class CapabilitiesTests
     }
     private static async Task MalformedActions()
     {
-        foreach (var actions in new[] { "{}", """[{"kind":"attack","sourceEntityId":10}]""", """[{"kind":"attack","sourceEntityId":10,"targetEntityId":20,"source_entity_id":11}]""", """[{"kind":"end_turn","sourceEntityId":10}]""", """[{"kind":"click","sourceEntityId":1}]""", """[{"kind":"play","sourceEntityId":-1}]""", """[{"kind":"play","sourceEntityId":10,"verified":true}]""" })
+        foreach (var actions in new[] { "{}", """[{"kind":"attack","sourceEntityId":10}]""", """[{"kind":"attack","sourceEntityId":10,"targetEntityId":20,"source_entity_id":11}]""", """[{"kind":"end_turn"}]""", """[{"kind":"end_turn","sourceEntityId":2,"target_entity_id":20}]""", """[{"kind":"click","sourceEntityId":1}]""", """[{"kind":"play","sourceEntityId":-1}]""", """[{"kind":"play","sourceEntityId":10,"verified":true}]""" })
             await Throws<InvalidDataException>(() => Analyze(new FakeHandler((_, _) => Reply(Final(Advice(actions)))), Validation(AdviceValidationStatus.Verified)));
     }
     private static async Task ModelClaims()

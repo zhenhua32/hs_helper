@@ -199,18 +199,10 @@ public static class BattleViewBuilder
         return Array.AsReadOnly(ids.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
     }
 
-    private static int? ConfirmedLocalPlayer(GameSnapshot snapshot) =>
-        snapshot.Quality.HasLocalPerspective && !snapshot.IsSpectating && snapshot.LocalPlayerId is { } local &&
-        snapshot.Entities.Values.Count(entity => entity.Kind == EntityKind.Player && entity.GetIntTag("PLAYER_ID") == local) == 1
-            ? local : null;
+    private static int? ConfirmedLocalPlayer(GameSnapshot snapshot) => ChoiceVisibility.ConfirmedLocalPlayer(snapshot);
 
     private static CurrentChoiceSnapshot? ConfirmedChoice(GameSnapshot snapshot, int? local) =>
-        local.HasValue && snapshot.Quality.IsComplete && snapshot.Quality.IsStable &&
-        snapshot.Phase is GamePhase.Choice or GamePhase.Mulligan &&
-        snapshot.Choice is { IsReady: true } choice && choice.PlayerId == local &&
-        choice.CountMin >= 0 && choice.CountMax >= choice.CountMin && choice.CountMax <= choice.Options.Count &&
-        choice.Options.All(option => option.EntityId > 0 && (option.ControllerId is null || option.ControllerId == local)) &&
-        choice.Options.Select(option => option.EntityId).Distinct().Count() == choice.Options.Count ? choice : null;
+        local.HasValue && local == snapshot.LocalPlayerId ? ChoiceVisibility.ConfirmedOwn(snapshot) : null;
 
     private static string? CardType(string? type) => type switch
     {

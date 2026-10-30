@@ -70,7 +70,7 @@ public sealed class AdviceService(HttpClient http)
         区分留牌、回合和复盘；复盘只依据当前固定快照。工具计算结果优先于模型估计，不编造胜率或斩杀。
         可提出候选动作，由本地规则引擎最终校验；你不能自行宣布verified或verified_lethal。
         最终仅输出JSON对象：{"summary":"简短中文建议","reasons":["依据"],"alternative":null,"risks":["未知与风险"],"actions":[{"kind":"play|attack|hero_power|end_turn|choose","source_entity_id":1,"target_entity_id":2}]}。
-        动作用实体标识；end_turn不携带实体，attack必须指定目标。没有可核验方案时actions留空，仅给策略。
+        动作用实体标识；end_turn必须携带当前我方PLAYER实体的id（不是PLAYER_ID），且不带目标；attack必须指定目标。没有可核验方案时actions留空，仅给策略。
         """;
 
     public async Task<StrategyAdvice> AnalyzeAsync(ModelSettings settings, string apiKey,
@@ -349,8 +349,7 @@ public sealed class AdviceService(HttpClient http)
             }
             var source = Entity(action["source_entity_id"] ?? action["sourceEntityId"] ?? action["SourceEntityId"]);
             var target = Entity(action["target_entity_id"] ?? action["targetEntityId"] ?? action["TargetEntityId"]);
-            if ((kind != "end_turn" && source is null) || (kind == "attack" && target is null) ||
-                (kind == "end_turn" && (source is not null || target is not null)))
+            if (source is null || (kind == "attack" && target is null) || (kind == "end_turn" && target is not null))
                 throw new InvalidDataException("动作缺少必要实体或目标。");
             result.Add(new(kind, source, target));
         }

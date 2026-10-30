@@ -1,0 +1,38 @@
+{
+  "build": "255790",
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "publisherSource": "https://hearthstone.blizzard.com/en-us/cards/129169",
+  "referenceCombatSource": "https://github.com/jleclanche/fireplace/blob/master/fireplace/actions.py",
+  "notes": "Exact pinned card values. Reference combat code is not evidence of build-specific readiness/counter semantics; forced-combat results retain that uncertainty.",
+  "cards": [
+    {
+      "artist": "Konstantin Turovec",
+      "attack": 4,
+      "cardClass": "DEMONHUNTER",
+      "collectible": true,
+      "cost": 7,
+      "countAsCopyOfDbfId": 98469,
+      "dbfId": 129169,
+      "flavor": "游戏内禁止养恐魔。",
+      "health": 10,
+      "howToEarn": "与恶魔猎手职业一同解锁。",
+      "howToEarnGolden": "使用恶魔猎手赢得250场对战后解锁。",
+      "id": "CORE_TTN_866",
+      "mechanics": [
+        "LIFESTEAL",
+        "TRIGGER_VISUAL"
+      ],
+      "name": "神秘恐魔",
+      "race": "DEMON",
+      "races": [
+        "DEMON",
+        "BEAST"
+      ],
+      "rarity": "EPIC",
+      "set": "CORE",
+      "text": "<b>吸血</b>。在你的回合结束时，&迫使所有敌方随从攻击本随从。",
+      "type": "MINION"
+    }
+  ]
+}

@@ -131,7 +131,7 @@ public sealed class SnapshotCoach
             var draws = args["draws"]!.GetValue<int>();
             var tracking = _snapshot.DeckTracking;
             var exact = _snapshot.Phase != GamePhase.Choice && _snapshot.Quality.IsComplete && _snapshot.Quality.IsStable &&
-                _snapshot.Quality.HasLocalPerspective && tracking is { IsExact: true, UnknownCount: 0, TotalCards: >= 0 } &&
+                ChoiceVisibility.ConfirmedLocalPlayer(_snapshot).HasValue && tracking is { IsExact: true, UnknownCount: 0, TotalCards: >= 0 } &&
                 tracking.MatchId == _snapshot.MatchId && tracking.StateVersion == _snapshot.StateVersion && tracking.CardBuild == _build &&
                 tracking.KnownRemaining.Values.All(copies => copies >= 0) && tracking.KnownRemaining.Values.Sum(copies => (long)copies) == tracking.TotalCards;
             var population = exact ? tracking!.TotalCards : null;
@@ -152,6 +152,10 @@ public sealed class SnapshotCoach
                 missing = ids.Except(cards.Select(c => c.Id), StringComparer.Ordinal).ToArray() });
         }
         var rulesCards = await RuleCardsAsync(token);
+        if (name == "evaluate_choice")
+            return await Task.Run(() => Node(_rules.EvaluateChoice(_snapshot,
+                args["selected_entity_ids"]!.AsArray().Select(id => id!.GetValue<int>()).ToArray(), rulesCards,
+                args["choice_id"]!.GetValue<int>(), token)), token);
         if (name == "evaluate_line")
         {
             var actions = ParseActions(args["actions"]!.AsArray());
@@ -194,12 +198,12 @@ public sealed class SnapshotCoach
             return new(Enum.Parse<AdviceValidationStatus>(choiceResult.Verification.ToString()), choiceResult.IsLegal,
                 false, choiceResult.Errors.Concat(choiceResult.Assumptions).ToArray());
         }
-        if (actions.Any(a => a.Kind is not ("play" or "attack" or "hero_power")))
-            return new(AdviceValidationStatus.Unsupported, false, Risks: ["选择与结束回合暂未提供动作模拟，只显示策略说明。"]);
+        if (actions.Any(a => a.Kind is not ("play" or "attack" or "hero_power" or "end_turn")))
+            return new(AdviceValidationStatus.Unsupported, false, Risks: ["当前不能混合选择和其他动作进行后续模拟。"]);
         if (_build is null || await _catalog.GetManifestAsync(_build, cancellationToken: token) is null)
             return new(AdviceValidationStatus.Unsupported, false, Risks: ["缺少对应版本卡库，无法验证动作。"]);
         var planned = actions.Select(a => new PlannedAction(a.Kind switch
-        { "play" => ActionKind.PlayCard, "attack" => ActionKind.Attack, _ => ActionKind.HeroPower }, a.SourceEntityId ?? 0, a.TargetEntityId)).ToArray();
+        { "play" => ActionKind.PlayCard, "attack" => ActionKind.Attack, "hero_power" => ActionKind.HeroPower, _ => ActionKind.EndTurn }, a.SourceEntityId ?? 0, a.TargetEntityId)).ToArray();
         var cards = await RuleCardsAsync(token);
         var result = await Task.Run(() => _rules.EvaluateLine(_snapshot, planned, cards, token), token);
         return new(Enum.Parse<AdviceValidationStatus>(result.Verification.ToString()), result.IsLegal == true,
@@ -208,8 +212,9 @@ public sealed class SnapshotCoach
 
     private LineEvaluation Project(LineEvaluation evaluation)
     {
+        var local = ChoiceVisibility.ConfirmedLocalPlayer(_snapshot);
         bool Visible(SimulatedEntity entity) => entity.Type is "GAME" or "PLAYER" || entity.Zone == "PLAY" ||
-            _snapshot.Quality.HasLocalPerspective && _snapshot.LocalPlayerId.HasValue && entity.ControllerId == _snapshot.LocalPlayerId &&
+            local.HasValue && entity.ControllerId == local &&
             entity.Zone is "HAND" or "SECRET";
         static bool SafeFlag(string key) => !key.Contains("NAME", StringComparison.OrdinalIgnoreCase) &&
             !key.Contains("ACCOUNT", StringComparison.OrdinalIgnoreCase) && !key.Contains("BATTLETAG", StringComparison.OrdinalIgnoreCase) &&
@@ -219,7 +224,8 @@ public sealed class SnapshotCoach
             CardId = entity.Type is "GAME" or "PLAYER" ? null : entity.CardId,
             Flags = entity.Flags.Where(pair => SafeFlag(pair.Key)).ToFrozenDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
         }).ToArray();
-        return evaluation with { Result = evaluation.Result with { Entities = Array.AsReadOnly(entities) } };
+        return evaluation with { Result = evaluation.Result with { Entities = Array.AsReadOnly(entities),
+            NextCardCostsOpponentHealth = local.HasValue ? evaluation.Result.NextCardCostsOpponentHealth : null } };
     }
 
     private static JsonNode Node<T>(T value) => JsonSerializer.SerializeToNode(value, Json)!;
@@ -233,11 +239,11 @@ public sealed class SnapshotCoach
         if (args.Count != 1 || args["actions"] is not JsonArray { Count: > 0 and <= 16 } actions) return false;
         return actions.All(item => item is JsonObject action && action.Count is 2 or 3 &&
             action.All(p => p.Key is "kind" or "source_entity_id" or "target_entity_id") &&
-            action["kind"]?.ToString() is "play" or "attack" or "hero_power" && Integer(action["source_entity_id"], 1, int.MaxValue) &&
+            action["kind"]?.ToString() is "play" or "attack" or "hero_power" or "end_turn" && Integer(action["source_entity_id"], 1, int.MaxValue) &&
             (action["target_entity_id"] is null || Integer(action["target_entity_id"], 1, int.MaxValue)));
     }
     private static IReadOnlyList<PlannedAction> ParseActions(JsonArray actions) => actions.Select(item => new PlannedAction(
-        item!["kind"]!.GetValue<string>() switch { "play" => ActionKind.PlayCard, "attack" => ActionKind.Attack, _ => ActionKind.HeroPower },
+        item!["kind"]!.GetValue<string>() switch { "play" => ActionKind.PlayCard, "attack" => ActionKind.Attack, "hero_power" => ActionKind.HeroPower, _ => ActionKind.EndTurn },
         item["source_entity_id"]!.GetValue<int>(), item["target_entity_id"]?.GetValue<int>())).ToArray();
 
     public static IReadOnlyList<AgentToolDefinition> Definitions { get; } = Array.AsReadOnly(new[]
@@ -245,9 +251,11 @@ public sealed class SnapshotCoach
         new AgentToolDefinition("get_recent_events", "查询固定决策点及以前的匿名事件摘要。", Schema("""{"type":"object","properties":{},"required":[],"additionalProperties":false}"""), Empty),
         new AgentToolDefinition("validate_choice", "只验证当前我方选择的候选范围和数量，不模拟选择后效果，也不能证明斩杀。", Schema("""{"type":"object","properties":{"choice_id":{"type":"integer","minimum":1},"selected_entity_ids":{"type":"array","maxItems":30,"items":{"type":"integer","minimum":1}}},"required":["choice_id","selected_entity_ids"],"additionalProperties":false}"""),
             args => args.Count == 2 && Integer(args["choice_id"], 1, int.MaxValue) && args["selected_entity_ids"] is JsonArray { Count: <= 30 } ids && ids.All(id => Integer(id, 1, int.MaxValue))),
+        new AgentToolDefinition("evaluate_choice", "核算已确认来源的当前选择直接后果：入手、授予减费与直接牌库变化。不生成随机候选，不推断入手后的当前费用，也不提供后续可执行步骤。", Schema("""{"type":"object","properties":{"choice_id":{"type":"integer","minimum":1},"selected_entity_ids":{"type":"array","maxItems":30,"items":{"type":"integer","minimum":1}}},"required":["choice_id","selected_entity_ids"],"additionalProperties":false}"""),
+            args => args.Count == 2 && Integer(args["choice_id"], 1, int.MaxValue) && args["selected_entity_ids"] is JsonArray { Count: <= 30 } ids && ids.All(id => Integer(id, 1, int.MaxValue))),
         new AgentToolDefinition("calculate_draw_odds", "仅在牌库组成有完整证据时，计算无放回抽牌概率。未知时返回限制。", Schema("""{"type":"object","properties":{"card_id":{"type":"string"},"draws":{"type":"integer","minimum":1,"maximum":30}},"required":["card_id","draws"],"additionalProperties":false}"""),
             args => args.Count == 2 && args["card_id"] is JsonValue id && id.TryGetValue<string>(out var card) && !string.IsNullOrWhiteSpace(card) && card.Length <= 100 && Integer(args["draws"], 1, 30)),
-        new AgentToolDefinition("evaluate_line", "验证候选出牌和攻击顺序；仅Verified代表已覆盖全部相关规则，Conditional和Unsupported不能断言结果。", Schema("""{"type":"object","properties":{"actions":{"type":"array","minItems":1,"maxItems":16,"items":{"type":"object","properties":{"kind":{"type":"string","enum":["play","attack","hero_power"]},"source_entity_id":{"type":"integer","minimum":1},"target_entity_id":{"type":"integer","minimum":1}},"required":["kind","source_entity_id"],"additionalProperties":false}}},"required":["actions"],"additionalProperties":false}"""), ValidActions),
+        new AgentToolDefinition("evaluate_line", "验证候选出牌和攻击顺序；仅Verified代表已覆盖全部相关规则，Conditional和Unsupported不能断言结果。", Schema("""{"type":"object","properties":{"actions":{"type":"array","minItems":1,"maxItems":16,"items":{"type":"object","properties":{"kind":{"type":"string","enum":["play","attack","hero_power","end_turn"]},"source_entity_id":{"type":"integer","minimum":1},"target_entity_id":{"type":"integer","minimum":1}},"required":["kind","source_entity_id"],"additionalProperties":false}}},"required":["actions"],"additionalProperties":false}"""), ValidActions),
         new AgentToolDefinition("find_lethal", "在有限深度和节点预算内搜索斩杀。未发现不代表没有斩杀；只有VerifiedLethalFound可作确定依据。", Schema("""{"type":"object","properties":{"maximum_depth":{"type":"integer","minimum":1,"maximum":6},"maximum_nodes":{"type":"integer","minimum":1,"maximum":5000}},"required":["maximum_depth","maximum_nodes"],"additionalProperties":false}"""),
             args => args.Count == 2 && Integer(args["maximum_depth"], 1, 6) && Integer(args["maximum_nodes"], 1, 5000))
     });
