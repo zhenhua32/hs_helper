@@ -25,7 +25,7 @@ pwsh -File scripts/verify-package.ps1 -PackageDirectory .local\publish\0.1.0-pre
 pwsh -File scripts/test-package.ps1 -PackageDirectory .local\publish\0.1.0-preview.2-self-contained
 ```
 
-包内 `package-manifest.json` 固定清单格式版本 1，记录应用版本、源码提交、工作区是否有未提交改动、架构、部署模式、生成时间及文件大小/SHA256；`SHA256SUMS` 额外覆盖 manifest。校验器拒绝额外文件、哈希变更、路径跳转、链接、数据库、日志及密钥配置路径，并直接读取 EXE 内嵌 manifest 核对 DPI 与普通用户权限声明。指定 `-ZipPath` 时还会校验 ZIP 收据和每个归档文件，安全回归脚本使用新建的合成小包验证拒绝路径，不修改原发行包。哈希用于完整性核对，不能代替发行者签名或可信下载渠道。脚本只生成本机文件，不上传或自动发布。
+包内 `package-manifest.json` 固定清单格式版本 1，记录应用版本、源码提交、工作区是否有未提交改动、架构、部署模式、生成时间及文件大小/SHA256；`SHA256SUMS` 额外覆盖 manifest。校验器要求入口的 `runtimeconfig.json`、`deps.json` 与 .NET 10、Windows x64 和声明的部署模式一致，检查依赖清单中的运行时与原生文件实际存在。它拒绝额外文件、哈希变更、路径跳转、链接、数据库、日志及密钥配置路径，并直接读取 EXE 内嵌 manifest 核对 DPI 与普通用户权限声明。指定 `-ZipPath` 时还会校验 ZIP 收据和每个归档文件，安全回归脚本使用新建的合成小包验证拒绝路径，不修改原发行包。哈希用于完整性核对，不能代替发行者签名或可信下载渠道。脚本只生成本机文件，不上传或自动发布。
 
 可选更小的依赖框架包：
 
@@ -41,6 +41,6 @@ pwsh -File scripts/publish.ps1 -FrameworkDependent -RunDiagnostics
 .\HsHelper.App.exe --diagnostic-output "D:\Temp\hshelper-diagnostic.json"
 ```
 
-诊断目标文件必须不存在。该模式仅输出版本、数据路径、程序路径、进程架构和 DPI 声明，不打开主窗口、不加载模型配置、不连接模型、不创建用户数据库。`verify-package.ps1 -RunDiagnostics` 从包外工作目录启动此模式，清除子进程的数据目录覆盖变量并核对 `%LOCALAPPDATA%` 默认值；不显示真实模型或用户信息。
+诊断目标文件必须不存在。该模式仅输出版本、数据路径、程序路径、进程架构和 DPI 声明，不打开主窗口、不加载模型配置、不连接模型、不创建用户数据库。`verify-package.ps1 -RunDiagnostics` 从包外工作目录启动此模式，清除子进程的数据目录覆盖变量并核对 `%LOCALAPPDATA%` 默认值；自包含包还使用不存在的外部运行时路径并禁用多级查找，以检查包内运行时启动。不显示真实模型或用户信息。
 
 程序 manifest 明确声明 `PerMonitorV2,PerMonitor` 和普通用户权限。此声明与无窗口启动检查不能代替真实屏幕验收：多显示器间移动、125%/150%/200% 缩放、炉石不同窗口模式下的浮层位置与清晰度仍需实际测试。没有安装 SDK/运行时的干净 Windows 电脑运行验证、数字签名与安装器分发也尚未完成。[DPI manifest 官方说明](https://learn.microsoft.com/en-us/windows/win32/hidpi/setting-the-default-dpi-awareness-for-a-process)

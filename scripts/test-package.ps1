@@ -17,6 +17,14 @@ function New-SyntheticPackage {
     }
     Set-Content -LiteralPath (Join-Path $taskFixture 'samples/decks/beast-hunter.txt') -Value 'SYNTHETIC PACKAGE CHECK: not a real deck.' -Encoding utf8
     Set-Content -LiteralPath (Join-Path $taskFixture 'QUICKSTART.zh-CN.md') -Value 'Synthetic package validation fixture, never run as an app.' -Encoding utf8
+    @{ runtimeOptions = @{ tfm = 'net10.0'; frameworks = @(
+        @{ name = 'Microsoft.NETCore.App'; version = '10.0.0' },
+        @{ name = 'Microsoft.WindowsDesktop.App'; version = '10.0.0' }
+    ) } } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $taskFixture 'HsHelper.App.runtimeconfig.json') -Encoding utf8
+    @{ runtimeTarget = @{ name = '.NETCoreApp,Version=v10.0/win-x64' }; targets = @{ '.NETCoreApp,Version=v10.0/win-x64' = @{
+        'HsHelper.App/fixture' = @{ runtime = @{ 'HsHelper.App.dll' = @{} } }
+    } } } |
+        ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $taskFixture 'HsHelper.App.deps.json') -Encoding utf8
     $taskFixtureFiles = @(Get-CheckedPackageFiles -Directory $taskFixture)
     [ordered]@{
         schemaVersion = 1; product = 'HsHelper'; version = $taskSourceManifest.version; runtimeIdentifier = 'win-x64'
@@ -30,15 +38,88 @@ function New-SyntheticPackage {
 }
 
 function Assert-PackageRejected {
-    param([string]$Directory, [string]$Expected)
+    param([string]$Directory, [string]$Expected, [string]$ZipPath)
     $taskRejected = $false
-    try { & (Join-Path $PSScriptRoot 'verify-package.ps1') -PackageDirectory $Directory | Out-Null }
+    try { & (Join-Path $PSScriptRoot 'verify-package.ps1') -PackageDirectory $Directory -ZipPath $ZipPath | Out-Null }
     catch { if ($_.Exception.Message -notmatch $Expected) { throw }; $taskRejected = $true }
     if (-not $taskRejected) { throw 'A deliberately invalid synthetic package was accepted.' }
 }
 
+function Write-SyntheticZipReceipt {
+    param([string]$Path)
+    ((Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + [IO.Path]::GetFileName($Path)) |
+        Set-Content -LiteralPath ($Path + '.sha256') -Encoding utf8
+}
+
+function New-SyntheticZip {
+    param([string]$Directory, [string]$Name)
+    $taskArchivePath = Join-Path $taskTestRoot ($Name + '.zip')
+    [IO.Compression.ZipFile]::CreateFromDirectory($Directory, $taskArchivePath)
+    Write-SyntheticZipReceipt -Path $taskArchivePath
+    return $taskArchivePath
+}
+
 $taskValid = New-SyntheticPackage 'valid'
 & (Join-Path $PSScriptRoot 'verify-package.ps1') -PackageDirectory $taskValid
+$taskChecks++
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$taskValidZip = New-SyntheticZip -Directory $taskValid -Name 'valid'
+& (Join-Path $PSScriptRoot 'verify-package.ps1') -PackageDirectory $taskValid -ZipPath $taskValidZip
+$taskChecks++
+$taskFixtureZip = New-SyntheticZip -Directory $taskValid -Name 'wrong-receipt'
+('0' * 64 + '  ' + [IO.Path]::GetFileName($taskFixtureZip)) | Set-Content -LiteralPath ($taskFixtureZip + '.sha256') -Encoding utf8
+Assert-PackageRejected -Directory $taskValid -ZipPath $taskFixtureZip -Expected 'ZIP SHA256 mismatch'
+$taskChecks++
+foreach ($taskZipCase in @('extra', 'duplicate', 'traversal', 'missing')) {
+    $taskFixtureZip = New-SyntheticZip -Directory $taskValid -Name ('zip-' + $taskZipCase)
+    $taskArchive = [IO.Compression.ZipFile]::Open($taskFixtureZip, [IO.Compression.ZipArchiveMode]::Update)
+    try {
+        switch ($taskZipCase) {
+            'extra' { $taskArchive.CreateEntry('unexpected.txt') | Out-Null }
+            'duplicate' { $taskArchive.CreateEntry('QUICKSTART.zh-CN.md') | Out-Null }
+            'traversal' { $taskArchive.CreateEntry('../outside.txt') | Out-Null }
+            'missing' { $taskArchive.GetEntry('QUICKSTART.zh-CN.md').Delete() }
+        }
+    } finally { $taskArchive.Dispose() }
+    Write-SyntheticZipReceipt -Path $taskFixtureZip
+    $taskExpected = switch ($taskZipCase) {
+        'traversal' { 'invalid relative path' }
+        'missing' { 'ZIP is incomplete' }
+        default { 'ZIP contains missing, duplicate, or additional files' }
+    }
+    Assert-PackageRejected -Directory $taskValid -ZipPath $taskFixtureZip -Expected $taskExpected
+    $taskChecks++
+}
+foreach ($taskRequiredRuntimeFile in @('HsHelper.App.runtimeconfig.json', 'HsHelper.App.deps.json')) {
+    $taskFixture = New-SyntheticPackage ('missing-' + $taskRequiredRuntimeFile)
+    Remove-Item -LiteralPath (Join-Path $taskFixture $taskRequiredRuntimeFile)
+    Assert-PackageRejected -Directory $taskFixture -Expected 'Missing required package file'
+    $taskChecks++
+}
+$taskFixture = New-SyntheticPackage 'wrong-deployment-mode'
+$taskConfiguration = @{ runtimeOptions = @{ tfm = 'net10.0'; includedFrameworks = @(
+    @{ name = 'Microsoft.NETCore.App'; version = '10.0.0' },
+    @{ name = 'Microsoft.WindowsDesktop.App'; version = '10.0.0' }
+) } }
+$taskConfiguration | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $taskFixture 'HsHelper.App.runtimeconfig.json') -Encoding utf8
+Assert-PackageRejected -Directory $taskFixture -Expected 'framework-dependent package cannot declare included'
+$taskChecks++
+$taskFixture = New-SyntheticPackage 'wrong-runtime-target'
+@{ runtimeTarget = @{ name = '.NETCoreApp,Version=v10.0/linux-x64' }; targets = @{} } |
+    ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $taskFixture 'HsHelper.App.deps.json') -Encoding utf8
+Assert-PackageRejected -Directory $taskFixture -Expected 'dependency manifest does not target'
+$taskChecks++
+$taskFixture = New-SyntheticPackage 'missing-runtime-dependency'
+@{ runtimeTarget = @{ name = '.NETCoreApp,Version=v10.0/win-x64' }; targets = @{ '.NETCoreApp,Version=v10.0/win-x64' = @{
+    'Fixture.Dependency/1.0.0' = @{ runtime = @{ 'lib/net10.0/missing-fixture.dll' = @{} } }
+} } } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $taskFixture 'HsHelper.App.deps.json') -Encoding utf8
+Assert-PackageRejected -Directory $taskFixture -Expected 'Dependency asset missing'
+$taskChecks++
+$taskFixture = New-SyntheticPackage 'missing-native-dependency'
+@{ runtimeTarget = @{ name = '.NETCoreApp,Version=v10.0/win-x64' }; targets = @{ '.NETCoreApp,Version=v10.0/win-x64' = @{
+    'Fixture.Dependency/1.0.0' = @{ runtimeTargets = @{ 'runtimes/win-x64/native/missing-fixture.dll' = @{ rid = 'win-x64'; assetType = 'native' } } }
+} } } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $taskFixture 'HsHelper.App.deps.json') -Encoding utf8
+Assert-PackageRejected -Directory $taskFixture -Expected 'Dependency asset missing'
 $taskChecks++
 foreach ($taskForbidden in @('.env.synthetic', 'private.db', 'model-config.json', 'Power.log')) {
     $taskFixture = New-SyntheticPackage ('prohibited-' + $taskChecks)
