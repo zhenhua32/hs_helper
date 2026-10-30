@@ -1,6 +1,6 @@
 # Windows 预览版发行与快速启动
 
-此包面向 Windows x64。默认自包含包包含 .NET 10 Windows Desktop 运行时，使用者无需安装 SDK 或 .NET。请把 ZIP **完整解压**到一个新目录，再双击 `HsHelper.App.exe`；所有 DLL 和 `samples` 目录应留在程序旁。不要在 ZIP 预览窗口内启动。
+此包面向 Windows x64。默认自包含包固定包含 .NET 10.0.14 Windows Desktop 运行时，使用者无需安装 SDK 或 .NET。请把 ZIP **完整解压**到一个新目录，再双击 `HsHelper.App.exe`；所有 DLL 和 `samples` 目录应留在程序旁。不要在 ZIP 预览窗口内启动。
 
 首次启动的数据目录默认为 `%LOCALAPPDATA%\HsHelper`，与程序目录分开。卡库、套牌、历史、模型加密配置和缓存都保存在该目录。替换程序目录升级时保留该数据目录；不要把它复制进发行包。使用 `--data-dir "D:\HsHelperData"` 或环境变量 `HSHELPER_DATA_DIR` 可指定其他数据目录，命令行优先；日常启动无需参数。
 
@@ -15,6 +15,8 @@
 ```powershell
 pwsh -File scripts/publish.ps1 -RunDiagnostics
 ```
+
+App 项目仅在 `SelfContained=true` 时把 `RuntimeFrameworkVersion` 固定为 `10.0.14`，使旧版兼容 SDK 也下载并打包已选定的维护补丁；普通构建和依赖框架包保留 .NET 10.0.0 最低运行版本。更新自包含运行时前，核对[官方 .NET 10 发布元数据](https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json)，并在实际发行包中复核 `HsHelper.App.runtimeconfig.json` 的 `includedFrameworks` 与运行时二进制版本。[RuntimeFrameworkVersion 的官方说明](https://learn.microsoft.com/en-us/dotnet/core/project-sdk/msbuild-props#runtimeframeworkversion)
 
 默认版本来自 App 项目元数据，输出位于 `.local\publish\<版本>-self-contained`，旁边生成 ZIP 及 ZIP 的 `.sha256`。输出目录或 ZIP 已存在时会拒绝覆盖；重试可指定新的版本或 `.local\publish` 内的新目录：
 
