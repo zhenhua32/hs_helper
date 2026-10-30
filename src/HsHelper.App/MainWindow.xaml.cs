@@ -61,6 +61,7 @@ public partial class MainWindow : Window
         var startupConfigurationRevision = _configurationRevision;
         await _catalog.InitializeAsync();
         await RefreshCatalogAsync();
+        await RenderBattleAsync();
         Diagnose();
         await InitializeHistoryAsync();
         await InitializeTracesAsync();

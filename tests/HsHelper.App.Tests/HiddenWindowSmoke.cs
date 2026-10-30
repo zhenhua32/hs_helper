@@ -74,6 +74,10 @@ internal static class HiddenWindowSmoke
             WaitUntil(() => Field(window, "_loadedModelSettings") is not null && Field(window, "_knowledge") is not null,
                 "Loaded did not finish local configuration and knowledge initialization.", () => unhandled);
             Check(Control<PasswordBox>(window, "KeyBox").Password == FakeKey, "Initialization did not load the isolated fixture configuration.");
+            Check(Control<FrameworkElement>(window, "BattleViewRoot").DataContext is BattleViewState { HasLocalPerspective: false, HasDeckTracking: false } &&
+                Control<TextBlock>(window, "DeckCompositionStatusText").Text.Contains("尚无匹配", StringComparison.Ordinal) &&
+                Control<TextBlock>(window, "BattleQualityText").Text.Contains("尚未确认", StringComparison.Ordinal),
+                "A fresh startup left the battle panel blank instead of showing explicit unknown state.");
             var planDeck = Control<ComboBox>(window, "PlanDeckBox");
             var deck = planDeck.SelectedItem?.GetType().GetProperty("Value")?.GetValue(planDeck.SelectedItem) as DeckVersion;
             Check(deck?.Name == "野兽快" && Control<ComboBox>(window, "SavedDeckBox").SelectedItem is not null,
