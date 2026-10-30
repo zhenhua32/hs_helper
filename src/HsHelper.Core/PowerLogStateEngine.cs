@@ -157,8 +157,9 @@ public sealed class PowerLogStateEngine
         ArgumentNullException.ThrowIfNull(line);
         try
         {
+            var beforeVersion = _version;
             var changed = ProcessLineCore(line);
-            return TryAutoDetectPerspective() || changed;
+            return TryAutoDetectPerspective() || changed || _version != beforeVersion;
         }
         catch (Exception ex) when (ex is OverflowException or RegexMatchTimeoutException)
         {
@@ -604,6 +605,12 @@ public sealed class PowerLogStateEngine
             return Changed();
         }
         if (_currentChoice is null) return false;
+        if (_readingChosen == offered)
+        {
+            _currentChoice.HistoryInvalid = true;
+            ChoiceHistoryProblem(_currentChoice, "候选与已选明细的日志通道或先后顺序冲突，未将迟到候选当作实际选择。");
+            return false;
+        }
         if (_readingChosen) return ProcessChosenEntity(line, _currentChoice);
         if (!ValidateChoiceScope(_currentChoice)) return false;
         var source = line.IndexOf("Source=", StringComparison.Ordinal);
@@ -788,7 +795,7 @@ public sealed class PowerLogStateEngine
 
     private void ChoiceHistoryProblem(ChoiceBuilder? choice, string reason, int? reportedPlayer = null)
     {
-        if (choice is { HistoryInvalid: true }) choice.Ready = false;
+        if (choice is { HistoryInvalid: true, Ready: true }) { choice.Ready = false; _version++; }
         var owner = choice?.PrivateOwner ?? (!_isSpectating && (reportedPlayer is null || reportedPlayer == _localPlayerId) ? _localPlayerId : null);
         if (owner is not (1 or 2) || choice is not null && choice.PlayerId != owner) return;
         if (!_choiceHistoryWarnings.TryGetValue(owner.Value, out var warnings)) _choiceHistoryWarnings[owner.Value] = warnings = new(StringComparer.Ordinal);

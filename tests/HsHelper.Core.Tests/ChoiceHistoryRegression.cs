@@ -11,6 +11,7 @@ public static class ChoiceHistoryRegression
         yield return ("choice history freezes offered source identity and observed candidate attributes", FrozenOffer);
         yield return ("repeated choice headers and rows cannot rewrite completed history", Duplicates);
         yield return ("unknown and stale chosen headers cannot select a current candidate", UnknownAndStale);
+        yield return ("offered and chosen detail channels cannot substitute for each other", DetailChannelOrdering);
         yield return ("wrong owner and unoffered chosen entities invalidate choice history", InvalidSelections);
         yield return ("chosen row positions and counts must be complete and bounded", InvalidCounts);
         yield return ("intervening offers break multistage adjacency without exposing private choices", InterveningOffer);
@@ -119,6 +120,23 @@ public static class ChoiceHistoryRegression
         }
         var wrongHeader = Replay(); Feed(wrongHeader, Offer(8)); wrongHeader.ProcessLine(ChosenHeader(8, 2)); wrongHeader.ProcessLine(ChosenRow(80));
         Assert(History(wrongHeader).Entries.Count == 0 && !History(wrongHeader).IsComplete, "Wrong chooser bound to local history");
+    }
+    private static void DetailChannelOrdering()
+    {
+        var noHeader = Replay(); noHeader.ProcessLine(Offer(8)[0]);
+        Assert(noHeader.ProcessLine(ChosenRow(80)), "Changed history quality was not published to ingestion");
+        noHeader.ProcessLine("boundary");
+        Assert(noHeader.Snapshot().Choice is { IsReady: false, Options.Count: 0 } && !History(noHeader).IsComplete,
+            "Chosen row without its header was inserted as an offered candidate");
+        var lateOffer = Replay(); Feed(lateOffer, Offer(8)); lateOffer.ProcessLine(ChosenHeader(8));
+        Assert(lateOffer.ProcessLine(Offer(8)[2]), "Invalidated choice readiness was not published to ingestion");
+        lateOffer.ProcessLine("boundary");
+        Assert(!History(lateOffer).IsComplete && History(lateOffer).Entries.Count == 0,
+            "Late offered candidate row was treated as the actual chosen result");
+        var shown = Replay(); var offer = Offer(8);
+        Feed(shown, offer.Take(offer.Length - 1));
+        Assert(shown.ProcessLine(offer[^1]) && shown.Snapshot().Choice?.IsReady == true,
+            "A non-power boundary silently changed readiness without notifying the snapshot consumer");
     }
     private static void InvalidCounts()
     {
