@@ -15,6 +15,10 @@ public static class BattleViewRegression
         yield return ("battle view excludes hidden opposing hands and unconfirmed perspective", Perspective);
         yield return ("battle view rejects cross-state deck and public-play ledgers", FutureLedgers);
         yield return ("battle view snapshots copy producer-owned lists and deck counts", ImmutableProjection);
+        yield return ("remaining deck distinguishes exact, partial, missing and observed zero evidence", DeckEvidence);
+        yield return ("current own choices preserve Chinese names, order and unknown identities", CurrentChoice);
+        yield return ("choice identities stay hidden for stale, opposing or unconfirmed candidates", ChoicePrivacy);
+        yield return ("choice projections freeze producer and consumer option lists", ImmutableChoice);
         yield return ("local result formatting preserves unknown and conditional verification", ResultSemantics);
     }
 
@@ -105,6 +109,103 @@ public static class BattleViewRegression
         var choice = LocalToolResultFormatter.Format("validate_choice", JsonNode.Parse("""{"Verification":"Verified","IsLegal":true,"Errors":[],"Assumptions":[],"RuleCoverage":["candidate-count"]}""")!);
         Check(choice.Contains("不模拟选择后效果", StringComparison.Ordinal), "Choice validation claimed effect simulation.");
     }
+
+    private static void DeckEvidence()
+    {
+        var frame = Frame();
+        var exact = BattleViewBuilder.Build(frame, Cards(), Build);
+        Check(exact.HasDeckTracking && exact.DeckIsExact && exact.UnknownDeckCards == 0 &&
+            exact.RemainingDeck.Single(card => card.CardId == "UI_HAND").Name == "测试手牌",
+            "Exact remaining composition lost its bound Chinese card names or known zero unknowns.");
+        var partial = BattleViewBuilder.Build(frame with
+        {
+            DeckTracking = frame.DeckTracking! with { IsExact = false, UnknownCount = 3,
+                KnownRemaining = new Dictionary<string, int> { ["UI_HAND"] = 2, ["UI_OTHER"] = 5 } },
+            Quality = frame.Quality with { IsComplete = false, Warnings = ["fixture log gap"] }
+        }, Cards(), Build);
+        Check(partial.HasDeckTracking && !partial.DeckIsExact && partial.UnknownDeckCards == 3 &&
+            partial.RemainingDeck.Sum(card => card.Copies) == 7 && partial.DeckSummary.Contains("下限", StringComparison.Ordinal) &&
+            partial.Warnings.Contains("fixture log gap") && partial.QualitySummary.Contains("存在缺口", StringComparison.Ordinal),
+            "Partial composition or its log-quality limitation was presented as exact.");
+        var unstable = BattleViewBuilder.Build(frame with { Quality = frame.Quality with { IsStable = false } }, Cards(), Build);
+        Check(!unstable.DeckIsExact && unstable.DeckSummary.Contains("结算尚未稳定", StringComparison.Ordinal),
+            "An unsettled deck was presented as exact composition.");
+        foreach (var missing in new[] { frame with { DeckTracking = null }, frame with { DeckTracking = frame.DeckTracking! with { StateVersion = 99 } } })
+        {
+            var view = BattleViewBuilder.Build(missing, Cards(), Build);
+            Check(!view.HasDeckTracking && !view.DeckIsExact && view.UnknownDeckCards is null &&
+                view.Local.DeckCount is null && view.RemainingDeck.Count == 0 && view.DeckSummary.Contains("尚未确认", StringComparison.Ordinal),
+                "A missing or stale ledger was displayed as a zero-card deck or zero unknown cards.");
+        }
+        var entities = frame.Entities.ToDictionary();
+        entities[1] = entities[1] with { Tags = entities[1].Tags.Append(new KeyValuePair<string, string>("NUM_CARDS_IN_DECK", "0")).ToFrozenDictionary() };
+        var observedEmpty = BattleViewBuilder.Build(frame with { Entities = entities.ToFrozenDictionary(), DeckTracking = null }, Cards(), Build);
+        Check(observedEmpty.Local.DeckCount == 0 && observedEmpty.UnknownDeckCards is null && !observedEmpty.DeckIsExact,
+            "An explicit observed empty deck was lost or turned into evidence of exact composition.");
+    }
+
+    private static void CurrentChoice()
+    {
+        foreach (var phase in new[] { GamePhase.Choice, GamePhase.Mulligan })
+        {
+            var frame = ChoiceFrame() with { Phase = phase };
+            var cards = ChoiceCards();
+            var view = BattleViewBuilder.Build(frame, cards, Build);
+            Check(view.Choice is { Id: 77, CountMin: 0, CountMax: 2 } &&
+                view.Choice.Options.Select(option => option.EntityId).SequenceEqual([102, 101]) &&
+                view.Choice.Options[0].Name == "未知卡牌" && view.Choice.Options[0].CardId is null &&
+                view.Choice.Options[1].Name == "选择探针卡牌" && view.ChoiceStatus.Contains("0～2", StringComparison.Ordinal),
+                "Own choice candidates lost order, cardinality, Chinese name or an unknown identity.");
+            Check(BattleViewBuilder.VisibleCardIds(frame, Build).Contains("UI_ONLY_CHOICE"), "Current confirmed choice was omitted from fixed-build name lookup.");
+            var unknownName = BattleViewBuilder.Build(frame, Cards(), Build).Choice!.Options.Single(option => option.EntityId == 101);
+            Check(unknownName.Name.Contains("未识别卡牌", StringComparison.Ordinal), "Missing versioned card data acquired an invented Chinese identity.");
+        }
+    }
+
+    private static void ChoicePrivacy()
+    {
+        var frame = ChoiceFrame();
+        foreach (var hidden in new[]
+        {
+            frame with { Phase = GamePhase.Main }, frame with { Phase = GamePhase.Complete },
+            frame with { Choice = frame.Choice! with { PlayerId = 2 } },
+            frame with { Choice = frame.Choice! with { PlayerId = null } },
+            frame with { Choice = frame.Choice! with { IsReady = false } },
+            frame with { Quality = frame.Quality with { HasLocalPerspective = false } },
+            frame with { Quality = frame.Quality with { IsStable = false } },
+            frame with { Quality = frame.Quality with { IsComplete = false } },
+            frame with { IsSpectating = true }, frame with { LocalPlayerId = 3 },
+            frame with { Choice = frame.Choice! with { CountMin = -1 } },
+            frame with { Choice = frame.Choice! with { CountMax = 3 } },
+            frame with { Choice = frame.Choice! with { Options = [new(101, "UI_ONLY_CHOICE", 1, 1), new(101, null, 1, 2)] } },
+            frame with { Choice = frame.Choice! with { Options = [new(101, "UI_ONLY_CHOICE", 2, 1), new(102, null, 1, 2)] } }
+        })
+        {
+            var view = BattleViewBuilder.Build(hidden, ChoiceCards(), Build);
+            var text = JsonSerializer.Serialize(view);
+            Check(view.Choice is null && !text.Contains("UI_ONLY_CHOICE", StringComparison.Ordinal) && !text.Contains("选择探针卡牌", StringComparison.Ordinal),
+                "A stale, unstable or unconfirmed choice exposed candidate identities in the view.");
+            Check(!BattleViewBuilder.VisibleCardIds(hidden, Build).Contains("UI_ONLY_CHOICE"),
+                "A rejected choice still queried its private candidate identity for Chinese names.");
+        }
+    }
+
+    private static void ImmutableChoice()
+    {
+        var frame = ChoiceFrame();
+        var options = frame.Choice!.Options.ToList();
+        frame = frame with { Choice = frame.Choice with { Options = options } };
+        var view = BattleViewBuilder.Build(frame, ChoiceCards(), Build);
+        options.Clear();
+        Check(view.Choice!.Options.Count == 2, "Changing producer-owned options altered the captured choice.");
+        try { ((IList<BattleChoiceOptionView>)view.Choice.Options).Clear(); throw new Exception("Consumer mutated a choice list."); }
+        catch (NotSupportedException) { }
+    }
+
+    private static GameSnapshot ChoiceFrame() => Frame() with { Phase = GamePhase.Choice,
+        Choice = new(77, 1, "GENERAL", null, 0, 2, [new(101, "UI_ONLY_CHOICE", 1, 2), new(102, null, null, 1)], true) };
+    private static IReadOnlyDictionary<string, CardRecord> ChoiceCards() => Cards().Values
+        .Append(Card("UI_ONLY_CHOICE", "选择探针卡牌", "SPELL")).ToDictionary(card => card.Id, StringComparer.Ordinal);
 
     public const string Build = "255790";
     public static GameSnapshot Frame()

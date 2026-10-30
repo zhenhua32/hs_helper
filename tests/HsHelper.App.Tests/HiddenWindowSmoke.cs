@@ -11,6 +11,8 @@ using System.Windows.Interop;
 using System.Windows.Threading;
 using HsHelper.App;
 using HsHelper.Agent;
+using HsHelper.Cards;
+using HsHelper.Core;
 using HsHelper.Storage;
 
 /// <summary>Real WPF routed events on an isolated STA dispatcher, without showing or creating a window handle.</summary>
@@ -123,6 +125,9 @@ internal static class HiddenWindowSmoke
             Check(fakeModel.Calls == 1 && !fakeModel.UnexpectedRequest && rejectCards.Calls == 0, "Hidden UI initialization made an unexpected request.");
             Check(!fakeModel.RequestBody.Contains(FakeKey, StringComparison.Ordinal), "Fixture credential entered the model payload.");
             AssertPassive(window);
+            CheckCurrentBuildSync(window, () => unhandled);
+            LocalToolsHiddenSmoke.RunOnDispatcher(Path.Combine(Environment.CurrentDirectory, "local-tools"));
+            AssertPassive(window);
             Check(unhandled is null, "Dispatcher initialization or a routed action raised an unhandled exception.");
         }
         finally
@@ -142,6 +147,34 @@ internal static class HiddenWindowSmoke
         Check(Field(window, "_hotkeys") is GlobalHotkeys hotkeys && hotkeys.Bindings.Count == 0, "Hidden regression registered a hotkey.");
         Check(Field(window, "_overlay") is null && Field(window, "_timer") is DispatcherTimer live && !live.IsEnabled &&
             Field(window, "_decisionTimer") is DispatcherTimer automatic && !automatic.IsEnabled, "Hidden regression started an overlay, live watcher or automatic suggestion timer.");
+    }
+    private static void CheckCurrentBuildSync(MainWindow window, Func<Exception?> unhandled)
+    {
+        using var cards = new PinnedCardsHandler();
+        ReplaceClient(window, "_cardHttp", new HttpClient(cards));
+        var frame = BattleViewRegression.Frame();
+        var historical = new HistoricalContext("old-ui-match", "111111", null, null,
+            frame with { MatchId = "old-ui-match", ClientBuild = "111111" }, []);
+        typeof(MainWindow).GetField("_liveFrame", PrivateFields)!.SetValue(window, frame);
+        typeof(MainWindow).GetField("_historyContext", PrivateFields)!.SetValue(window, historical);
+        var selectedBuild = Control<TextBox>(window, "SessionBuildBox");
+        selectedBuild.Text = historical.CardBuild;
+        Click(FindButton(window, "同步客户端版本卡库"));
+        WaitUntil(() => !(bool)Field(window, "_catalogBusy")!, "Client-build sync did not finish.", unhandled);
+        var catalog = (CardCatalog)Field(window, "_catalog")!;
+        var active = Await(catalog.GetActiveManifestAsync(), unhandled);
+        Check(cards.Calls == 1 && active?.Build == BattleViewRegression.Build && active.Locale == "zhCN",
+            "Client-build button did not fetch and activate the observed fixed Chinese build.");
+        Check(ReferenceEquals(Field(window, "_historyContext"), historical) && selectedBuild.Text == historical.CardBuild,
+            "Syncing the live client build rebound the selected historical analysis.");
+        Check(Control<TextBlock>(window, "StatusText").Text.Contains("已缓存客户端版本 " + BattleViewRegression.Build, StringComparison.Ordinal),
+            "Client-build sync did not report the actual cached version.");
+
+        typeof(MainWindow).GetField("_liveFrame", PrivateFields)!.SetValue(window, frame with { ClientBuild = "unknown" });
+        Click(FindButton(window, "同步客户端版本卡库"));
+        WaitUntil(() => !(bool)Field(window, "_catalogBusy")!, "Unknown build rejection did not finish.", unhandled);
+        Check(cards.Calls == 1 && Control<TextBlock>(window, "StatusText").Text.Contains("尚未确认客户端 build", StringComparison.Ordinal),
+            "An unconfirmed client build sent a catalog request or silently used latest.");
     }
     private static void CheckConfigurationIo(MainWindow window, Func<Exception?> unhandled)
     {
@@ -249,6 +282,19 @@ internal static class HiddenWindowSmoke
         public int Calls { get; private set; }
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         { Calls++; return Task.FromException<HttpResponseMessage>(new InvalidOperationException("Hidden smoke rejected an unexpected request.")); }
+    }
+    private sealed class PinnedCardsHandler : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Calls++;
+            Check(Calls == 1 && request.RequestUri?.AbsoluteUri ==
+                "https://api.hearthstonejson.com/v1/" + BattleViewRegression.Build + "/zhCN/cards.json",
+                "Client-build sync requested latest, another build or another locale.");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            { RequestMessage = request, Content = new StringContent(BattleViewRegression.CardsJson(), Encoding.UTF8, "application/json") });
+        }
     }
     private sealed class PlanningHandler : HttpMessageHandler
     {

@@ -10,6 +10,18 @@ public sealed record BattleCardView(int EntityId, string? CardId, string Name, s
     string? Zone, int? Position, string Status);
 public sealed record BattlePlayedCardView(long Sequence, int EntityId, string? CardId, string Name);
 public sealed record BattleDeckCardView(string CardId, string Name, int Copies);
+public sealed record BattleChoiceOptionView(int EntityId, string? CardId, string Name, int? Position);
+
+public sealed record BattleChoiceView
+{
+    public int Id { get; }
+    public int CountMin { get; }
+    public int CountMax { get; }
+    public IReadOnlyList<BattleChoiceOptionView> Options { get; }
+
+    internal BattleChoiceView(int id, int countMin, int countMax, IEnumerable<BattleChoiceOptionView> options)
+    { Id = id; CountMin = countMin; CountMax = countMax; Options = Array.AsReadOnly(options.ToArray()); }
+}
 
 public sealed record BattlePlayerView
 {
@@ -56,20 +68,29 @@ public sealed record BattleViewState
     public BattlePlayerView Local { get; }
     public BattlePlayerView Opponent { get; }
     public IReadOnlyList<BattleDeckCardView> RemainingDeck { get; }
+    public bool HasDeckTracking { get; }
     public bool DeckIsExact { get; }
     public int? UnknownDeckCards { get; }
+    public string DeckSummary => !HasDeckTracking ? "尚无匹配的牌库台账；剩余组成与未知数量尚未确认。" :
+        DeckIsExact ? "已确认完整的剩余牌库组成；计算时仍需核对当前阶段。" :
+        !IsStable ? "结算尚未稳定；以下为已知剩余记录，不能给出精确概率。" :
+        "剩余组成不完整；以下为已知剩余下限，不能给出精确概率。";
+    public BattleChoiceView? Choice { get; }
+    public string ChoiceStatus { get; }
+    public string QualitySummary => $"我方视角：{(HasLocalPerspective ? "已确认" : "尚未确认")} · 日志：{(IsComplete ? "完整" : "存在缺口")} · 局面：{(IsStable ? "稳定" : "结算中或尚未确认")}";
     public bool PublicPlaysComplete { get; }
     public IReadOnlyList<string> Warnings { get; }
 
     internal BattleViewState(GameSnapshot snapshot, bool hasPerspective, BattlePlayerView local,
-        BattlePlayerView opponent, IEnumerable<BattleDeckCardView> remaining, bool deckExact,
-        int? unknownDeckCards, bool publicPlaysComplete, IEnumerable<string> warnings)
+        BattlePlayerView opponent, IEnumerable<BattleDeckCardView> remaining, bool hasDeckTracking, bool deckExact,
+        int? unknownDeckCards, BattleChoiceView? choice, string choiceStatus, bool publicPlaysComplete, IEnumerable<string> warnings)
     {
         MatchId = snapshot.MatchId; StateVersion = snapshot.StateVersion; EventSequence = snapshot.EventSequence;
         Turn = snapshot.Turn; Phase = snapshot.Phase; ActivePlayerId = snapshot.ActivePlayerId;
         HasLocalPerspective = hasPerspective; IsComplete = snapshot.Quality.IsComplete; IsStable = snapshot.Quality.IsStable;
         Local = local; Opponent = opponent; RemainingDeck = Array.AsReadOnly(remaining.ToArray());
-        DeckIsExact = deckExact; UnknownDeckCards = unknownDeckCards; PublicPlaysComplete = publicPlaysComplete;
+        HasDeckTracking = hasDeckTracking; DeckIsExact = deckExact; UnknownDeckCards = unknownDeckCards;
+        Choice = choice; ChoiceStatus = choiceStatus; PublicPlaysComplete = publicPlaysComplete;
         Warnings = Array.AsReadOnly(warnings.Distinct(StringComparer.Ordinal).ToArray());
     }
 }
@@ -82,7 +103,7 @@ public static class BattleViewBuilder
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var warnings = snapshot.Quality.Warnings.ToList();
-        var local = snapshot.Quality.HasLocalPerspective ? snapshot.LocalPlayerId : null;
+        var local = ConfirmedLocalPlayer(snapshot);
         var players = snapshot.Entities.Values.Where(e => e.Kind == EntityKind.Player)
             .Select(e => e.GetIntTag("PLAYER_ID")).OfType<int>().Distinct().ToArray();
         if (!local.HasValue || !players.Contains(local.Value))
@@ -131,7 +152,7 @@ public static class BattleViewBuilder
             int? mana = total.HasValue && spent.HasValue && locked.HasValue && temporary.HasValue
                 ? (int)Math.Clamp((long)total.Value - spent.Value - locked.Value + temporary.Value, 0, int.MaxValue) : null;
             int? Count(string zone, string tag) => player?.GetIntTag(tag) is >= 0 and var observed ? observed :
-                id.HasValue && snapshot.Quality.IsComplete ? entities.Count(e => e.Zone == zone) : null;
+                zone == "HAND" && id.HasValue && snapshot.Quality.IsComplete ? entities.Count(e => e.Zone == zone) : null;
             var hand = own ? entities.Where(e => e.Zone == "HAND").OrderBy(e => e.ZonePosition ?? int.MaxValue).ThenBy(e => e.Id).Select(Card) : [];
             var board = entities.Where(e => e.Zone == "PLAY" && Type(e) is "MINION" or "UNKNOWN")
                 .OrderBy(e => e.ZonePosition ?? int.MaxValue).ThenBy(e => e.Id).Select(Card);
@@ -146,30 +167,50 @@ public static class BattleViewBuilder
         var exact = tracking is { IsExact: true, UnknownCount: 0, TotalCards: >= 0 } &&
             snapshot.Quality.IsComplete && snapshot.Quality.IsStable && tracking.KnownRemaining.Values.All(c => c >= 0) &&
             tracking.KnownRemaining.Values.Sum(c => (long)c) == tracking.TotalCards;
-        return new(snapshot, local.HasValue, Player(local, true), Player(opponent, false), remaining, exact,
-            tracking?.UnknownCount, publicLedger?.IsComplete == true, warnings);
+        var currentChoice = ConfirmedChoice(snapshot, local);
+        var choice = currentChoice is null ? null : new BattleChoiceView(currentChoice.Id, currentChoice.CountMin,
+            currentChoice.CountMax, currentChoice.Options.OrderBy(option => option.Position ?? int.MaxValue)
+                .ThenBy(option => option.EntityId).Select(option => new BattleChoiceOptionView(option.EntityId,
+                    option.CardId, Name(option.CardId), option.Position)));
+        var choiceStatus = choice is not null ? $"当前我方选择 #{choice.Id}，选择 {choice.CountMin}～{choice.CountMax} 个。这里只展示候选，不模拟选择后效果。" :
+            snapshot.Phase is GamePhase.Choice or GamePhase.Mulligan ? "我方选择尚未确认或候选未完整读取；暂不展示候选身份。" :
+            "当前未处于留牌或选择阶段。";
+        return new(snapshot, local.HasValue, Player(local, true), Player(opponent, false), remaining, tracking is not null, exact,
+            tracking?.UnknownCount, choice, choiceStatus, publicLedger?.IsComplete == true, warnings);
     }
 
     public static bool MatchesDeckBinding(GameSnapshot snapshot, string? fixedBuild = null) => snapshot.DeckTracking is { } tracking &&
-        snapshot.Quality.HasLocalPerspective && snapshot.LocalPlayerId.HasValue &&
+        ConfirmedLocalPlayer(snapshot).HasValue &&
         tracking.MatchId == snapshot.MatchId && tracking.StateVersion == snapshot.StateVersion &&
         (fixedBuild ?? snapshot.ClientBuild) is { Length: > 0 } build && build != "unknown" && tracking.CardBuild == build &&
         (snapshot.ClientBuild is null || snapshot.ClientBuild == build);
 
     public static IReadOnlyList<string> VisibleCardIds(GameSnapshot snapshot, string? fixedBuild = null)
     {
-        var local = snapshot.Quality.HasLocalPerspective ? snapshot.LocalPlayerId : null;
+        var local = ConfirmedLocalPlayer(snapshot);
         var ids = snapshot.Entities.Values.Where(e => e.Kind == EntityKind.Card &&
             (e.Zone == "PLAY" || local.HasValue && e.ControllerId == local && e.Zone == "HAND"))
             .Select(e => e.CardId).OfType<string>();
         if (snapshot.PublicPlays is { } ledger && ledger.MatchId == snapshot.MatchId && ledger.StateVersion == snapshot.StateVersion)
             ids = ids.Concat(ledger.Plays.Where(p => p.Sequence <= snapshot.EventSequence).Select(p => p.CardId).OfType<string>());
-        if (local.HasValue && snapshot.Choice is { IsReady: true } choice && choice.PlayerId == local &&
-            snapshot.Phase is GamePhase.Choice or GamePhase.Mulligan)
+        if (ConfirmedChoice(snapshot, local) is { } choice)
             ids = ids.Concat(choice.Options.Select(o => o.CardId).OfType<string>());
         if (MatchesDeckBinding(snapshot, fixedBuild)) ids = ids.Concat(snapshot.DeckTracking!.KnownRemaining.Keys);
         return Array.AsReadOnly(ids.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
     }
+
+    private static int? ConfirmedLocalPlayer(GameSnapshot snapshot) =>
+        snapshot.Quality.HasLocalPerspective && !snapshot.IsSpectating && snapshot.LocalPlayerId is { } local &&
+        snapshot.Entities.Values.Count(entity => entity.Kind == EntityKind.Player && entity.GetIntTag("PLAYER_ID") == local) == 1
+            ? local : null;
+
+    private static CurrentChoiceSnapshot? ConfirmedChoice(GameSnapshot snapshot, int? local) =>
+        local.HasValue && snapshot.Quality.IsComplete && snapshot.Quality.IsStable &&
+        snapshot.Phase is GamePhase.Choice or GamePhase.Mulligan &&
+        snapshot.Choice is { IsReady: true } choice && choice.PlayerId == local &&
+        choice.CountMin >= 0 && choice.CountMax >= choice.CountMin && choice.CountMax <= choice.Options.Count &&
+        choice.Options.All(option => option.EntityId > 0 && (option.ControllerId is null || option.ControllerId == local)) &&
+        choice.Options.Select(option => option.EntityId).Distinct().Count() == choice.Options.Count ? choice : null;
 
     private static string? CardType(string? type) => type switch
     {

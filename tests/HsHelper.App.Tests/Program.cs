@@ -14,14 +14,14 @@ var tests = new (string Name, Action Run)[]
     ("negative and vertically offset monitors retain signed coordinates at high DPI", NegativeMonitorDpi),
     ("monitor DPI transitions preserve native screen location and refit", MonitorDpiTransition),
     ("invalid monitor transforms fail explicitly", InvalidMonitorTransforms)
-};
+}.Concat(BattleViewRegression.Cases()).Concat(SnapshotAccessRegression.Cases()).ToArray();
 var failed = 0;
 foreach (var (name, run) in tests)
 {
     try { run(); Console.WriteLine($"PASS {name}"); }
     catch (Exception error) { failed++; Console.Error.WriteLine($"FAIL {name}: {error.Message}"); }
 }
-try { HiddenWindowSmoke.Run(); Console.WriteLine("PASS hidden WPF initialization, plan versioning, tombstone and archived planning advice"); }
+try { HiddenWindowSmoke.Run(); Console.WriteLine("PASS hidden WPF initialization, plan versioning, archived advice, client-build sync and local tools"); }
 catch (Exception error) { failed++; Console.Error.WriteLine($"FAIL hidden WPF interaction smoke: {error.Message}"); }
 Console.WriteLine($"{tests.Length + 1 - failed}/{tests.Length + 1} App regression checks passed");
 return failed == 0 ? 0 : 1;
