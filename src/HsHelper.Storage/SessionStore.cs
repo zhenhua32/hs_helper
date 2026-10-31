@@ -319,7 +319,7 @@ public sealed class SessionStore
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT COALESCE(g.opponent_class,'Unknown'),g.outcome,COUNT(*) FROM game_sessions g" + FilterSql(command, filter) +
             " GROUP BY COALESCE(g.opponent_class,'Unknown'),g.outcome";
-        var groups = new Dictionary<string, int[]>(StringComparer.Ordinal);
+        var groups = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -368,7 +368,7 @@ public sealed class SessionStore
             " ORDER BY g.id LIMIT $maximum";
         Add(command, "$asOf", Timestamp(asOf)); Add(command, "$maximum", maximumCandidates + 1);
         var candidates = 0;
-        var groups = new Dictionary<string, int[]>(StringComparer.Ordinal);
+        var groups = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
         static bool Matches(string? value, string? expected) => expected is null || string.Equals(value, expected, StringComparison.OrdinalIgnoreCase);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))

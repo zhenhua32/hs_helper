@@ -266,27 +266,31 @@ public partial class MainWindow
     private async Task LoadHistoryPageAsync(int pageNumber, bool refresh = false)
     {
         if (_store is null || _closing) return;
-        var request = _historyPaging.Begin(HistoryFilter(), pageNumber, DateTimeOffset.UtcNow, refresh);
+        if (!TryHistoryFilter(out var filter, out var error))
+        { CancelHistoryQueryAndClear(); ShowHistoryDateError(error); return; }
+        _historyFilterValid = true; StatsDateErrorText.Text = "";
+        var request = _historyPaging.Begin(filter, pageNumber, _historyNow(), refresh);
         _historyListCancellation?.Cancel(); _historyListCancellation?.Dispose();
         _historyListCancellation = new CancellationTokenSource(); var token = _historyListCancellation.Token;
         HistoryPageText.Text = $"正在读取第 {request.PageNumber} 页…";
         StatsText.Text = "正在读取匹配范围的战绩…";
         RefreshHistoryPageButtons();
+        var queryOverride = _historyQueryOverride;
         try
         {
             var data = await Task.Run(async () =>
             {
                 var decks = await _store.ListDeckVersionsAsync(token);
-                var page = await _store.ListSessionPageAsync(request.Query, request.PageNumber, 100, token);
-                var stats = await _store.GetStatsAsync(request.Query, token);
-                return (Decks: decks.ToDictionary(deck => deck.Id), Page: page, Stats: stats);
+                HistoryStatsQueryResult result;
+                if (queryOverride is { } query) result = await query(request.Query, request.PageNumber, token);
+                else result = new(await _store.ListSessionPageAsync(request.Query, request.PageNumber, 100, token), await _store.GetStatsAsync(request.Query, token));
+                return (Decks: decks.ToDictionary(deck => deck.Id), result.Page, result.Stats);
             }, token);
             if (_closing || !_historyPaging.TryApply(request, data.Page)) return;
             ClearHistoryPageSelection();
             SessionsGrid.ItemsSource = data.Page.Sessions.Select(session => new SessionItem(session,
                 session.DeckVersionId is { } id && data.Decks.TryGetValue(id, out var deck) ? $"{deck.Name} · {id[..6]}" : "未绑定套牌")).ToArray();
-            var stats = data.Stats;
-            StatsText.Text = $"{(request.Scope.GameType is null ? "标准猎人" : "标准猎人天梯")} · {stats.Games} 局 · {stats.Wins}胜 {stats.Losses}负 {stats.Ties}平 · 胜率 {(stats.WinRate is { } rate ? rate.ToString("P1") : "样本不足")} · 未完成/未知 {stats.Unknown} 局";
+            PublishHistoryStats(data.Stats, request);
             HistoryPageText.Text = $"第 {data.Page.PageNumber} 页 · 本页 {data.Page.Sessions.Count} 条 · " +
                 (data.Page.HasMore ? "后面还有记录" : "已到末页") + "（刷新可包含新记录）";
             HistoryStatusText.Text = _historyContext is { } pinned
@@ -299,13 +303,14 @@ public partial class MainWindow
             if (_closing || !_historyPaging.TryFail(request)) return;
             HistoryPageText.Text = "记录读取失败，请刷新重试。";
             StatsText.Text = "战绩读取失败，请刷新重试。";
+            StatsMatchupsGrid.ItemsSource = null;
             throw;
         }
         finally { if (!_closing && _historyPaging.IsCurrent(request)) RefreshHistoryPageButtons(); }
     }
     private void RefreshHistoryPageButtons()
     {
-        var ready = _store is not null && !_historyPaging.IsLoading && !_closing;
+        var ready = _store is not null && _historyFilterValid && !_historyPaging.IsLoading && !_closing;
         SessionsGrid.IsEnabled = ready;
         SessionPrevPageButton.IsEnabled = ready && _historyPaging.PageNumber > 1;
         SessionNextPageButton.IsEnabled = ready && _historyPaging.HasMore && _historyPaging.PageNumber < int.MaxValue;
@@ -313,9 +318,7 @@ public partial class MainWindow
     private async void HistoryFilterChanged(object sender, RoutedEventArgs e)
     {
         if (_store is null || _closing) return;
-        _historyPaging.Reset(HistoryFilter());
-        ClearHistoryPageSelection();
-        await Run(RefreshHistoryAsync);
+        await Run(ApplyHistoryFilterChangeAsync);
     }
     private async void HistoryPrevPageClicked(object sender, RoutedEventArgs e)
     {

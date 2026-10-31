@@ -41,6 +41,7 @@ checks.AddRange(SessionPagingChecks.Cases(database));
 checks.AddRange(KnowledgePagingChecks.Cases(database));
 checks.AddRange(ArchivePagingChecks.Cases(database));
 checks.AddRange(DecisionEventBoundaryChecks.Cases(database));
+checks.AddRange(DateRangeStatsChecks.Cases(database));
 var completed = 0;
 foreach (var check in checks)
 {
