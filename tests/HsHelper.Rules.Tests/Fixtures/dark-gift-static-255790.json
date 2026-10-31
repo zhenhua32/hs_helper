@@ -1,0 +1,263 @@
+{
+  "build": "255790",
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "cardDefsSource": "https://api.hearthstonejson.com/v1/255790/CardDefs.base.xml",
+  "cardDefsSha256": "EE72B26D5B90B595EE5DE63E05979BF80195896BA32CF943C6F5FFC8BFBB72A8",
+  "scope": "Exact public fixed metadata. Only EDR_100t6e and EDR_100te current observed static effects are audited. No choice mapping or reapplication; other gift records are negative controls.",
+  "cardDefsEvidence": [
+    {
+      "CardId": "EDR_100t6e",
+      "Dbf": "113809",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": "",
+          "English": "Sneaky Sleepwalking"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": "",
+          "English": "<b>Charge</b>"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "3",
+          "English": null
+        },
+        {
+          "EnumId": "201",
+          "Name": "FACTION",
+          "Value": "3",
+          "English": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null
+        },
+        {
+          "EnumId": "330",
+          "Name": "ENCHANTMENT_BIRTH_VISUAL",
+          "Value": "1",
+          "English": null
+        },
+        {
+          "EnumId": "331",
+          "Name": "ENCHANTMENT_IDLE_VISUAL",
+          "Value": "1",
+          "English": null
+        },
+        {
+          "EnumId": "2921",
+          "Name": "TAG_SCRIPT_DATA_NUM_6",
+          "Value": "113802",
+          "English": null
+        },
+        {
+          "EnumId": "3567",
+          "Name": "IS_NIGHTMARE_BONUS",
+          "Value": "1",
+          "English": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100te",
+      "Dbf": "113803",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": "",
+          "English": "Waking Terror"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": "",
+          "English": "+3 Attack and <b>Lifesteal</b>."
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "3",
+          "English": null
+        },
+        {
+          "EnumId": "201",
+          "Name": "FACTION",
+          "Value": "3",
+          "English": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null
+        },
+        {
+          "EnumId": "330",
+          "Name": "ENCHANTMENT_BIRTH_VISUAL",
+          "Value": "1",
+          "English": null
+        },
+        {
+          "EnumId": "331",
+          "Name": "ENCHANTMENT_IDLE_VISUAL",
+          "Value": "1",
+          "English": null
+        },
+        {
+          "EnumId": "2921",
+          "Name": "TAG_SCRIPT_DATA_NUM_6",
+          "Value": "113796",
+          "English": null
+        },
+        {
+          "EnumId": "3567",
+          "Name": "IS_NIGHTMARE_BONUS",
+          "Value": "1",
+          "English": null
+        }
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113808,
+      "id": "EDR_100t5e",
+      "name": "活体梦魇",
+      "set": "EMERALD_DREAM",
+      "text": "当你使用本牌时，召唤一个它的2/2的复制。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113809,
+      "id": "EDR_100t6e",
+      "name": "隐匿梦行",
+      "set": "EMERALD_DREAM",
+      "text": "<b>冲锋</b>",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113885,
+      "id": "EDR_100t8e",
+      "name": "混乱强化",
+      "set": "EMERALD_DREAM",
+      "text": "+3/+3并打乱属性值。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 115355,
+      "id": "EDR_100t8e1",
+      "name": "甜美梦境",
+      "set": "EMERALD_DREAM",
+      "text": "+4/+5。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113803,
+      "id": "EDR_100te",
+      "name": "起床怒气",
+      "set": "EMERALD_DREAM",
+      "text": "+3攻击力和<b>吸血</b>。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "artist": "Patrik Bjorkstrom",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 114020,
+      "flavor": "所谓物以类聚，那么幽爪熊该和谁一起冬眠？",
+      "health": 2,
+      "id": "EDR_227",
+      "mechanics": [
+        "DEATHRATTLE",
+        "RUSH"
+      ],
+      "name": "幽爪熊",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。<b>亡语：</b><b>灌注</b>你的英雄技能。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ben Thompson",
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "dbfId": 31,
+      "health": 30,
+      "heroPowerDbfId": 229,
+      "id": "HERO_05",
+      "name": "雷克萨",
+      "rarity": "FREE",
+      "set": "HERO_SKINS",
+      "type": "HERO"
+    },
+    {
+      "artist": "Glenn Rane",
+      "cardClass": "MAGE",
+      "collectible": true,
+      "dbfId": 637,
+      "health": 30,
+      "heroPowerDbfId": 807,
+      "id": "HERO_08",
+      "name": "吉安娜·普罗德摩尔",
+      "rarity": "FREE",
+      "set": "HERO_SKINS",
+      "type": "HERO"
+    },
+    {
+      "artist": "Steve Prescott",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 389,
+      "faction": "HORDE",
+      "flavor": "媚眼如丝，轻盈如燕，致命如箭。",
+      "health": 1,
+      "id": "CS2_189",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "精灵弓箭手",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "targetingArrowText": "造成1点伤害。",
+      "text": "<b>战吼：</b>造成1点伤害。",
+      "type": "MINION"
+    }
+  ]
+}

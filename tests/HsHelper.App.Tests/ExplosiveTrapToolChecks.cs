@@ -85,7 +85,7 @@ public static class ExplosiveTrapToolChecks
         foreach (var task in new[] { AdviceTaskKind.Turn, AdviceTaskKind.Choice })
         {
             var policy = AdviceTaskTemplates.Get(task);
-            Check(policy.Version == "hunter-v16/" + task.ToString().ToLowerInvariant() &&
+            Check(policy.Version == "hunter-v17/" + task.ToString().ToLowerInvariant() &&
                 policy.Instructions.Contains("evaluate_explosive_trap", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("攻击对象固定为我方英雄", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("完整攻击会继续或已经结算", StringComparison.Ordinal) &&

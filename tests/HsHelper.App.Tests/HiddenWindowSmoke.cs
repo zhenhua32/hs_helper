@@ -146,6 +146,7 @@ internal static class HiddenWindowSmoke
             ModelCapabilitiesUiChecks.RunOnDispatcher(window);
             LastObservedReviewChecks.RunOnDispatcher(window);
             LargeCardUiChecks.RunOnDispatcher(window);
+            DarkGiftStaticUiChecks.RunOnDispatcher(window);
             AssertPassive(window);
             Check(unhandled is null, "Dispatcher initialization or a routed action raised an unhandled exception.");
         }

@@ -561,6 +561,7 @@ public sealed partial class LineEvaluator
                 }
                 if (entity.Flags.Any(flag => flag.Value != 0 && flag.Key.Length > 0 && flag.Key.All(char.IsDigit) &&
                     !IsKnownImbueCounter(entity, flag.Key) &&
+                    !IsObservedStaticDarkGiftNumericTag(entity, flag.Key) &&
                     !((_snapshot.ClientBuild == AuditedBuild && entity.CardId == "EDR_850p" || IsObservedStatEnchantment(entity)) && flag.Key is "2" or "3")))
                     Conditional("存在尚未解释的数字状态标签，不能确认已覆盖全部动作限制。", "UNMAPPED_NUMERIC_TAG");
                 if (new[] { "HEALTH_MINIMUM", "MINIMUM_HEALTH", "DAMAGE_CANT_KILL", "INCOMING_DAMAGE_MULTIPLIER", "SPELL_DAMAGE_DOUBLE", "SPELLPOWER_DOUBLE", "SPELL_HEALING_DOUBLE", "HEALING_DOES_DAMAGE", "HEALING_DOUBLE", "MULTIPLY_HERO_DAMAGE", "RECEIVES_DOUBLE_SPELLDAMAGE_BONUS", "LIFESTEAL_DAMAGES_OPPOSING_HERO", "CANT_HEAL", "CANT_DAMAGE", "CANT_BE_DESTROYED", "HERO_CANT_BE_DESTROYED", "ALL_TARGETS_RANDOM", "FORGETFUL", "HEROPOWER_ADDITIONAL_ACTIVATIONS", "HEROPOWER_UNLIMITED_USES", "HEROPOWER_ACTIVATIONS_THIS_TURN", "CURRENT_HEROPOWER_DAMAGE_BONUS" }
@@ -574,6 +575,12 @@ public sealed partial class LineEvaluator
             }
             foreach (var entity in Entities.Values.Where(e => e.Alive))
             {
+                if (IsStaticDarkGiftCandidate(entity) && entity.Zone != "GRAVEYARD")
+                {
+                    if (TryObservedStaticDarkGift(entity, out var darkGiftCoverage)) Coverage.Add(darkGiftCoverage);
+                    else Conditional("黑暗之赐附魔的当前挂载、固定定义、归属或目标观察属性未通过审计，未按静态效果放行。", "UNMAPPED_ATTACHED_ENCHANTMENT");
+                    continue;
+                }
                 if (entity.Type == "ENCHANTMENT" && entity.Int("ATTACHED") is > 0 && entity.Zone != "GRAVEYARD")
                 {
                     if (IsObservedOpponentHealthEnchantment(entity)) Coverage.Add("EDR_489-observed-player-or-hero-enchantment");

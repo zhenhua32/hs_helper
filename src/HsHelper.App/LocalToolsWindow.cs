@@ -182,7 +182,7 @@ public sealed class LocalToolsWindow : Window
         Invalidate();
         _snapshot = snapshot; _fixedBuild = fixedBuild; _historical = isHistorical;
         _startingDeck = StartingDeckBinding.FreezeForSnapshot(snapshot, fixedBuild, startingDeck);
-        _cards = new Dictionary<string, CardRecord>(); _line.Clear(); RefreshLine();
+        _cards = new Dictionary<string, CardRecord>(); _view = null; _line.Clear(); RefreshLine();
         _source.ItemsSource = Array.Empty<EntityOption>(); _target.ItemsSource = Array.Empty<EntityOption>();
         _trapSource.ItemsSource = Array.Empty<EntityOption>(); _trapAttacker.ItemsSource = Array.Empty<EntityOption>();
         _choices.ItemsSource = Array.Empty<EntityOption>();
@@ -293,10 +293,13 @@ public sealed class LocalToolsWindow : Window
         IEnumerable<BattleCardView> sources = kind switch
         {
             "play" => _view.Local.Hand,
-            "attack" => _view.Local.Board.Where(card => card.Type == "MINION").Concat(new[] { _view.Local.Hero }.OfType<BattleCardView>()),
+            "attack" => _view.Local.Board.Where(card => card.Type == "MINION").Concat(new[] { _view.Local.Hero }.OfType<BattleCardView>())
+                .Concat(_view.HasLocalPerspective && !_snapshot.IsSpectating ? _view.Local.Hand.Where(card => card.Type == "MINION" &&
+                    _line.Any(action => action.Kind == "play" && action.SourceId == card.EntityId)) : []),
             "hero_power" => new[] { _view.Local.HeroPower }.OfType<BattleCardView>(), _ => []
         };
-        _source.ItemsSource = sources.Select(card => new EntityOption(card.EntityId, CardLabel(card))).ToArray();
+        _source.ItemsSource = sources.DistinctBy(card => card.EntityId).Select(card => new EntityOption(card.EntityId, CardLabel(card) +
+            (kind == "attack" && card.Zone == "HAND" ? " · 已编入使用，攻击资格仍由规则验证" : ""))).ToArray();
         _source.SelectedItem = _source.Items.OfType<EntityOption>().FirstOrDefault(option => option.Id == selectedSource) ??
             _source.Items.OfType<EntityOption>().FirstOrDefault();
         RefreshEnabled();
@@ -315,6 +318,8 @@ public sealed class LocalToolsWindow : Window
     private void RefreshLine()
     {
         _actions.ItemsSource = _line.Select((action, index) => action with { Text = $"{index + 1}. {action.Text}" }).ToArray();
+        if (IsBindingValid) _result.Text = "候选序列已变更，请重新验证。";
+        RefreshSources();
         RefreshEnabled();
     }
 

@@ -680,6 +680,7 @@ foreach (var (name, run) in ExplosiveTrapChecks.Cases()) Run(name, run);
 foreach (var (name, run) in HunterExplosiveTrapInstallChecks.Cases(cards)) Run(name, run);
 foreach (var (name, run) in WeaponCombatChecks.Cases()) Run(name, run);
 foreach (var (name, run) in TerrorEndTurnResolutionChecks.Cases()) Run(name, run);
+foreach (var (name, run) in DarkGiftStaticChecks.Cases()) Run(name, run);
 
 if (args.Length == 1)
 {
