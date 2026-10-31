@@ -213,9 +213,12 @@ public partial class MainWindow
         if (_allowClose) return;
         e.Cancel = true;
         if (_closing) return;
+        if (!TryLeaveKnowledgeEditor()) return;
         _closing = true;
         try
         {
+            RefreshKnowledgeControls();
+            CancelKnowledgeListRead();
             var historyRead = _historyListCancellation; _historyListCancellation = null;
             if (_historyPaging.IsLoading) HistoryPageText.Text = "记录读取已取消，可刷新重试。";
             _historyPaging.Reset(_historyPaging.Scope ?? new());
@@ -230,6 +233,7 @@ public partial class MainWindow
         catch (Exception error)
         {
             _allowClose = false; _closing = false;
+            RefreshKnowledgeControls();
             RefreshHistoryPageButtons();
             StatusText.Text = "记录尚未安全保存，请重试关闭：" + error.Message;
         }

@@ -24,7 +24,21 @@ public sealed record CoachKnowledgeVersion(string EntryId, int Version, string D
 
 public sealed record CoachKnowledgeFilter(string? DeckVersionId = null, CoachKnowledgeKind? Kind = null,
     string? OpponentClass = null, bool? WentFirst = null, string? MatchId = null, int Limit = 100,
-    bool IncludeDeleted = false, bool IncludeGeneral = true);
+    bool IncludeDeleted = false, bool IncludeGeneral = true)
+{
+    public string? TitleContains { get; init; }
+    public CoachKnowledgeEventCutoff? EventCutoff { get; init; }
+    public bool RankByApplicability { get; init; }
+}
+
+/// <summary>For this match, anchored notes must be at or before this observed event. A missing event excludes anchored notes.</summary>
+public sealed record CoachKnowledgeEventCutoff(string MatchId, long? ThroughEventSequence);
+
+public sealed record CoachKnowledgePage(IReadOnlyList<CoachKnowledgeVersion> Entries, int PageNumber,
+    int PageSize, bool HasMore, DateTimeOffset AsOf)
+{
+    public bool HasPrevious => PageNumber > 1;
+}
 
 /// <summary>Append-only user notes/plans. Updates and deletion retain every earlier version for historical queries.</summary>
 public sealed class CoachKnowledgeStore
@@ -107,14 +121,44 @@ public sealed class CoachKnowledgeStore
     public Task<IReadOnlyList<CoachKnowledgeVersion>> ListAsync(CoachKnowledgeFilter? filter = null,
         CancellationToken cancellationToken = default) => ListAsOfAsync(DateTimeOffset.MaxValue, filter, cancellationToken);
 
-    public async Task<IReadOnlyList<CoachKnowledgeVersion>> ListAsOfAsync(DateTimeOffset asOf,
+    public Task<IReadOnlyList<CoachKnowledgeVersion>> ListAsOfAsync(DateTimeOffset asOf,
         CoachKnowledgeFilter? filter = null, CancellationToken cancellationToken = default)
     {
         filter ??= new();
-        if (filter.Limit is < 1 or > 1000 || (filter.Kind.HasValue && !Enum.IsDefined(filter.Kind.Value)))
+        if (filter.Limit is < 1 or > 1000) throw new ArgumentException("笔记筛选参数无效。");
+        return ReadAsOfRangeAsync(asOf, filter, filter.Limit, 0, cancellationToken);
+    }
+
+    public Task<CoachKnowledgePage> ListPageAsync(CoachKnowledgeFilter? filter = null, int pageNumber = 1,
+        int pageSize = 100, CancellationToken cancellationToken = default) =>
+        ListPageAsOfAsync(DateTimeOffset.MaxValue, filter, pageNumber, pageSize, cancellationToken);
+
+    /// <summary>Bounded page over each entry's latest version at the fixed time; legacy filter Limit is replaced by pageSize.</summary>
+    public async Task<CoachKnowledgePage> ListPageAsOfAsync(DateTimeOffset asOf, CoachKnowledgeFilter? filter = null,
+        int pageNumber = 1, int pageSize = 100, CancellationToken cancellationToken = default)
+    {
+        if (pageNumber < 1) throw new ArgumentOutOfRangeException(nameof(pageNumber));
+        if (pageSize is < 1 or > 200) throw new ArgumentOutOfRangeException(nameof(pageSize));
+        cancellationToken.ThrowIfCancellationRequested();
+        var rows = await ReadAsOfRangeAsync(asOf, filter ?? new(), pageSize + 1, checked(((long)pageNumber - 1) * pageSize), cancellationToken);
+        return new(Array.AsReadOnly(rows.Take(pageSize).ToArray()), pageNumber, pageSize, rows.Count > pageSize, asOf.ToUniversalTime());
+    }
+
+    private async Task<IReadOnlyList<CoachKnowledgeVersion>> ReadAsOfRangeAsync(DateTimeOffset asOf,
+        CoachKnowledgeFilter filter, int limit, long offset, CancellationToken cancellationToken)
+    {
+        if (filter.Kind.HasValue && !Enum.IsDefined(filter.Kind.Value))
             throw new ArgumentException("笔记筛选参数无效。");
         if (filter.DeckVersionId is not null) CoachLocalDatabase.Identifier(filter.DeckVersionId);
         if (filter.MatchId is not null) CoachLocalDatabase.Identifier(filter.MatchId);
+        if (filter.TitleContains is { } title && (title.Length > 200 || title.Any(char.IsControl)))
+            throw new ArgumentException("标题查询不能超过200字或包含控制符。");
+        if (filter.EventCutoff is { } cutoff)
+        {
+            CoachLocalDatabase.Identifier(cutoff.MatchId);
+            if (cutoff.ThroughEventSequence < 0) throw new ArgumentException("笔记事件截止不能为负。");
+        }
+        cancellationToken.ThrowIfCancellationRequested();
         var opponent = NormalizeClass(filter.OpponentClass);
         await using var connection = await _database.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
@@ -133,8 +177,28 @@ public sealed class CoachKnowledgeStore
         Scope("v.went_first", "$first", filter.WentFirst, filter.IncludeGeneral);
         Scope("v.match_id", "$match", filter.MatchId);
         if (!filter.IncludeDeleted) clauses.Add("v.is_deleted=0");
-        command.CommandText = "SELECT v.payload_json FROM coach_knowledge_versions v WHERE " + string.Join(" AND ", clauses) + " ORDER BY v.recorded_at DESC,v.entry_id LIMIT $limit";
-        CoachLocalDatabase.Add(command, "$limit", filter.Limit);
+        if (!string.IsNullOrEmpty(filter.TitleContains))
+        {
+            clauses.Add("instr(json_extract(v.payload_json,'$.Title'),$title)>0");
+            CoachLocalDatabase.Add(command, "$title", filter.TitleContains);
+        }
+        if (filter.EventCutoff is { } boundary)
+        {
+            clauses.Add("(v.match_id IS NULL OR v.match_id<>$eventMatch OR json_extract(v.payload_json,'$.EventSequence') IS NULL OR " +
+                "($eventSequence IS NOT NULL AND json_extract(v.payload_json,'$.EventSequence')<=$eventSequence))");
+            CoachLocalDatabase.Add(command, "$eventMatch", boundary.MatchId);
+            CoachLocalDatabase.Add(command, "$eventSequence", boundary.ThroughEventSequence);
+        }
+        var relevance = new List<string>();
+        if (filter.RankByApplicability)
+        {
+            if (opponent is not null) relevance.Add("CASE WHEN v.opponent_class=$opponent THEN 1 ELSE 0 END");
+            if (filter.WentFirst.HasValue) relevance.Add("CASE WHEN v.went_first=$first THEN 1 ELSE 0 END");
+        }
+        var order = relevance.Count > 0 ? "(" + string.Join("+", relevance) + ") DESC," : "";
+        command.CommandText = "SELECT v.payload_json FROM coach_knowledge_versions v WHERE " + string.Join(" AND ", clauses) +
+            " ORDER BY " + order + "v.recorded_at DESC,v.entry_id ASC LIMIT $limit OFFSET $offset";
+        CoachLocalDatabase.Add(command, "$limit", limit); CoachLocalDatabase.Add(command, "$offset", offset);
         var result = new List<CoachKnowledgeVersion>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken)) result.Add(Read(reader.GetString(0)));

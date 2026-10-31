@@ -133,6 +133,7 @@ internal static class HiddenWindowSmoke
             AssertPassive(window);
             CheckCurrentBuildSync(window, () => unhandled);
             HistoryPagingChecks.RunOnDispatcher(window);
+            KnowledgePagingChecks.RunOnDispatcher(window);
             LocalToolsHiddenSmoke.RunOnDispatcher(Path.Combine(Environment.CurrentDirectory, "local-tools"));
             WindowClosingRegression.RunOnDispatcher(Path.Combine(Environment.CurrentDirectory, "closing"));
             AssertPassive(window);

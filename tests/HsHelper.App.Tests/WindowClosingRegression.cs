@@ -28,6 +28,10 @@ internal static class WindowClosingRegression
         var pendingPage = paging.Begin(new SessionFilter(), 1, DateTimeOffset.UtcNow);
         var historyRead = new CancellationTokenSource(); var historyToken = historyRead.Token;
         Set(window, "_historyListCancellation", historyRead);
+        var knowledgePaging = (KnowledgePagingState)Get(window, "_knowledgePaging")!;
+        var pendingKnowledge = knowledgePaging.Begin(new CoachKnowledgeFilter(), 1, DateTimeOffset.UtcNow);
+        var knowledgeRead = new CancellationTokenSource(); var knowledgeToken = knowledgeRead.Token;
+        Set(window, "_knowledgeListCancellation", knowledgeRead);
         var closed = false;
         var insideFirstClose = true;
         var closingCallbacks = 0;
@@ -44,6 +48,9 @@ internal static class WindowClosingRegression
         Check(historyToken.IsCancellationRequested && Get(window, "_historyListCancellation") is null && !paging.IsCurrent(pendingPage) &&
             !paging.TryApply(pendingPage, new(Array.AsReadOnly(Array.Empty<GameSession>()), 1, 100, false)),
             "Closing retained a history read or allowed its delayed page to publish after shutdown began.");
+        Check(knowledgeToken.IsCancellationRequested && Get(window, "_knowledgeListCancellation") is null && !knowledgePaging.IsCurrent(pendingKnowledge) &&
+            !knowledgePaging.TryApply(pendingKnowledge, new(Array.AsReadOnly(Array.Empty<CoachKnowledgeVersion>()), 1, 100, false, pendingKnowledge.AsOf)),
+            "Closing retained a knowledge read or allowed its delayed result to overwrite the editor.");
         WaitUntil(() => closed, "A synchronously completed save left the window open after the initial close.");
         Check(closingCallbacks == 2 && SourceGeneration(window) == 1,
             "Deferred shutdown repeated persistence or did not complete the final WPF close.");

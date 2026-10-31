@@ -27,23 +27,52 @@ public sealed class CoachLibraryContext(SessionStore sessions, CoachKnowledgeSto
         };
         if (name == "get_matchup_plan")
         {
-            var candidates = await knowledge.ListAsOfAsync(Binding.AsOf, new CoachKnowledgeFilter(
-                DeckVersionId: Binding.DeckVersionId, OpponentClass: Binding.OpponentClass,
-                WentFirst: Binding.WentFirst, Limit: 200), token);
-            var eligible = candidates.Where(e => e.MatchId != Binding.MatchId || e.EventSequence is null ||
-                (Binding.EventSequence is { } sequence && e.EventSequence <= sequence)).ToArray();
-            var entries = eligible.Take(20).ToArray();
+            const int totalLimit = 20, initialQuota = 10, perKindLimit = 20;
+            CoachKnowledgeFilter Filter(CoachKnowledgeKind kind) => new(
+                DeckVersionId: Binding.DeckVersionId, Kind: kind, OpponentClass: Binding.OpponentClass,
+                WentFirst: Binding.WentFirst)
+            {
+                EventCutoff = new(Binding.MatchId, Binding.EventSequence), RankByApplicability = true
+            };
+            var planTask = knowledge.ListPageAsOfAsync(Binding.AsOf, Filter(CoachKnowledgeKind.DeckPlan),
+                pageNumber: 1, pageSize: perKindLimit, cancellationToken: token);
+            var noteTask = knowledge.ListPageAsOfAsync(Binding.AsOf, Filter(CoachKnowledgeKind.MatchNote),
+                pageNumber: 1, pageSize: perKindLimit, cancellationToken: token);
+            await Task.WhenAll(planTask, noteTask);
+            var plans = await planTask; var notes = await noteTask;
+            var planCount = Math.Min(initialQuota, plans.Entries.Count);
+            var noteCount = Math.Min(initialQuota, notes.Entries.Count);
+            var remaining = totalLimit - planCount - noteCount;
+            var extraPlans = Math.Min(remaining, plans.Entries.Count - planCount);
+            planCount += extraPlans; remaining -= extraPlans;
+            noteCount += Math.Min(remaining, notes.Entries.Count - noteCount);
+            var entries = plans.Entries.Take(planCount).Concat(notes.Entries.Take(noteCount)).ToArray();
+            var plansTruncated = plans.HasMore || plans.Entries.Count > planCount;
+            var notesTruncated = notes.HasMore || notes.Entries.Count > noteCount;
             return Node(new
             {
                 match_id = Binding.MatchId, state_version = Binding.StateVersion, as_of = Binding.AsOf,
                 deck_version = Binding.DeckVersionId, opponent_class = Binding.OpponentClass, went_first = Binding.WentFirst,
                 source = "用户保存的策略计划与笔记；它们是参考意见，不能证明当前对手持有某张牌。",
-                entries_truncated = eligible.Length > 20 || candidates.Count >= 200,
+                entries_truncated = plansTruncated || notesTruncated,
+                retrieval = new
+                {
+                    total_limit = totalLimit, initial_per_kind_quota = initialQuota, per_kind_candidate_limit = perKindLimit,
+                    ranking = "每类优先匹配已知对手职业及先后手，再按保存时间倒序、条目标识排序。",
+                    selection_policy = "计划和笔记各先保留10条；不足的名额先补剩余计划，再补笔记。各类内部保留适用性排序。",
+                    count_policy = "at_least_matches仅为匹配数量下限；未读取全库总数。",
+                    deck_plans = Counts(plans, planCount), match_notes = Counts(notes, noteCount)
+                },
                 entries = entries.Select(e => new { e.EntryId, e.Version, e.RecordedAt, e.Source, e.Kind, e.Title, e.EventSequence,
                     content = e.Content.Length > 1600 ? e.Content[..1600] : e.Content,
                     content_truncated = e.Content.Length > 1600, e.OpponentClass, e.WentFirst, e.MatchId }),
                 missing = entries.Length == 0 ? "本次查询范围内没有可用于该时点的计划或笔记。" : null
             });
+            static object Counts(CoachKnowledgePage page, int returned) => new
+            {
+                returned, at_least_matches = page.Entries.Count + (page.HasMore ? 1 : 0),
+                truncated = page.HasMore || page.Entries.Count > returned
+            };
         }
         var matchup = args["scope"]!.GetValue<string>() == "current_matchup";
         if (matchup && Binding.OpponentClass is null) return new JsonObject { ["missing"] = "对手职业未知，不能虚构该对局的职业统计。" };
@@ -62,7 +91,7 @@ public sealed class CoachLibraryContext(SessionStore sessions, CoachKnowledgeSto
     private static JsonObject Schema(string json) => JsonNode.Parse(json)!.AsObject();
     public static IReadOnlyList<AgentToolDefinition> Definitions { get; } = Array.AsReadOnly(new[]
     {
-        new AgentToolDefinition("get_matchup_plan", "获取固定套牌与分析时间之前的用户计划和对局笔记；不包含以后修改的内容。",
+        new AgentToolDefinition("get_matchup_plan", "按计划和笔记分别获取固定套牌、分析时间与当前事件截止之前的适用资料，各保留配额并优先精确职业及先后手；最多20条，截断数量明确为已知值或下限。不包含以后修改的内容，调用者不能指定范围或截止。",
             Schema("""{"type":"object","properties":{},"required":[],"additionalProperties":false}"""), args => args.Count == 0),
         new AgentToolDefinition("get_personal_stats", "查询固定版本、套牌及时间之前已结束的个人天梯样本，始终排除当前局和未来结果。",
             Schema("""{"type":"object","properties":{"scope":{"type":"string","enum":["current_matchup","all_opponents"]},"went_first":{"type":"string","enum":["current","any"]}},"required":["scope","went_first"],"additionalProperties":false}"""),
