@@ -281,7 +281,9 @@ preview16 另以隔离测试副本直接引用包内 DLL，只重编原测试源
 
 交叉复现另确认旧惰性 JSON 对象在遇到重复字段时可能回显字段名，重复的外层响应还会在用量标记已设置、记录未完成之间抛错，造成消费丢失。统一解析入口现提前递归物化对象与数组，在进入用量和工具／动作回调前安全拒绝重复键，不回显服务字段。三模式与建议根、嵌套动作、外层响应、嵌套用量和工具参数的 15 种路径均有对照：能读到的已报告用量保留，无法信任成功响应时保守结算，验证和工具回调均不执行。专项与复现均未读取用户凭据或真实日志，preview16 保持原样。
 
-模型能力更新最终通过 `scripts/verify.ps1 -ArtifactsPath .local/build-model-capabilities-final` 的 1176 项源码回归：Core 111、Ingestion 9、Cards 36、Agent 101、Configuration 37、Storage 113、Rules 495、App 115、Integration 159，另 27 项指南生成检查通过，构建零警告、零错误。App 五组新增检查归入既有隐藏 WPF 顶层项，未额外累计。最终日志为忽略目录 `.local/verify-model-capabilities-final.log`。本轮源码尚未加入 preview16，下一步可从干净提交构建并验证新包；复杂牌效与真实服务／国服／多屏及干净 Windows 验收仍未完成。
+模型能力更新最终通过 `scripts/verify.ps1 -ArtifactsPath .local/build-model-capabilities-final` 的 1176 项源码回归：Core 111、Ingestion 9、Cards 36、Agent 101、Configuration 37、Storage 113、Rules 495、App 115、Integration 159，另 27 项指南生成检查通过，构建零警告、零错误。App 五组新增检查归入既有隐藏 WPF 顶层项，未额外累计。最终日志为忽略目录 `.local/verify-model-capabilities-final.log`。源码先单独提交，随后随 preview17 验证发行；复杂牌效与真实服务／国服／多屏及干净 Windows 验收仍未完成。
+
+preview17 从干净来源 `cc8d55582b838786be332b6ba35d0d80469ea875` 构建，两个 manifest 均为 `sourceDirty=false`。自包含 ZIP 67,215,549 字节、415 文件展开 150,768,486 字节，SHA256 `6afc9a75dd2cc88543b67b97d8529fed898c95b432ce1036050f9aaac07c982f`；依赖框架 ZIP 2,089,736 字节、20 文件展开 4,443,202 字节，SHA256 `f0b3e7f62a772e164789ce2c5ffb9c761c7d38f899d8fbbb871c97bf83a91bde`。两包各 27 安全＋3 指南语义、ZIP/逐文件和正常用户无窗口诊断通过，独立指南生成 27 项通过；自包含 Core/Desktop 10.0.14 七 DLL 与官方缓存和 nupkg 条目一致、两个整归档 SHA512 匹配。依赖框架诊断仅证明本机 10.0.0 可用，两个模式八个产品 DLL 逐一字节相同。包内 Agent 101＋App 115 共 216 项检查只重编测试，不编产品，实际加载位置、哈希和 preview17＋cc8 来源全部核对；SC 包全 415 文件前后不变，实际测试运行时为本机 Core/Desktop 10.0.0。所有发布与测试编译保留默认 NuGet 审计，零警告、零错误；收据位于 `.local/publish/0.1.0-preview.17-*` 与 `.local/desktop-preview17-smoke/e911cc17a0f44faf9d17445c7f6103e7`，旧 preview16 产物未改。包只在本机，未上传，App ZIP 不附带 CLI，未据此完成真实国服／多屏／干净 Windows 验收。
 
 Integration 的 --export-fixture .local/synthetic-smoke 可导出明确标记的合成快照和卡库，用于真实服务额外验收。普通回归使用假 HTTP，不产生模型费用。源日志仅共享读取，不复制到仓库；验证下载与数据保存在 .local，日常运行数据使用配置的数据目录。
 
