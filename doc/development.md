@@ -183,7 +183,7 @@ verify.ps1 构建后逐个运行控制台回归套件，失败返回非零码；
 
 同日爆炸陷阱更新通过 851 项完整离线检查：Core 85、Ingestion 9、Cards 36、Agent 71、Configuration 26、Storage 50、Rules 423、App 66、Integration 85，构建零警告、零错误。新增当前对手回合的来袭条件预览、严格来源/来袭者两参数工具、独立本地选择行与 `hunter-v12` 回合/选择策略。原生安装在支付前核对固定 ID、DBF、类别、火焰学派、完整文字与奥秘机制。直接触发按当前法强及群伤前目标集计算，保留未知触发和攻击继续条件；回归覆盖真实按钮、合成 Parser→host、私有身份隔离及假模型不能将预览升级为动作或斩杀证明。
 
-已验证的 Windows 包仍为 `0.1.0-preview.8`，来源提交 `519813c653abe751020dfaa495dc2ef5f2f4e695`；该包尚不含其后的熔岩猎犬和爆炸陷阱源码更新。发行核验记录仍见 [Windows 发行说明](windows-release.md)。
+已验证的 Windows 包为 `0.1.0-preview.9`，来源提交 `89d19e4239b6626fb1cd9a0f90d9726524d27ca3`；包含上述熔岩猎犬和爆炸陷阱更新，已通过 ZIP/逐文件、27 项包安全、七个运行时 DLL 及正常用户环境无窗口诊断核验。发行记录见 [Windows 发行说明](windows-release.md)；这些离线检查不替代真实对局与多屏验收。
 
 Integration 的 --export-fixture .local/synthetic-smoke 可导出明确标记的合成快照和卡库，用于真实服务额外验收。普通回归使用假 HTTP，不产生模型费用。源日志仅共享读取，不复制到仓库；验证下载与数据保存在 .local，日常运行数据使用配置的数据目录。
 
