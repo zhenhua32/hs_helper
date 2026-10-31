@@ -35,6 +35,11 @@ public sealed record SimulatedState(int AvailableMana, IReadOnlyList<SimulatedEn
     public bool DrawBoundaryReached { get; init; }
     /// <summary>Entity/resource projection stops before the unresolved draw; direct effects are isolated below.</summary>
     public IReadOnlyList<DrawResolutionOutcome> DrawPreviews { get; init; } = [];
+    public bool GenerationBoundaryReached { get; init; }
+    /// <summary>Direct counts only; generated cards have no simulated identity or usable entity.</summary>
+    public IReadOnlyList<GenerationResolutionOutcome> GenerationPreviews { get; init; } = [];
+    public bool WolfBlessingBoundaryReached { get; init; }
+    public IReadOnlyList<WolfBlessingResolutionOutcome> WolfBlessingPreviews { get; init; } = [];
 }
 public sealed record LineEvaluation(string MatchId, long StateVersion, LineVerification Verification,
     bool? IsLegal, bool IsLethal, bool PotentialLethal, int AppliedActions,

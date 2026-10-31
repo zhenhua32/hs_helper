@@ -169,6 +169,10 @@ public sealed class SnapshotCoach
         if (name == "evaluate_draw")
             return Node(DrawResolutionRules.Evaluate(_snapshot, args["source_entity_id"]!.GetValue<int>(), rulesCards,
                 ImbueEvidence.Evaluate(_snapshot).AtLeast(2)));
+        if (name == "evaluate_generation")
+            return Node(GenerationResolutionRules.Evaluate(_snapshot, args["source_entity_id"]!.GetValue<int>(), rulesCards));
+        if (name == "evaluate_wolf_blessing")
+            return Node(WolfBlessingResolutionRules.Evaluate(_snapshot, args["source_entity_id"]!.GetValue<int>(), rulesCards));
         if (name == "evaluate_choice")
             return await Task.Run(() => Node(_rules.EvaluateChoice(_snapshot,
                 args["selected_entity_ids"]!.AsArray().Select(id => id!.GetValue<int>()).ToArray(), rulesCards,
@@ -256,7 +260,10 @@ public sealed class SnapshotCoach
         var entities = evaluation.Result.Entities.Where(Visible).Select(entity => entity with
         {
             CardId = entity.Type is "GAME" or "PLAYER" ? null : entity.CardId,
-            Flags = entity.Flags.Where(pair => SafeFlag(pair.Key)).ToFrozenDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+            Flags = entity.Flags.Where(pair => SafeFlag(pair.Key) &&
+                (entity.Type is not ("GAME" or "PLAYER") && !string.IsNullOrWhiteSpace(entity.CardId) ||
+                    pair.Key is not ("CRAFTABLE_FIRST_HALF_DBID" or "CRAFTABLE_SECOND_HALF_DBID" or "4572" or "4573")))
+                .ToFrozenDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
         }).ToArray();
         return evaluation with { Result = evaluation.Result with { Entities = Array.AsReadOnly(entities),
             NextCardCostsOpponentHealth = local.HasValue ? evaluation.Result.NextCardCostsOpponentHealth : null } };
@@ -285,6 +292,10 @@ public sealed class SnapshotCoach
         new AgentToolDefinition("get_entity_effect", "查询当前可见实体的基础或已观察拼装文字；按固定版本DBF重建半段。未确认半段/供体不回退成原牌效。候选半段不是成品，不改变费用属性，也不证明可执行动作。", Schema("""{"type":"object","properties":{"entity_id":{"type":"integer","minimum":1}},"required":["entity_id"],"additionalProperties":false}"""),
             args => args.Count == 1 && Integer(args["entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("evaluate_draw", "预览已覆盖手牌成功使用后直接抽牌、满手损失、牌库减量与疲劳范围。假设本体成功离手；合法出牌另用evaluate_line核验。数量范围不生成新手牌实体或后续动作。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
+            args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
+        new AgentToolDefinition("evaluate_generation", "预览已覆盖手牌成功使用后的原生随机生成数量与满手损失；不选择随机牌身份，不移出牌库，也不创建可执行的新手牌实体。合法出牌另用evaluate_line核验。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
+            args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
+        new AgentToolDefinition("evaluate_wolf_blessing", "比较巨狼祝福随机命中各野兽手牌的直接攻击/减费分支；不指定实际命中，不替换当前局面，不证明技能使用合法或后续斩杀。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("get_recent_events", "查询固定决策点及以前的匿名事件摘要。", Schema("""{"type":"object","properties":{},"required":[],"additionalProperties":false}"""), Empty),
         new AgentToolDefinition("validate_choice", "只验证当前我方选择的候选范围和数量，不模拟选择后效果，也不能证明斩杀。", Schema("""{"type":"object","properties":{"choice_id":{"type":"integer","minimum":1},"selected_entity_ids":{"type":"array","maxItems":30,"items":{"type":"integer","minimum":1}}},"required":["choice_id","selected_entity_ids"],"additionalProperties":false}"""),

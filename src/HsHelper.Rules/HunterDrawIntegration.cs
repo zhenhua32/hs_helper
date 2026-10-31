@@ -29,7 +29,7 @@ public sealed partial class LineEvaluator
             Coverage.Add("cumulative-imbue-advances-for-covered-native-trigger");
         }
 
-        public void RecordNativeDraw(Entity source)
+        public DrawResolutionOutcome RecordNativeDraw(Entity source)
         {
             var originalDeck = _snapshot.Entities.Values.Where(entity => entity.ControllerId == Local && entity.Zone == "DECK").ToArray();
             var currentDeck = Entities.Values.Where(entity => entity.Controller == Local && entity.Zone == "DECK").ToArray();
@@ -77,6 +77,7 @@ public sealed partial class LineEvaluator
                 DrawBoundaryReached = true;
             }
             else Coverage.Add("native-draw-condition-not-met-no-draw-boundary");
+            return result;
         }
 
         public void DeferImbueAfterDraw()

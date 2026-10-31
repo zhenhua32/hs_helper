@@ -6,7 +6,7 @@ public sealed partial class LineEvaluator
 {
     // Text/stat provenance: fixed build 255790 cards.json and CardDefs.base.xml.
     // Imbue semantics: https://hearthstone.blizzard.com/en-us/expansions-adventures/into-the-emerald-dream
-    private static readonly HashSet<string> AuditedHunterBodies = ["EDR_852", "EDR_800", "EDR_227", "EDR_226", "FIR_921", "EDR_480", "DINO_421", "FIR_953", "EDR_489"];
+    private static readonly HashSet<string> AuditedHunterBodies = ["CORE_UNG_912", "EDR_852", "EDR_800", "EDR_227", "EDR_226", "FIR_921", "EDR_480", "DINO_421", "FIR_953", "EDR_489"];
     private static readonly HashSet<string> SearchableRushBodies = ["EDR_227", "EDR_480", "FIR_953"];
 
     private static bool TryPlayBeastHunter(Runtime state, PlannedAction action, Entity source, Profile profile)
@@ -19,17 +19,18 @@ public sealed partial class LineEvaluator
         if (!state.Summon(source, profile)) return true;
         if (state.OpponentDefeatedByPayment) return true;
         if (battlecryActive && id == "EDR_489") state.ArmOpponentHealthPayment();
-        if (battlecryActive && id is "EDR_852" or "EDR_800" or "EDR_226")
+        if (id == "EDR_226")
         {
-            if (id == "EDR_226")
-            {
-                state.RecordNativeDraw(source);
+            var draw = state.RecordNativeDraw(source);
+            if (!draw.ResolvesEffects || draw.RequestedDraws.Maximum != 0)
                 state.DeferImbueAfterDraw();
-            }
-            else state.ImbueHunter(source.Controller, "battlecry:" + id);
         }
-        if (battlecryActive && id == "FIR_921")
+        else if (battlecryActive && id is "EDR_852" or "EDR_800") state.ImbueHunter(source.Controller, "battlecry:" + id);
+        if (id == "FIR_921")
             state.RecordNativeDraw(source);
+        // The direct resolver retains raw alias conflicts even when the runtime flag is zero.
+        if (id == "CORE_UNG_912")
+            state.RecordNativeGeneration(source);
         state.Coverage.Add("audited-minion-summon:" + id);
         return true;
     }
@@ -40,19 +41,18 @@ public sealed partial class LineEvaluator
         if (action.TargetEntityId is not null) { state.Invalid("巨狼的祝福随机选择手牌，不能指定目标。"); return; }
         var level = state.WolfLevel(source);
         if (level is null) { state.Unsupported("UNKNOWN_WOLF_PARAMETERS", "巨狼祝福的当前攻击力和减费参数未观察到一致可靠值，不能把印刷初值当当前强度。"); return; }
-        var hand = state.Entities.Values.Where(e => e.Alive && e.Controller == source.Controller && e.Zone == "HAND").ToArray();
-        if (hand.Any(e => state.Profile(e) is null))
-        { state.Unsupported("UNKNOWN_WOLF_CANDIDATES", "存在身份或类型未知的手牌，不能确认巨狼祝福的随机候选集合。"); return; }
-        var beasts = hand.Where(state.IsBeast).ToArray();
-        if (beasts.Length == 0) { state.Unsupported("NO_WOLF_CANDIDATE", "没有可确认的野兽手牌；空放该英雄技能的合法性尚未审计。"); return; }
-        if (beasts.Length == 1 && (beasts[0].Attack is null or < 0 || beasts[0].Cost is null or < 0))
+        var preview = state.PreviewWolfBlessing(source, level.Value);
+        if (!preview.ResolvesEffects || !preview.IsCandidateSetComplete)
+        { state.Unsupported("UNKNOWN_WOLF_CANDIDATES", "手牌身份、当前类型或技能参数不足以确认完整随机候选集合，详情见直接分支预览。"); return; }
+        if (preview.Branches.Count == 0) { state.Unsupported("NO_WOLF_CANDIDATE", "没有可确认的野兽手牌；空放该英雄技能的合法性尚未审计。"); return; }
+        if (preview.Branches.Count == 1 && (preview.Branches[0].ResultingAttack is null || preview.Branches[0].ResultingCost is null))
         { state.Unsupported("UNKNOWN_WOLF_TARGET_STATS", "唯一候选的当前攻击力或费用未知，不能用印刷值代替手牌增益后的属性。"); return; }
         if (!state.Pay(source)) return;
         source.Flags["RULES_USED"] = 1; source.Flags["EXHAUSTED"] = 1;
-        if (beasts.Length > 1)
-        { state.Conditional("巨狼祝福存在多个野兽候选，未选择或枚举随机命中结果；已记录费用但未修改任一手牌。", "RANDOM_WOLF_TARGET"); return; }
-        beasts[0].Attack = checked(beasts[0].Attack!.Value + level.Value);
-        beasts[0].Cost = Math.Max(0, beasts[0].Cost!.Value - level.Value);
+        state.RecordWolfBlessing(preview);
+        if (preview.Branches.Count > 1) return;
+        var branch = preview.Branches[0]; var beast = state.Entities[branch.TargetEntityId];
+        beast.Attack = branch.ResultingAttack; beast.Cost = branch.ResultingCost;
         state.Coverage.Add("EDR_850p-single-observed-beast-buff-and-discount");
     }
 
@@ -128,10 +128,19 @@ public sealed partial class LineEvaluator
         }
         public int? WolfLevel(Entity power)
         {
+            if (_snapshot.Entities.TryGetValue(power.Id, out var observed))
+                foreach (var pair in new[] { ("TAG_SCRIPT_DATA_NUM_1", "2"), ("TAG_SCRIPT_DATA_NUM_2", "3") })
+                {
+                    var named = observed.Tags.GetValueOrDefault(pair.Item1); var numeric = observed.Tags.GetValueOrDefault(pair.Item2);
+                    if (named is not null && !int.TryParse(named, out _) || numeric is not null && !int.TryParse(numeric, out _) ||
+                        named is not null && numeric is not null && int.Parse(named) != int.Parse(numeric)) return null;
+                }
             var attack = power.Int("TAG_SCRIPT_DATA_NUM_1") ?? power.Int("2");
             var discount = power.Int("TAG_SCRIPT_DATA_NUM_2") ?? power.Int("3");
             // Both text numbers increase together. Unequal or missing observations are not a known level.
-            return attack is >= 1 && discount == attack ? attack : null;
+            return attack is >= 1 && discount == attack &&
+                (!power.Flags.ContainsKey("2") || power.Int("2") == attack) &&
+                (!power.Flags.ContainsKey("3") || power.Int("3") == discount) ? attack : null;
         }
         public void ImbueHunter(int? controller, string reason)
         {

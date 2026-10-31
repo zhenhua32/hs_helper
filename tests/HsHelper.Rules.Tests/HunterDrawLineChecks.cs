@@ -80,6 +80,23 @@ internal static class HunterDrawLineChecks
                 result.Result.ImbueCountBefore == 2 && result.Result.ImbueCountAfter is null && result.Result.HeroPowerChanges.Count == 0 &&
                 result.UnsupportedMechanics.Contains("PENDING_AFTER_DRAW_IMBUE"), "After-draw imbue was executed ahead of the unresolved draw.");
         });
+        yield return ("a zero runtime draw battlecry keeps a contradictory raw active alias and its boundary", () =>
+        {
+            var frame = Add(Frame(2), Card(30, "FIR_921", "HAND", 3, "MINION", ("BATTLECRY", 0), ("218", 1)));
+            var result = Evaluate(frame, new(ActionKind.PlayCard, 30), new(ActionKind.EndTurn, 2));
+            Check(result.AppliedActions == 1 && result.Verification == LineVerification.Unsupported && result.Result.DrawBoundaryReached &&
+                result.Result.DrawPreviews.Single().RequestedDraws is { Minimum: 0, Maximum: 2 },
+                "A named zero flag discarded the contradictory draw branch before the direct resolver.");
+        });
+        yield return ("a confirmed suppressed Houndmaster battlecry neither draws nor defers an Imbue", () =>
+        {
+            var frame = Add(Frame(2), Card(30, "EDR_226", "HAND", 2, "MINION", ("BATTLECRY", 0)));
+            var result = Evaluate(frame, new(ActionKind.PlayCard, 30), new(ActionKind.EndTurn, 2));
+            Check(result.Verification == LineVerification.Verified && result.AppliedActions == 2 && result.Result.TurnEnded &&
+                result.Result.ImbueCountAfter == 2 && result.Result.HeroPowerChanges.Count == 0 && !result.Result.DrawBoundaryReached &&
+                result.Result.DrawPreviews.Single().RequestedDraws.Maximum == 0,
+                "A confirmed zero native battlecry acquired an after-draw effect or unnecessary boundary.");
+        });
     }
 
     private static GameSnapshot Frame(int? count, int deck = 2)

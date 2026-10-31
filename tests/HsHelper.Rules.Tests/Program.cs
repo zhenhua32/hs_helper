@@ -660,6 +660,10 @@ foreach (var (name, run) in ImbueAndMalorneChecks.Cases()) Run(name, run);
 foreach (var (name, run) in DrawResolutionChecks.Cases()) Run(name, run);
 foreach (var (name, run) in HunterDrawLineChecks.Cases(cards)) Run(name, run);
 foreach (var (name, run) in AssembledRuleChecks.Cases(cards)) Run(name, run);
+foreach (var (name, run) in GenerationResolutionChecks.Cases()) Run(name, run);
+foreach (var (name, run) in HunterGenerationLineChecks.Cases(cards)) Run(name, run);
+foreach (var (name, run) in WolfBlessingResolutionChecks.Cases()) Run(name, run);
+foreach (var (name, run) in HunterWolfLineChecks.Cases(cards)) Run(name, run);
 
 if (args.Length == 1)
 {

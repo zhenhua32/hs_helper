@@ -49,6 +49,23 @@ internal static class CoachPrivacyIntegration
             local.Result.Entities.Any(entity => entity.CardId == "PRIVATE_HAND_IDENTITY"), "Tool projection mutated the complete local validation input or result");
         pass("evaluate_line and nested find_lethal results filter hidden slots and numeric identity flags while local validation stays complete");
 
+        var unidentified = snapshot.Entities.ToDictionary();
+        var halfTags = new Dictionary<string, string> { ["CONTROLLER"] = "1", ["ZONE"] = "HAND", ["CARDTYPE"] = "MINION", ["COST"] = "2",
+            ["CRAFTABLE_FIRST_HALF_DBID"] = "130871", ["CRAFTABLE_SECOND_HALF_DBID"] = "118076", ["4572"] = "130871", ["4573"] = "118076" };
+        unidentified[3300] = new(3300, null, EntityKind.Card, halfTags.ToFrozenDictionary());
+        unidentified[3310] = entities[3000] with { Id = 3310, Tags = entities[3000].Tags.Concat(halfTags.Where(pair => pair.Key is not ("CONTROLLER" or "ZONE" or "CARDTYPE" or "COST"))).ToFrozenDictionary() };
+        var unidentifiedFrame = snapshot with { Entities = unidentified.ToFrozenDictionary() };
+        var unidentifiedCoach = new SnapshotCoach(unidentifiedFrame, CompactAdviceContextBuilder.Build(unidentifiedFrame, SyntheticFixture.Build), catalog, SyntheticFixture.Build);
+        var unidentifiedLine = await unidentifiedCoach.ExecuteAsync("evaluate_line", new() { ["actions"] = actions.DeepClone() }, default);
+        var projected = unidentifiedLine["Result"]!["Entities"]!.AsArray();
+        var unknownFlags = projected.Single(entity => entity!["EntityId"]!.GetValue<int>() == 3300)!["Flags"]!;
+        var knownFlags = projected.Single(entity => entity!["EntityId"]!.GetValue<int>() == 3310)!["Flags"]!;
+        foreach (var key in new[] { "CRAFTABLE_FIRST_HALF_DBID", "CRAFTABLE_SECOND_HALF_DBID", "4572", "4573" })
+            Check(unknownFlags[key] is null && knownFlags[key] is not null, "Unidentified card disclosed an assembled donor or a visible identity lost its evidence.");
+        Check(unknownFlags["COST"]?.GetValue<int>() == 2 && unidentifiedFrame.Entities[3300].Tags.ContainsKey("4572"),
+            "Identity filtering removed unrelated observed properties or mutated the local snapshot.");
+        pass("rule-tool entity flags exclude assembled donor references for unidentified cards while known public identities retain them");
+
         var planningContext = CompactAdviceContextBuilder.Create(snapshot, SyntheticFixture.Build, AdviceTaskKind.DeckPlan, cards: cards.Values);
         var planning = new SnapshotCoach(snapshot, planningContext.Snapshot, catalog, SyntheticFixture.Build, taskKind: planningContext.TaskKind);
         var capabilities = planning.Capabilities();
@@ -60,6 +77,8 @@ internal static class CoachPrivacyIntegration
             ("calculate_draw_odds", new() { ["card_id"] = SyntheticFixture.CardId(1), ["draws"] = 1 }),
             ("validate_choice", new() { ["choice_id"] = 1, ["selected_entity_ids"] = new JsonArray(100) }),
             ("evaluate_choice", new() { ["choice_id"] = 1, ["selected_entity_ids"] = new JsonArray(100) }),
+            ("evaluate_generation", new() { ["source_entity_id"] = 100 }),
+            ("evaluate_wolf_blessing", new() { ["source_entity_id"] = 100 }),
             ("get_recent_events", new())
         };
         foreach (var (name, args) in forbiddenTools) await Throws<ArgumentException>(() => planning.ExecuteAsync(name, args, default));

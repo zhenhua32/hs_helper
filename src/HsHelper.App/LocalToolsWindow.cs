@@ -27,6 +27,8 @@ public sealed class LocalToolsWindow : Window
     private readonly ListBox _actions = new() { MinHeight = 80, MaxHeight = 150, DisplayMemberPath = nameof(LocalAction.Text) };
     private readonly Button _evaluate = new() { Content = "验证候选顺序" };
     private readonly Button _previewDraw = new() { Content = "预览所选手牌抽牌" };
+    private readonly Button _previewGeneration = new() { Content = "预览随机生成数量" };
+    private readonly Button _previewWolfBlessing = new() { Content = "比较巨狼祝福分支" };
     private readonly Button _inspectEffect = new() { Content = "查看所选牌当前效果" };
     private readonly TextBox _depth = new() { Text = "4", Width = 45 };
     private readonly TextBox _nodes = new() { Text = "1500", Width = 65 };
@@ -78,6 +80,16 @@ public sealed class LocalToolsWindow : Window
         {
             if (_source.SelectedItem is EntityOption source)
                 _ = RunToolAsync("evaluate_draw", new() { ["source_entity_id"] = source.Id });
+        };
+        _previewGeneration.Click += (_, _) =>
+        {
+            if (_source.SelectedItem is EntityOption source)
+                _ = RunToolAsync("evaluate_generation", new() { ["source_entity_id"] = source.Id });
+        };
+        _previewWolfBlessing.Click += (_, _) =>
+        {
+            if (_source.SelectedItem is EntityOption source)
+                _ = RunToolAsync("evaluate_wolf_blessing", new() { ["source_entity_id"] = source.Id });
         };
         _inspectEffect.Click += (_, _) =>
         {
@@ -309,6 +321,10 @@ public sealed class LocalToolsWindow : Window
         _evaluate.IsEnabled = ready && _line.Count > 0; _lethal.IsEnabled = ready;
         _previewDraw.IsEnabled = ready && _snapshot.Phase == GamePhase.Main && _source.SelectedItem is EntityOption selected &&
             _snapshot.Entities.TryGetValue(selected.Id, out var source) && source.Zone == "HAND" && source.CardId is "FIR_921" or "EDR_226";
+        _previewGeneration.IsEnabled = ready && _snapshot.Phase == GamePhase.Main && _source.SelectedItem is EntityOption generation &&
+            _snapshot.Entities.TryGetValue(generation.Id, out var generator) && generator.Zone == "HAND" && generator.CardId == "CORE_UNG_912";
+        _previewWolfBlessing.IsEnabled = ready && _snapshot.Phase == GamePhase.Main && _source.SelectedItem is EntityOption wolf &&
+            _snapshot.Entities.TryGetValue(wolf.Id, out var power) && power.Zone == "PLAY" && power.CardId == "EDR_850p";
         _inspectEffect.IsEnabled = ready && _source.SelectedItem is EntityOption selectedEffect &&
             SnapshotCardEffects.VisibleCards(_snapshot, includePublicGraveyard: true).Any(entity => entity.Id == selectedEffect.Id);
         _add.IsEnabled = ready && _source.Items.Count > 0; _remove.IsEnabled = ready && _line.Count > 0;
@@ -333,7 +349,8 @@ public sealed class LocalToolsWindow : Window
         body.Children.Add(_deck); body.Children.Add(Row(_card, Label("抽取张数"), _draws, _odds));
         body.Children.Add(new TextBlock { Text = "候选顺序：编辑动作只影响本地计算", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
         body.Children.Add(Row(_kind, _source, Label("目标"), _target, _add));
-        body.Children.Add(_actions); body.Children.Add(Row(_remove, _evaluate, _previewDraw, _inspectEffect));
+        body.Children.Add(_actions); body.Children.Add(Row(_remove, _evaluate, _inspectEffect));
+        body.Children.Add(Row(_previewDraw, _previewGeneration, _previewWolfBlessing));
         body.Children.Add(Row(Label("搜索深度"), _depth, Label("节点上限"), _nodes, _lethal));
         body.Children.Add(new TextBlock { Text = "我方当前选择", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
         body.Children.Add(_choiceLabel); body.Children.Add(_choices); body.Children.Add(Row(_validateChoice, _evaluateChoice, _cancel));
@@ -345,6 +362,8 @@ public sealed class LocalToolsWindow : Window
         Register("LocalLethalButton", _lethal); Register("LocalChoicesList", _choices); Register("LocalValidateChoiceButton", _validateChoice);
         Register("LocalEvaluateChoiceButton", _evaluateChoice);
         Register("LocalPreviewDrawButton", _previewDraw);
+        Register("LocalPreviewGenerationButton", _previewGeneration);
+        Register("LocalPreviewWolfBlessingButton", _previewWolfBlessing);
         Register("LocalInspectEffectButton", _inspectEffect);
         Register("LocalCancelButton", _cancel); Register("LocalResultBox", _result);
         return new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -398,6 +417,14 @@ public static class LocalToolResultFormatter
         if (tool == "evaluate_draw")
         {
             AppendDraw(lines, result); return string.Join("\n", lines);
+        }
+        if (tool == "evaluate_generation")
+        {
+            AppendGeneration(lines, result); return string.Join("\n", lines);
+        }
+        if (tool == "evaluate_wolf_blessing")
+        {
+            AppendWolfBlessing(lines, result, entityName); return string.Join("\n", lines);
         }
         if (tool == "evaluate_choice")
         {
@@ -499,6 +526,12 @@ public static class LocalToolResultFormatter
             if (state["DrawBoundaryReached"]?.ToString() == "true") lines.Add("实体和资源投影停在抽牌前；抽牌直接后果列于下方，后续动作须等待新局面。");
             if (state["DrawPreviews"] is JsonArray drawPreviews)
                 foreach (var draw in drawPreviews.OfType<JsonObject>()) AppendDraw(lines, draw);
+            if (state["GenerationBoundaryReached"]?.ToString() == "true") lines.Add("实体和资源投影停在随机生成前；后续动作须等待新局面。");
+            if (state["GenerationPreviews"] is JsonArray generationPreviews)
+                foreach (var generation in generationPreviews.OfType<JsonObject>()) AppendGeneration(lines, generation);
+            if (state["WolfBlessingBoundaryReached"]?.ToString() == "true") lines.Add("巨狼祝福的实际命中待确认；未修改任一候选，后续动作须等待新局面。");
+            if (state["WolfBlessingPreviews"] is JsonArray wolfPreviews)
+                foreach (var wolf in wolfPreviews.OfType<JsonObject>()) AppendWolfBlessing(lines, wolf, entityName);
             lines.Add("模拟后可用法力：" + state["AvailableMana"]);
             if (state["TurnEnded"]?.GetValue<bool>() == true)
                 lines.Add("本地模拟已结束我方回合；仅计算本次回合末边界，不推断对手起手或后续回合。");
@@ -551,6 +584,32 @@ public static class LocalToolResultFormatter
         foreach (var key in new[] { "Unknowns", "Assumptions" })
             if (draw[key] is JsonArray values) foreach (var value in values) lines.Add("· " + value);
         lines.Add("数量区间互相关联，不能独立拼接上下界；不生成新手牌实体，后续动作须等待新局面。");
+    }
+
+    private static void AppendGeneration(List<string> lines, JsonNode generation)
+    {
+        static string Range(JsonNode? range)
+        {
+            if (range is null) return "未知";
+            var min = range["Minimum"]?.ToString() ?? "未知"; var max = range["Maximum"]?.ToString();
+            return min == max ? min : max is null ? min + "～上界未知" : min + "～" + max;
+        }
+        lines.Add("随机生成直接后果预览（假设本体成功离手；不证明出牌合法）");
+        lines.Add($"生成数量 {Range(generation["RequestedCards"])}；入手 {Range(generation["CardsAddedToHand"])}；满手损失 {Range(generation["CardsLostToHandLimit"])}；直接后果手牌数 {Range(generation["HandCountAfter"])}。");
+        foreach (var key in new[] { "Unknowns", "Assumptions" })
+            if (generation[key] is JsonArray values) foreach (var value in values) lines.Add("· " + value);
+        lines.Add("不从牌库移出卡牌；随机身份、费用和新实体未知，不生成可执行的后续动作。");
+    }
+
+    private static void AppendWolfBlessing(List<string> lines, JsonNode wolf, Func<int, string> entityName)
+    {
+        lines.Add("巨狼祝福随机分支预览（不证明技能使用合法）");
+        lines.Add("当前增益/减费参数：" + (wolf["Level"]?.ToString() ?? "未知") + "；完整候选集合：" + (wolf["IsCandidateSetComplete"]?.ToString() == "true" ? "已确认" : "尚未确认"));
+        if (wolf["Branches"] is JsonArray branches)
+            foreach (var branch in branches.OfType<JsonObject>())
+                lines.Add($"· 若命中{entityName(branch["TargetEntityId"]!.GetValue<int>())}：攻击 {branch["CurrentAttack"]?.ToString() ?? "未知"} → {branch["ResultingAttack"]?.ToString() ?? "未知"}；费用 {branch["CurrentCost"]?.ToString() ?? "未知"} → {branch["ResultingCost"]?.ToString() ?? "未知"}。");
+        if (wolf["Unknowns"] is JsonArray values) foreach (var value in values) lines.Add("· " + value);
+        lines.Add("各分支互斥，不能指定实际命中或合并结果；当前手牌不变，后续动作须等待新局面。");
     }
 
     private static string ActionName(string? kind) => kind switch { "Attack" => "攻击", "PlayCard" => "使用手牌", "HeroPower" => "英雄技能", "EndTurn" => "结束回合", _ => "动作" };

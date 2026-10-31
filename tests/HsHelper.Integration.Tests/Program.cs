@@ -228,6 +228,7 @@ await ChoiceEffectIntegration.RunAsync(temp, Pass);
 await MultiStageChoiceIntegration.RunAsync(temp, Pass);
 await HunterHistoryIntegration.RunAsync(temp, Pass);
 await AssembledEffectIntegration.RunAsync(temp, Pass);
+await HunterRandomEffectIntegration.RunAsync(temp, Pass);
 
 if (args.Length == 2)
 {

@@ -22,7 +22,8 @@ public sealed partial class LineEvaluator
     {
         "基础攻击、嘲讽、圣盾、免疫、冻结、风怒、冲锋、突袭、剧毒、吸血、护甲和观察到的当前费用",
         "build255790：基础稳固射击、硬币、奥术射击、杀戮命令、猎人印记、精灵弓箭手、安装爆炸陷阱、戈德林伤害翻倍",
-        "build255790：苦花骑士、振翅守卫与幽爪熊灌注；单一已知候选野兽的巨狼祝福；无法确认灌注参数时保留条件",
+        "build255790：苦花骑士、振翅守卫与幽爪熊灌注；单一野兽的巨狼祝福及多候选互斥分支；无法确认当前参数时保留未知",
+        "build255790：宝石鹦鹉原生生成的直接数量与满手损失；生成及随机命中后等待新局面，不推测牌身份或选择结果",
         "build255790：熔岩猎犬入场、突袭及击杀最后敌方随从后对唯一敌方英雄的分配伤害；多个候选仍保留随机限制",
         "build255790：阿迦玛甘入场与下一张牌的对手生命支付，当前费用上限10；未知剩余效力不由本体推断",
         "build255790：神秘恐魔入场及己方回合结束；唯一敌方随从展开强制战斗，多目标/多触发顺序与未实证计数字段保留条件",
@@ -60,6 +61,8 @@ public sealed partial class LineEvaluator
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (state.DrawBoundaryReached) { state.Unsupported("AWAIT_DRAW_SNAPSHOT", "抽牌直接后果已预览，但新手牌实体、牌库顺序及后续触发尚未观察；请等待新局面后继续动作。"); break; }
+                if (state.GenerationBoundaryReached) { state.Unsupported("AWAIT_GENERATION_SNAPSHOT", "随机生成数量已预览，新牌身份、实体与后续触发尚未观察；请等待新局面后继续动作。"); break; }
+                if (state.WolfBlessingBoundaryReached) { state.Unsupported("AWAIT_WOLF_BLESSING_SNAPSHOT", "巨狼祝福的实际随机命中尚未观察；请等待新局面后继续动作，不能指定任一分支为真实结果。"); break; }
                 if (state.TurnEnded) { state.Invalid("己方回合已经结束，不能在未观察下一决策点前继续安排动作。"); break; }
                 if (state.EnemyHero!.Health <= 0 || state.OwnHero!.Health <= 0)
                 { state.Invalid("英雄已达到零生命，不能继续执行后续动作。"); break; }
@@ -607,6 +610,8 @@ public sealed partial class LineEvaluator
                 { HeroPowerChanges = Array.AsReadOnly(_heroPowerChanges.ToArray()),
                   ImbueCountBefore = _initialImbues, ImbueCountAfter = _currentImbues,
                   DrawBoundaryReached = DrawBoundaryReached, DrawPreviews = Array.AsReadOnly(_drawPreviews.ToArray()),
+                  GenerationBoundaryReached = GenerationBoundaryReached, GenerationPreviews = Array.AsReadOnly(_generationPreviews.ToArray()),
+                  WolfBlessingBoundaryReached = WolfBlessingBoundaryReached, WolfBlessingPreviews = Array.AsReadOnly(_wolfBlessingPreviews.ToArray()),
                     NextCardCostsOpponentHealth = _nextCardCostsOpponentHealth,
                     OpponentDefeatedByPayment = OpponentDefeatedByPayment,
                     OpponentHealthPayments = Array.AsReadOnly(_opponentHealthPayments.ToArray()),

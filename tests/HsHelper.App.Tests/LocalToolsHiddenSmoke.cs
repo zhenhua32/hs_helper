@@ -28,7 +28,7 @@ public static class LocalToolsHiddenSmoke
         using (var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(workspace!.FullName,
             "tests", "HsHelper.Rules.Tests", "Fixtures", "beast-hunter-255790.json"))))
             foreach (var definition in fixture.RootElement.GetProperty("cards").EnumerateArray()
-                .Where(card => card.GetProperty("id").GetString() is "CORE_DS1_184" or "FIR_921"))
+                .Where(card => card.GetProperty("id").GetString() is "CORE_DS1_184" or "FIR_921" or "CORE_UNG_912" or "EDR_850p" or "EDR_227" or "EDR_480"))
                 cardDefinitions.Add(JsonNode.Parse(definition.GetRawText()));
         var effectDonor = 0;
         using (var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(workspace!.FullName,
@@ -116,12 +116,39 @@ public static class LocalToolsHiddenSmoke
             WaitUntil(() => !window.HasPendingCalculation && window.ResultText.Contains("抽取次数 2", StringComparison.Ordinal), "Draw preview button did not reach the actual tool.");
             Check(window.ResultText.Contains("不证明出牌合法", StringComparison.Ordinal) && window.ResultText.Contains("不生成新手牌实体", StringComparison.Ordinal),
                 "Draw UI turned a scoped preview into an executable next state.");
+            var generationEntities = drawFrame.Entities.ToDictionary();
+            var generationTags = generationEntities[30].Tags.ToDictionary(); generationTags["COST"] = "1";
+            generationEntities[30] = generationEntities[30] with { CardId = "CORE_UNG_912", Tags = generationTags.ToFrozenDictionary() };
+            var generationFrame = drawFrame with { StateVersion = 10, EventSequence = 121, Entities = generationEntities.ToFrozenDictionary() };
+            window.UpdateBinding(generationFrame, BattleViewRegression.Build, false); Await(window.BindingReady);
+            Check(Control<Button>(window, "LocalPreviewGenerationButton").IsEnabled, "Macaw did not enable the generation button.");
+            Click(Control<Button>(window, "LocalPreviewGenerationButton"));
+            WaitUntil(() => !window.HasPendingCalculation && window.ResultText.Contains("生成数量 1；入手 1", StringComparison.Ordinal), "Generation button did not reach the actual host tool.");
+            Check(window.ResultText.Contains("不从牌库移出", StringComparison.Ordinal) && window.ResultText.Contains("新实体未知", StringComparison.Ordinal),
+                "Generation display invented a card identity or treated it as drawing.");
+            var wolfEntities = generationEntities.ToDictionary();
+            var wolfCardTags = generationTags.ToDictionary(); wolfCardTags["ATK"] = "5"; wolfCardTags["HEALTH"] = "2";
+            wolfEntities[30] = wolfEntities[30] with { CardId = "EDR_227", Tags = wolfCardTags.ToFrozenDictionary() };
+            wolfEntities[31] = new(31, "EDR_480", EntityKind.Card, new Dictionary<string,string>
+                { ["CONTROLLER"] = "1", ["ZONE"] = "HAND", ["CARDTYPE"] = "MINION", ["ATK"] = "9", ["COST"] = "9", ["HEALTH"] = "9" }.ToFrozenDictionary());
+            var wolfPowerTags = wolfEntities[12].Tags.ToDictionary(); wolfPowerTags["TAG_SCRIPT_DATA_NUM_1"] = "2"; wolfPowerTags["TAG_SCRIPT_DATA_NUM_2"] = "2";
+            wolfEntities[12] = wolfEntities[12] with { CardId = "EDR_850p", Tags = wolfPowerTags.ToFrozenDictionary() };
+            var wolfPlayerTags = wolfEntities[1].Tags.ToDictionary(); wolfPlayerTags["NUM_CARDS_IN_HAND"] = "2";
+            wolfEntities[1] = wolfEntities[1] with { Tags = wolfPlayerTags.ToFrozenDictionary() };
+            window.UpdateBinding(generationFrame with { StateVersion = 11, EventSequence = 122, Entities = wolfEntities.ToFrozenDictionary() }, BattleViewRegression.Build, false);
+            Await(window.BindingReady); Control<ComboBox>(window, "LocalKindBox").SelectedIndex = 2;
+            Check(Control<Button>(window, "LocalPreviewWolfBlessingButton").IsEnabled, "Wolf blessing did not enable the branch comparison button.");
+            Click(Control<Button>(window, "LocalPreviewWolfBlessingButton"));
+            WaitUntil(() => !window.HasPendingCalculation && window.ResultText.Contains("攻击 5 → 7", StringComparison.Ordinal), "Wolf button did not display actual per-target branch consequences.");
+            Check(window.ResultText.Contains("攻击 9 → 11", StringComparison.Ordinal) && window.ResultText.Contains("各分支互斥", StringComparison.Ordinal) &&
+                window.ResultText.Contains("当前手牌不变", StringComparison.Ordinal), "The UI selected or merged mutually exclusive random results.");
             var assemblyEntities = drawFrame.Entities.ToDictionary();
             var assemblyTags = assemblyEntities[30].Tags.ToDictionary();
             assemblyTags["CRAFTABLE_FIRST_HALF_DBID"] = "0"; assemblyTags["CRAFTABLE_SECOND_HALF_DBID"] = effectDonor.ToString();
             assemblyEntities[30] = assemblyEntities[30] with { CardId = "TIME_428", Tags = assemblyTags.ToFrozenDictionary() };
             var assemblyFrame = drawFrame with { StateVersion = 10, EventSequence = 125, Entities = assemblyEntities.ToFrozenDictionary() };
             window.UpdateBinding(assemblyFrame, BattleViewRegression.Build, false); Await(window.BindingReady);
+            Control<ComboBox>(window, "LocalKindBox").SelectedIndex = 0;
             var effectSources = Control<ComboBox>(window, "LocalSourceBox");
             effectSources.SelectedItem = effectSources.Items.OfType<object>().Single(item => (int)item.GetType().GetProperty("Id")!.GetValue(item)! == 30);
             Check(Control<Button>(window, "LocalInspectEffectButton").IsEnabled, "Visible assembled source did not enable effect lookup.");
