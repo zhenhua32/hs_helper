@@ -24,8 +24,9 @@ public sealed record ChoiceResolutionEvaluation(string MatchId, long StateVersio
 {
     public CraftChoiceOutcome? Crafting { get; init; }
     public RewindChoiceResolution? Rewind { get; init; }
+    public MalorneChoiceOutcome? Malorne { get; init; }
     public bool SelectionOnly => !ResolvesEffects;
-    public bool ResolvesEffects => CardOutcomes.Count > 0 || Crafting?.ResolvesEffects == true || Rewind?.ResolvesEffects == true;
+    public bool ResolvesEffects => CardOutcomes.Count > 0 || Crafting?.ResolvesEffects == true || Rewind?.ResolvesEffects == true || Malorne?.ResolvesEffects == true;
     public bool CanEvaluateFollowupActions => false;
 }
 
@@ -65,6 +66,7 @@ public sealed partial class LineEvaluator
         var outcomes = new List<ChoiceCardOutcome>();
         CraftChoiceOutcome? crafting = null;
         RewindChoiceResolution? rewind = null;
+        MalorneChoiceOutcome? malorne = null;
         if (validation.Verification != LineVerification.Verified)
         {
             unknowns.AddRange(validation.Assumptions);
@@ -127,6 +129,13 @@ public sealed partial class LineEvaluator
                 return Result(rewind.ResolvesEffects ? LineVerification.Conditional : LineVerification.Unsupported, true);
             }
         }
+        if (source.CardId == "EDR_888")
+        {
+            malorne = MalorneChoiceRules.Evaluate(snapshot, option.EntityId, cards);
+            coverage.AddRange(malorne.RuleCoverage); coverage.AddRange(malorne.Imbues.RuleCoverage); unknowns.AddRange(malorne.Unknowns);
+            handAfter = malorne.AddedToHand switch { true => added == true ? handBefore + 1 : null, false => handBefore, _ => null };
+            return Result(malorne.ResolvesEffects ? LineVerification.Conditional : LineVerification.Unsupported, true);
+        }
         var origin = source.CardId switch
         {
             "CORE_DS1_184" when sourceCard.Type == "SPELL" => "Deck",
@@ -184,9 +193,9 @@ public sealed partial class LineEvaluator
             snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence, snapshot.Choice?.Id,
             verification, legal, sourceEntityId, sourceCardId, sourceName,
             Array.AsReadOnly(selected), Array.AsReadOnly(outcomes.ToArray()), handBefore,
-            outcomes.Count > 0 || crafting?.ResolvesEffects == true || rewind?.ResolvesEffects == true ? handAfter : null, handLimit, deckChange,
+            outcomes.Count > 0 || crafting?.ResolvesEffects == true || rewind?.ResolvesEffects == true || malorne?.ResolvesEffects == true ? handAfter : null, handLimit, deckChange,
             Array.AsReadOnly(errors.ToArray()), Array.AsReadOnly(assumptions.ToArray()),
             Array.AsReadOnly(unknowns.Distinct(StringComparer.Ordinal).ToArray()), Array.AsReadOnly(coverage.Distinct(StringComparer.Ordinal).ToArray()))
-            { Crafting = crafting, Rewind = rewind };
+            { Crafting = crafting, Rewind = rewind, Malorne = malorne };
     }
 }

@@ -25,6 +25,7 @@ static string ToolEvidenceSummary(CoachToolObservation observation)
         "find_lethal" => $"已验证斩杀 {Field("VerifiedLethalFound")}；搜索节点 {Field("ExploredNodes")}；{Field("Coverage")}",
         "validate_choice" => $"候选合法 {Field("IsLegal")}；只验证选择范围，不模拟选择后的效果。",
         "evaluate_choice" => $"选择直接后果 {Field("Verification")}；来源 {Field("SourceCardId")}；不代表已经发生的局面或后续动作。",
+        "evaluate_draw" => $"抽牌直接范围；来源 {Field("SourceCardId")}；不生成新手牌实体或证明后续动作。",
         "get_matchup_plan" => "已查询固定历史时点之前的用户计划/笔记版本。",
         "get_personal_stats" => $"此前已结束个人样本 {result?["stats"]?["Games"]?.ToString() ?? "未知"} 局，排除当前局。",
         _ => "工具查询已完成。"

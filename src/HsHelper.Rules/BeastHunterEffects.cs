@@ -21,11 +21,15 @@ public sealed partial class LineEvaluator
         if (battlecryActive && id == "EDR_489") state.ArmOpponentHealthPayment();
         if (battlecryActive && id is "EDR_852" or "EDR_800" or "EDR_226")
         {
-            if (id == "EDR_226") state.Conditional("入场与灌注已计算；抽取野兽的身份、实体与牌库顺序未知，抽牌尚未结算，不能据此安排抽到的牌。", "UNRESOLVED_BEAST_DRAW");
-            state.ImbueHunter(source.Controller, "battlecry:" + id);
+            if (id == "EDR_226")
+            {
+                state.RecordNativeDraw(source);
+                state.DeferImbueAfterDraw();
+            }
+            else state.ImbueHunter(source.Controller, "battlecry:" + id);
         }
         if (battlecryActive && id == "FIR_921")
-            state.Conditional("花木护侍检查本局累计灌注次数，当前技能参数不能完整证明历史次数；条件抽牌、疲劳与抽牌触发尚未展开，结果仅包含入场。", "UNKNOWN_IMBUE_DRAW_THRESHOLD");
+            state.RecordNativeDraw(source);
         state.Coverage.Add("audited-minion-summon:" + id);
         return true;
     }
@@ -131,6 +135,7 @@ public sealed partial class LineEvaluator
         }
         public void ImbueHunter(int? controller, string reason)
         {
+            AdvanceImbueEvidence(controller);
             var heroClass = controller == Local ? _snapshot.LocalClass : _snapshot.OpponentClass;
             if (controller is null || heroClass != "HUNTER")
             { Conditional("本次灌注所属英雄职业未知或不是已覆盖的猎人，未模拟其英雄技能变化。", "UNSUPPORTED_IMBUE_CLASS"); return; }

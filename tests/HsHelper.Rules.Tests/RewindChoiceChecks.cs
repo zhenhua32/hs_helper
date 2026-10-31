@@ -20,6 +20,13 @@ internal static class RewindChoiceChecks
         yield return ("Rewind stages reject mixed candidates and invalid source perspective or build", () => InvalidStage(cards));
         yield return ("Rewind projections preserve immutable grants and do not mutate input state", () => FrozenResults(cards));
         yield return ("common choice evaluation exposes Rewind consequences without fabricating a next hand", () => Integration(cards));
+        yield return ("Kindred matches the frozen previous own turn and grants one independent cost reduction", () => KindredPositive(cards));
+        yield return ("Kindred is false only for a complete previous own turn with all played types known", () => KindredNegative(cards));
+        yield return ("Kindred is inactive on the first own turn only when observed continuously from turn one", () => KindredFirstOwnTurn(cards));
+        yield return ("Kindred uses actual extra-turn windows instead of turn minus two", () => KindredExtraTurns(cards));
+        yield return ("Kindred rejects stale future truncated malformed and source-unbound turn evidence", () => KindredBindings(cards));
+        yield return ("Kindred never fills past races from current entities or static activation-looking tags", () => KindredFrozenTypes(cards));
+        yield return ("Kindred does not recreate timeline effects or turn an unknown gift target into a resolved grant", () => KindredStages(cards));
     }
 
     private static void Discover(IReadOnlyDictionary<string, CardRecord> cards)
@@ -238,6 +245,173 @@ internal static class RewindChoiceChecks
             !result.CanEvaluateFollowupActions, "Common choice evaluation treated a grant as an extra hand card or a usable next snapshot.");
     }
 
+    private static void KindredPositive(IReadOnlyDictionary<string, CardRecord> cards)
+    {
+        var frame = KindredFrame(); var before = JsonSerializer.Serialize(frame); var result = Eval(frame, cards)!;
+        Check(result is { KindredActive: true, KindredCostReduction: 1, KindredSourcePlaySequence: 70,
+            KindredPreviousOwnTurnStart: 10, KindredMatchingPlaySequence: 15, ResultingCost: null } &&
+            result.GrantedCostReduction is null && result.AddsNewHandCard is null && !result.CanEvaluateFollowupActions &&
+            before == JsonSerializer.Serialize(frame), "Kindred lost its frozen prior own-turn witness or guessed current cost/hand gain.");
+        var gift = Eval(KindredFrame(gift: true), cards)!;
+        Check(gift is { ResolvesEffects: true, KindredActive: true, KindredCostReduction: 1,
+            GrantedCostReduction: 2, ResultingCost: null }, "Kindred and Short Claws were summed into an already observed candidate/final cost.");
+        var all = Eval(WithTurns(frame, [Turn(3, 1, 10, 29, [Play(15, 90, "EDR_227", "4", "26")]),
+            Turn(4, 2, 30, 59), CurrentTurn()]), cards)!;
+        Check(all.KindredActive == true, "An observed ALL minion did not share Beast.");
+        var partial = Eval(WithTurns(frame, [Turn(3, 1, 10, 29, [Play(15, 90, "EDR_227", "4", "20")], complete: false),
+            Turn(4, 2, 30, 59), CurrentTurn()]), cards)!;
+        Check(partial.KindredActive == true, "A positive witness was discarded merely because the previous play list was not exhaustive.");
+    }
+
+    private static void KindredNegative(IReadOnlyDictionary<string, CardRecord> cards)
+    {
+        var frame = KindredFrame();
+        foreach (var previous in new[] { Turn(3, 1, 10, 29),
+            Turn(3, 1, 10, 29, [Play(15, 90, "CORE_DS1_184", "5", null)]) })
+        {
+            var result = Eval(WithTurns(frame, [previous, Turn(4, 2, 30, 59), CurrentTurn()]), cards)!;
+            Check(result is { KindredActive: false, KindredCostReduction: 0, KindredMatchingPlaySequence: null,
+                KindredSourcePlaySequence: 70, KindredPreviousOwnTurnStart: 10 }, "A complete empty/spell-only previous own turn did not prove no Beast match.");
+        }
+        var incomplete = Eval(WithTurns(frame, [Turn(3, 1, 10, 29, complete: false), Turn(4, 2, 30, 59), CurrentTurn()]), cards)!;
+        Check(incomplete.KindredActive is null && incomplete.KindredCostReduction is null, "An incomplete empty list was called inactive.");
+        var missingType = Eval(WithTurns(frame, [Turn(3, 1, 10, 29, [Play(15, 90, "EDR_227", null, null)]),
+            Turn(4, 2, 30, 59), CurrentTurn()]), cards)!;
+        Check(missingType.KindredActive is null, "An unknown played type was treated as evidence of absence.");
+    }
+
+    private static void KindredExtraTurns(IReadOnlyDictionary<string, CardRecord> cards)
+    {
+        var frame = KindredFrame();
+        var ownExtra = WithTurns(frame, [Turn(3, 1, 10, 29),
+            Turn(4, 1, 30, 59, [Play(35, 90, "EDR_227", "4", "20")]), CurrentTurn()]);
+        var result = Eval(ownExtra, cards)!;
+        Check(result is { KindredActive: true, KindredPreviousOwnTurnStart: 30, KindredMatchingPlaySequence: 35 },
+            "An immediately preceding extra own turn was replaced by turn minus two.");
+        var opponentExtra = WithTurns(frame, [Turn(2, 1, 2, 9, [Play(5, 90, "EDR_227", "4", "20")]),
+            Turn(3, 2, 10, 29), Turn(4, 2, 30, 59), CurrentTurn()]);
+        Check(Eval(opponentExtra, cards) is { KindredActive: true, KindredPreviousOwnTurnStart: 2, KindredMatchingPlaySequence: 5 },
+            "Two opponent turns hid the actual previous own turn.");
+        var olderBeast = WithTurns(frame, [Turn(2, 1, 2, 9, [Play(5, 90, "EDR_227", "4", "20")]),
+            Turn(3, 1, 10, 29), Turn(4, 2, 30, 59), CurrentTurn()]);
+        Check(Eval(olderBeast, cards) is { KindredActive: false, KindredPreviousOwnTurnStart: 10 },
+            "An older Beast was used after a more recent own turn without one.");
+    }
+
+    private static void KindredFirstOwnTurn(IReadOnlyDictionary<string, CardRecord> cards)
+    {
+        var frame = KindredFrame();
+        var source = new[] { Play(70, 30, "CORE_EDR_004_2026", "4", "20") };
+        foreach (var turns in new IReadOnlyList<TurnHistoryEntry>[]
+        {
+            [Turn(1, 1, 60, null, source, complete: false)],
+            [Turn(1, 2, 10, 29), Turn(2, 1, 60, null, source, complete: false)],
+            [Turn(1, 2, 10, 29), Turn(2, 2, 30, 59), Turn(3, 1, 60, null, source, complete: false)]
+        })
+        {
+            var result = Eval(WithTurns(frame with { Turn = turns[^1].TurnNumber }, turns), cards)!;
+            Check(result is { KindredActive: false, KindredCostReduction: 0, KindredSourcePlaySequence: 70,
+                KindredPreviousOwnTurnStart: null, KindredMatchingPlaySequence: null } &&
+                result.RuleCoverage.Contains("raptor-kindred-first-own-turn-from-game-start"),
+                "A first own turn observed from actual turn one remained unknown or invented a prior own turn.");
+        }
+        foreach (var state in new[]
+        {
+            WithTurns(frame with { Turn = 4 }, [Turn(3, 2, 10, 29), Turn(4, 1, 60, null, source, complete: false)]),
+            WithTurns(frame, [CurrentTurn()]),
+            WithTurns(frame with { Turn = 1 }, [Turn(1, 1, 60, null, source, complete: false)], truncated: 1),
+            WithTurns(frame with { Turn = 1 }, [Turn(1, 1, 60, null, source, complete: false)], complete: false)
+        })
+            Check(Eval(state, cards) is { KindredActive: null, KindredCostReduction: null },
+                "A missing game-start window, truncation or partial ledger was called the first own turn.");
+    }
+
+    private static void KindredBindings(IReadOnlyDictionary<string, CardRecord> cards)
+    {
+        var frame = KindredFrame(); var turns = frame.TurnHistory!.Turns;
+        var invalid = new[]
+        {
+            frame with { TurnHistory = null },
+            WithTurns(frame, turns, match: "other"), WithTurns(frame, turns, version: 11), WithTurns(frame, turns, sequence: 101),
+            WithTurns(frame, turns, complete: false), WithTurns(frame, turns, truncated: 1), WithTurns(frame, turns, warnings: ["PRIVATE_FUTURE_ID"]),
+            frame with { Choice = frame.Choice! with { OfferedAtEventSequence = 0 } },
+            frame with { ActivePlayerId = 2 }, frame with { Turn = 6 },
+            WithTurns(frame, [Turn(3, 1, 10, 29), Turn(4, 2, 30, 59), CurrentTurn(hasStart: false)]),
+            WithTurns(frame, [Turn(3, 1, 10, 29), Turn(4, 2, 30, 59), CurrentTurn(plays: [])]),
+            WithTurns(frame, [Turn(3, 1, 10, 29), Turn(4, 2, 30, 59), CurrentTurn(plays: [Play(91, 30, "CORE_EDR_004_2026", "4", "20")])]),
+            WithTurns(frame, [Turn(3, 1, 10, 29), Turn(4, 2, 30, 59), CurrentTurn(plays: [Play(70, 30, "EDR_227", "4", "20")])]),
+            WithTurns(frame, [Turn(3, 1, 10, 29), Turn(4, 2, 30, 59), CurrentTurn(plays: [Play(70, 30, "CORE_EDR_004_2026", "4", "20"), Play(80, 30, "EDR_227", "4", "20")])]),
+            WithTurns(frame, [Turn(2, 1, 10, 29), Turn(4, 2, 30, 59), CurrentTurn()]),
+            WithTurns(frame, [Turn(3, 1, 10, 31), Turn(4, 2, 30, 59), CurrentTurn()]),
+            WithTurns(frame, [Turn(3, 1, 10, null), Turn(4, 2, 30, 59), CurrentTurn()]),
+            WithTurns(frame, [Turn(3, 1, 10, 29, [Play(10, 90, "EDR_227", "4", "20")]), Turn(4, 2, 30, 59), CurrentTurn()]),
+            WithTurns(frame, [Turn(3, 1, 10, 29, [Play(29, 90, "EDR_227", "4", "20")]), Turn(4, 2, 30, 59), CurrentTurn()]),
+            WithTurns(frame, [Turn(3, 1, 10, 29, [Play(15, 90, "EDR_227", "4", "20"), Play(15, 91, "EDR_480", "4", "20")]), Turn(4, 2, 30, 59), CurrentTurn()]),
+            WithTurns(frame, [Turn(3, 1, 10, 29, [Play(15, 90, "EDR_227", "4", "20", owner: 2)]), Turn(4, 2, 30, 59), CurrentTurn()]),
+            WithTurns(frame, [Turn(3, 1, 10, 29), Turn(4, 2, 30, 59), CurrentTurn(plays: [Play(70, 30, "CORE_EDR_004_2026", "5", "20")])]),
+            WithTurns(frame, [Turn(3, 1, 10, 29), Turn(4, 2, 30, 59), CurrentTurn(plays: [Play(70, 30, "CORE_EDR_004_2026", "4", null)])]),
+            WithTurns(frame, [Turn(3, 1, 10, 29), Turn(4, 2, 30, 59), CurrentTurn(plays: [new(70, Tagged(Tagged(Entity(30, "CORE_EDR_004_2026", "PLAY"), "CARDTYPE", "4"), "CARDRACE", "20"))])])
+        };
+        foreach (var state in invalid)
+        {
+            var result = Eval(state, cards)!;
+            Check(result.KindredActive is null && result.KindredCostReduction is null && result.KindredMatchingPlaySequence is null &&
+                result.ResultingCost is null && !JsonSerializer.Serialize(result).Contains("PRIVATE_FUTURE_ID", StringComparison.Ordinal),
+                "Invalid/future/unbound history activated Kindred or disclosed untrusted history values.");
+        }
+    }
+
+    private static void KindredFrozenTypes(IReadOnlyDictionary<string, CardRecord> cards)
+    {
+        var frame = KindredFrame();
+        var frozen = WithTurns(frame, [Turn(3, 1, 10, 29, [Play(15, 90, "CORE_TTN_866", "4", "15")]), Turn(4, 2, 30, 59), CurrentTurn()]);
+        Check(Eval(frozen, cards) is { KindredActive: true }, "An audited dual Demon/Beast's frozen native Demon primary lost its Beast type.");
+        var changed = WithTurns(frame, [Turn(3, 1, 10, 29, [Play(15, 90, "EDR_227", "4", "15")]), Turn(4, 2, 30, 59), CurrentTurn()]);
+        Check(Eval(Replace(changed, Tagged(Entity(90, "EDR_227", "PLAY"), "CARDRACE", "20")), cards)!.KindredActive is null,
+            "A later Beast race or the frozen card's printed Beast race replaced its different observed race at play.");
+        var missing = WithTurns(frame, [Turn(3, 1, 10, 29, [Play(15, 90, "EDR_227", "4", null)]), Turn(4, 2, 30, 59), CurrentTurn()]);
+        Check(Eval(Replace(missing, Tagged(Entity(90, "EDR_227", "PLAY"), "CARDRACE", "20")), cards)!.KindredActive is null,
+            "Current entity tags filled missing historical race evidence.");
+        Check(Eval(Replace(frame, Entity(90, "CORE_DS1_184", "GRAVEYARD")), cards)!.KindredActive == true,
+            "A later transformation erased a frozen Beast play witness.");
+        var noHistory = DiscoverFrame();
+        noHistory = Replace(noHistory, Tagged(Tagged(Tagged(noHistory.Entities[30], "KINDRED", "1"), "4028", "1"), "4050", "1"));
+        Check(Eval(noHistory, cards)!.KindredActive is null, "Static keyword/numeric tags were treated as runtime activation.");
+    }
+
+    private static void KindredStages(IReadOnlyDictionary<string, CardRecord> cards)
+    {
+        var unknownTarget = Replace(KindredFrame(gift: true), Entity(40, null, "SETASIDE"));
+        Check(Eval(unknownTarget, cards) is { ResolvesEffects: false, KindredActive: true, KindredCostReduction: 1, TargetEntityId: null },
+            "Known Kindred invented a missing current gift target or resolved its grant.");
+        var timeline = TimelineFrame() with { Turn = 5, Choice = TimelineFrame().Choice! with { OfferedAtEventSequence = 90 } };
+        timeline = WithTurns(timeline, KindredFrame().TurnHistory!.Turns);
+        Check(Eval(timeline, cards) is { KindredActive: null, KindredCostReduction: null, AddsNewHandCard: false },
+            "Keeping a timeline replayed Kindred's already observed reward.");
+    }
+
+    private static GameSnapshot KindredFrame(bool gift = false)
+    {
+        var frame = gift ? GiftFrame("EDR_100t2") : DiscoverFrame();
+        frame = frame with { Choice = frame.Choice! with { OfferedAtEventSequence = 90, PreviousOfferedAtEventSequence = gift ? 80 : 0 } };
+        if (gift) frame = WithHistory(frame, [Entry(offeredAt: 80, chosenAt: 81)]);
+        return WithTurns(frame, [Turn(3, 1, 10, 29, [Play(15, 90, "EDR_227", "4", "20")]), Turn(4, 2, 30, 59), CurrentTurn()]);
+    }
+    private static TurnHistoryEntry CurrentTurn(IReadOnlyList<TurnPlaySnapshot>? plays = null, bool hasStart = true) =>
+        Turn(5, 1, 60, null, plays ?? [Play(70, 30, "CORE_EDR_004_2026", "4", "20")], complete: false, hasStart: hasStart);
+    private static TurnHistoryEntry Turn(int number, int player, long start, long? end,
+        IReadOnlyList<TurnPlaySnapshot>? plays = null, bool complete = true, bool hasStart = true) => new(number, player, start, end, hasStart, complete, plays ?? []);
+    private static TurnPlaySnapshot Play(long sequence, int id, string? card, string? kind, string? race, int owner = 1)
+    {
+        var entity = Entity(id, card, "HAND", owner);
+        if (kind is not null) entity = Tagged(entity, "CARDTYPE", kind);
+        if (race is not null) entity = Tagged(entity, "CARDRACE", race);
+        return new(sequence, entity);
+    }
+    private static GameSnapshot WithTurns(GameSnapshot frame, IReadOnlyList<TurnHistoryEntry> turns, bool complete = true,
+        string? match = null, long? version = null, long? sequence = null, long truncated = 0, IReadOnlyList<string>? warnings = null) => frame with
+    { TurnHistory = new(match ?? frame.MatchId, version ?? frame.StateVersion, sequence ?? frame.EventSequence, turns, complete, truncated, warnings ?? []) };
+
     private static RewindChoiceResolution? Eval(GameSnapshot frame, IReadOnlyDictionary<string, CardRecord> cards, int? selected = null) =>
         RewindChoiceRules.Evaluate(frame, frame.Entities[30], frame.Choice!.Options.Single(option => option.EntityId == (selected ?? frame.Choice.Options[0].EntityId)), cards);
 
@@ -283,13 +457,21 @@ internal static class RewindChoiceChecks
 
     private static IReadOnlyDictionary<string, CardRecord> LoadCards()
     {
-        using var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "rewind-choice-255790.json")));
-        Check(fixture.RootElement.GetProperty("build").GetString() == "255790", "Rewind fixture build changed.");
-        return fixture.RootElement.GetProperty("cards").EnumerateArray().Select(raw => new CardRecord(raw.GetProperty("id").GetString()!,
-            raw.GetProperty("dbfId").GetInt32(), raw.GetProperty("name").GetString()!, raw.GetProperty("text").GetString()!,
-            raw.GetProperty("cardClass").GetString()!, raw.GetProperty("set").GetString()!, raw.GetProperty("type").GetString()!,
-            raw.TryGetProperty("cost", out var cost) ? cost.GetInt32() : null,
-            raw.TryGetProperty("collectible", out var collectible) && collectible.GetBoolean(), [], [], raw.GetRawText())).ToFrozenDictionary(card => card.Id);
+        var cards = new Dictionary<string, CardRecord>(StringComparer.Ordinal);
+        foreach (var name in new[] { "rewind-choice-255790.json", "beast-hunter-255790.json", "mythical-terror-255790.json" })
+        {
+            using var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", name)));
+            Check(fixture.RootElement.GetProperty("build").GetString() == "255790", "Rewind fixture build changed.");
+            foreach (var raw in fixture.RootElement.GetProperty("cards").EnumerateArray())
+            {
+                var id = raw.GetProperty("id").GetString()!;
+                cards[id] = new(id, raw.GetProperty("dbfId").GetInt32(), raw.GetProperty("name").GetString()!, raw.GetProperty("text").GetString()!,
+                    raw.GetProperty("cardClass").GetString()!, raw.GetProperty("set").GetString()!, raw.GetProperty("type").GetString()!,
+                    raw.TryGetProperty("cost", out var cost) ? cost.GetInt32() : null,
+                    raw.TryGetProperty("collectible", out var collectible) && collectible.GetBoolean(), [], [], raw.GetRawText());
+            }
+        }
+        return cards.ToFrozenDictionary(StringComparer.Ordinal);
     }
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 }

@@ -43,6 +43,9 @@ static class CompactContextTests
         var entry = new ChoiceHistoryEntry(90, 2, "GENERAL", 999, probe, 1, 1, 70, 80,
             [new(998, probe, 2, 1)], [], [998], true);
         frame = frame with { ChoiceHistory = new(frame.MatchId, frame.StateVersion, frame.EventSequence, [entry], true, 0, [probe]) };
+        frame = frame with { TurnHistory = new(frame.MatchId, frame.StateVersion, frame.EventSequence,
+            [new(1, 2, 1, 5, true, true, [new(2, new(998, probe, EntityKind.Card,
+                new Dictionary<string, string> { ["CONTROLLER"] = "2", ["ZONE"] = "HAND", ["CARDTYPE"] = "MINION" }.ToFrozenDictionary()))])], true, 0, [probe]) };
         foreach (var candidate in new[] { frame, frame with { IsSpectating = true }, frame with { LocalPlayerId = null } })
             Check(!CompactAdviceContextBuilder.Build(candidate, "255790").ToJsonString().Contains(probe, StringComparison.Ordinal),
                 "Raw private choice history entered the compact model context.");

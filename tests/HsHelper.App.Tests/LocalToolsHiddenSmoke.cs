@@ -27,8 +27,9 @@ public static class LocalToolsHiddenSmoke
         while (workspace is not null && !File.Exists(Path.Combine(workspace.FullName, "AGENTS.md"))) workspace = workspace.Parent;
         using (var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(workspace!.FullName,
             "tests", "HsHelper.Rules.Tests", "Fixtures", "beast-hunter-255790.json"))))
-            cardDefinitions.Add(JsonNode.Parse(fixture.RootElement.GetProperty("cards").EnumerateArray()
-                .Single(card => card.GetProperty("id").GetString() == "CORE_DS1_184").GetRawText()));
+            foreach (var definition in fixture.RootElement.GetProperty("cards").EnumerateArray()
+                .Where(card => card.GetProperty("id").GetString() is "CORE_DS1_184" or "FIR_921"))
+                cardDefinitions.Add(JsonNode.Parse(definition.GetRawText()));
         using (var cards = new MemoryStream(Encoding.UTF8.GetBytes(cardDefinitions.ToJsonString())))
             Await(catalog.ImportAsync(cards, BattleViewRegression.Build, source: "synthetic://hidden-local-tools"));
         var frame = BattleViewRegression.Frame();
@@ -90,6 +91,22 @@ public static class LocalToolsHiddenSmoke
                 "Choice-effect button did not execute fixed-build direct consequences.");
             Check(window.ResultText.Contains("直接加入手牌", StringComparison.Ordinal) && window.ResultText.Contains("入手后当前费用：未知", StringComparison.Ordinal) &&
                 window.ResultText.Contains("不能据此继续执行", StringComparison.Ordinal), "Local choice UI invented a current cost or following action.");
+            var drawEntities = frame.Entities.ToDictionary();
+            var sourceTags = drawEntities[30].Tags.ToDictionary(); sourceTags["COST"] = "3";
+            drawEntities[30] = drawEntities[30] with { CardId = "FIR_921", Tags = sourceTags.ToFrozenDictionary() };
+            var drawPlayerTags = drawEntities[1].Tags.ToDictionary();
+            foreach (var (key, value) in new[] { ("3527", "2"), ("NUM_CARDS_IN_HAND", "1"), ("MAXHANDSIZE", "10"), ("NUM_CARDS_IN_DECK", "0"), ("FATIGUE", "0") }) drawPlayerTags[key] = value;
+            drawEntities[1] = drawEntities[1] with { Tags = drawPlayerTags.ToFrozenDictionary() };
+            var drawFrame = frame with { StateVersion = 9, EventSequence = 120, Entities = drawEntities.ToFrozenDictionary(), DeckTracking = null };
+            window.UpdateBinding(drawFrame, BattleViewRegression.Build, false); Await(window.BindingReady);
+            Control<ComboBox>(window, "LocalKindBox").SelectedIndex = 0;
+            var drawSources = Control<ComboBox>(window, "LocalSourceBox");
+            drawSources.SelectedItem = drawSources.Items.OfType<object>().Single(item => (int)item.GetType().GetProperty("Id")!.GetValue(item)! == 30);
+            Check(Control<Button>(window, "LocalPreviewDrawButton").IsEnabled, "Covered source did not enable the draw preview button.");
+            Click(Control<Button>(window, "LocalPreviewDrawButton"));
+            WaitUntil(() => !window.HasPendingCalculation && window.ResultText.Contains("抽取次数 2", StringComparison.Ordinal), "Draw preview button did not reach the actual tool.");
+            Check(window.ResultText.Contains("不证明出牌合法", StringComparison.Ordinal) && window.ResultText.Contains("不生成新手牌实体", StringComparison.Ordinal),
+                "Draw UI turned a scoped preview into an executable next state.");
             foreach (var rejected in new[]
             {
                 trackingChoice with { IsSpectating = true },

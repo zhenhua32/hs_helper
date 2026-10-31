@@ -30,6 +30,11 @@ public sealed record SimulatedState(int AvailableMana, IReadOnlyList<SimulatedEn
     public IReadOnlyList<PendingForcedAttack> PendingForcedAttacks { get; init; } = [];
     /// <summary>These fields retain their last observed value rather than a purported post-trigger value.</summary>
     public IReadOnlyList<string> UnresolvedEndTurnFields { get; init; } = [];
+    public int? ImbueCountBefore { get; init; }
+    public int? ImbueCountAfter { get; init; }
+    public bool DrawBoundaryReached { get; init; }
+    /// <summary>Entity/resource projection stops before the unresolved draw; direct effects are isolated below.</summary>
+    public IReadOnlyList<DrawResolutionOutcome> DrawPreviews { get; init; } = [];
 }
 public sealed record LineEvaluation(string MatchId, long StateVersion, LineVerification Verification,
     bool? IsLegal, bool IsLethal, bool PotentialLethal, int AppliedActions,

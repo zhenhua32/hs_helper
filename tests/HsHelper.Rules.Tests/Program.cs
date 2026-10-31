@@ -327,22 +327,25 @@ Run("wolf randomness unknown stats and unknown parameters never produce exact ou
         Entity(12, "EDR_850p", 1, "PLAY", "HERO_POWER", [("COST", 2), ("EXHAUSTED", 0), ("2", 2), ("3", 2)]));
     Equal(LineVerification.Verified, Eval(numeric, new PlannedAction(ActionKind.HeroPower, 12)).Verification);
 });
-Run("houndmaster resolves its body and imbue but never invents a beast draw", () =>
+Run("houndmaster previews its beast draw before the still pending imbue", () =>
 {
     var deck = Entity(40, null, 1, "DECK", "", []);
-    var result = Eval(WithWolf(Fixture(Hand(30, "EDR_226", 2), deck), 2), new PlannedAction(ActionKind.PlayCard, 30));
+    var result = Eval(WithWolf(Fixture(Entity(30, "EDR_226", 1, "HAND", "MINION", [("COST", 2)]), deck), 2), new PlannedAction(ActionKind.PlayCard, 30));
     Equal(LineVerification.Conditional, result.Verification); Equal(1, result.AppliedActions);
-    Equal(3, Find(result, 12).Flags["TAG_SCRIPT_DATA_NUM_1"]); Equal("DECK", Find(result, 40).Zone);
+    Equal(2, Find(result, 12).Flags["TAG_SCRIPT_DATA_NUM_1"]); Equal("DECK", Find(result, 40).Zone);
     Equal<string?>(null, Find(result, 40).CardId); Equal(2, Find(result, 30).Attack);
-    Equal(true, result.UnsupportedMechanics.Contains("UNRESOLVED_BEAST_DRAW"));
+    Equal(true, result.UnsupportedMechanics.Contains("PENDING_AFTER_DRAW_IMBUE"));
+    Equal(true, result.Result.DrawBoundaryReached); Equal(1L, result.Result.DrawPreviews.Single().RequestedDraws.Maximum);
+    Equal(0, result.Result.HeroPowerChanges.Count); Equal<int?>(null, result.Result.ImbueCountAfter);
 });
 Run("real flower attendant does not confuse current power strength with historical imbue count", () =>
 {
-    var below = Eval(WithWolf(Fixture(Hand(30, "FIR_921", 3)), 1), new PlannedAction(ActionKind.PlayCard, 30));
+    var below = Eval(WithWolf(Fixture(Entity(30, "FIR_921", 1, "HAND", "MINION", [("COST", 3)])), 1), new PlannedAction(ActionKind.PlayCard, 30));
     Equal(LineVerification.Conditional, below.Verification); Equal(2, Find(below, 30).Attack); Equal(3, Find(below, 30).RemainingHealth);
-    var drawing = Eval(WithWolf(Fixture(Hand(30, "FIR_921", 3)), 2), new PlannedAction(ActionKind.PlayCard, 30));
-    Equal(LineVerification.Conditional, drawing.Verification); Equal(true, drawing.UnsupportedMechanics.Contains("UNKNOWN_IMBUE_DRAW_THRESHOLD"));
-    Equal(LineVerification.Conditional, Eval(Fixture(Hand(30, "FIR_921", 3)), new PlannedAction(ActionKind.PlayCard, 30)).Verification);
+    var drawing = Eval(WithWolf(Fixture(Entity(30, "FIR_921", 1, "HAND", "MINION", [("COST", 3)])), 2), new PlannedAction(ActionKind.PlayCard, 30));
+    Equal(LineVerification.Conditional, drawing.Verification); Equal(true, drawing.Result.DrawBoundaryReached);
+    Equal(0L, drawing.Result.DrawPreviews.Single().RequestedDraws.Minimum); Equal(2L, drawing.Result.DrawPreviews.Single().RequestedDraws.Maximum);
+    Equal(LineVerification.Conditional, Eval(Fixture(Entity(30, "FIR_921", 1, "HAND", "MINION", [("COST", 3)])), new PlannedAction(ActionKind.PlayCard, 30)).Verification);
 });
 Run("real DINO_421 buffs known hand minions but keeps hidden deck targets unknown", () =>
 {
@@ -653,6 +656,9 @@ Run("stale unavailable duplicate foreign or out-of-range choices are rejected", 
 foreach (var (name, run) in ChoiceResolutionChecks.Cases(cards)) Run(name, run);
 foreach (var (name, run) in CraftChoiceChecks.Cases(cards)) Run(name, run);
 foreach (var (name, run) in RewindChoiceChecks.Cases()) Run(name, run);
+foreach (var (name, run) in ImbueAndMalorneChecks.Cases()) Run(name, run);
+foreach (var (name, run) in DrawResolutionChecks.Cases()) Run(name, run);
+foreach (var (name, run) in HunterDrawLineChecks.Cases(cards)) Run(name, run);
 
 if (args.Length == 1)
 {

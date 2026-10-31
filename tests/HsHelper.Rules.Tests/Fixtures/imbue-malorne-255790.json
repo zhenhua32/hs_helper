@@ -1,0 +1,329 @@
+{
+  "build": "255790",
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "malorneSource": "https://hearthstone.blizzard.com/en-us/cards/115186-malorne-the-waywatcher/",
+  "counterSource": "https://github.com/HearthSim/Hearthstone-Deck-Tracker/blob/23e977a99728981b5d183fec9cb1be00b378e74c/Hearthstone%20Deck%20Tracker/Hearthstone/CounterSystem/Counters/ImbueCounter.cs",
+  "counterSourceBlob": "5c591ca55239135635c7c36e12b5bf4b71765457",
+  "cards": [
+    {
+      "artist": "Alex Stone",
+      "attack": 5,
+      "cardClass": "SHAMAN",
+      "collectible": true,
+      "cost": 9,
+      "dbfId": 113434,
+      "elite": true,
+      "flavor": "欧恩哈拉的风之力深受牛头人和半人马的崇拜，惠泽甚广，延续至今。",
+      "health": 11,
+      "id": "EDR_031",
+      "mechanics": [
+        "TRIGGER_VISUAL"
+      ],
+      "name": "欧恩哈拉",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "在你的回合结束时，&使用你牌库顶的3张牌。",
+      "type": "MINION"
+    },
+    {
+      "artist": "James Ryman",
+      "attack": 5,
+      "cardClass": "DRUID",
+      "collectible": true,
+      "cost": 10,
+      "dbfId": 113588,
+      "elite": true,
+      "flavor": "是他亲手选择了玛法里奥而非伊利丹，使之成为第一个德鲁伊。此后便有了无休无止的兄弟相争。",
+      "health": 8,
+      "id": "EDR_209",
+      "name": "森林之王塞纳留斯",
+      "rarity": "LEGENDARY",
+      "referencedTags": [
+        "TAUNT"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>选择三次：</b>使你的其他随从获得+1/+3；或者召唤一棵5/5并具有<b>嘲讽</b>的古树。",
+      "type": "MINION"
+    },
+    {
+      "artist": "James Ryman",
+      "attack": 9,
+      "cardClass": "PALADIN",
+      "collectible": true,
+      "cost": 8,
+      "dbfId": 114868,
+      "elite": true,
+      "flavor": "乌索克的孪生兄弟。他们曾经密不可分。直到后来，死亡腐化了乌索克的灵魂，然而乌索尔的灵魂平和如初。",
+      "health": 7,
+      "id": "EDR_259",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "乌索尔",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b>将你手牌中法力值消耗最高的法术变为持续3回合的光环并施放。",
+      "type": "MINION"
+    },
+    {
+      "artist": "James Ryman",
+      "attack": 6,
+      "cardClass": "DEMONHUNTER",
+      "collectible": true,
+      "cost": 10,
+      "dbfId": 113606,
+      "elite": true,
+      "flavor": "在上古之战中，他高深的智识未能幸免，遭受了恶魔邪能魔法的侵蚀。但艾露恩赐予他的祝福尚有遗存。",
+      "health": 12,
+      "id": "EDR_421",
+      "mechanics": [
+        "DEATHRATTLE",
+        "RUSH",
+        "WINDFURY"
+      ],
+      "name": "年兽",
+      "race": "BEAST",
+      "races": [
+        "DEMON",
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。<b>风怒</b>\n<b>亡语：</b>对所有敌人造成1点伤害。<i>（在本随从攻击后提升！）</i>",
+      "type": "MINION"
+    },
+    {
+      "artist": "Jakub Kasper",
+      "attack": 6,
+      "cardClass": "MAGE",
+      "collectible": true,
+      "collectionText": "<b>战吼：</b>\n如果在本局对战中已有20个友方随从死亡，造成20点伤害，随机分配到所有敌人身上。",
+      "cost": 8,
+      "dbfId": 113700,
+      "elite": true,
+      "flavor": "对于凡界众生而言，精灵之母神秘非凡；但对伊瑟拉来说，她只是亲密的朋友与伙伴。",
+      "health": 8,
+      "id": "EDR_430",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "艾森娜",
+      "race": "UNDEAD",
+      "races": [
+        "UNDEAD"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b>\n如果在本局对战中已有20个友方随从死亡，造成20点伤害，随机分配到所有敌人身上。@<i>（还剩{0}个！）</i>@<i>（已经就绪！）</i>",
+      "type": "MINION"
+    },
+    {
+      "artist": "Zoltan Boros",
+      "attack": 1,
+      "cardClass": "WARRIOR",
+      "collectible": true,
+      "cost": 10,
+      "dbfId": 114353,
+      "elite": true,
+      "flavor": "托尔托拉在燃烧军团的入侵中毫发无损，但梦魇的腐蚀却深深地穿透了他的防备。",
+      "health": 30,
+      "id": "EDR_471",
+      "mechanics": [
+        "ELUSIVE",
+        "TAUNT",
+        "TRIGGER_VISUAL"
+      ],
+      "name": "托尔托拉",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>嘲讽</b>。<b>扰魔</b>。在本随从受到伤害后，&获得1点护甲值并使本随从获得+1攻击力。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Eva Widermann",
+      "attack": 9,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 9,
+      "dbfId": 114254,
+      "elite": true,
+      "flavor": "以勇猛果决而闻名于世，且拥有的名号众多，其中包括洛戈什，还有巨狼。",
+      "health": 9,
+      "id": "EDR_480",
+      "mechanics": [
+        "AURA",
+        "RUSH"
+      ],
+      "name": "戈德林",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。友方野兽造成的伤害翻倍。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Alex Horley Orlandelli",
+      "attack": 9,
+      "cardClass": "WARLOCK",
+      "collectible": true,
+      "cost": 10,
+      "dbfId": 115203,
+      "elite": true,
+      "flavor": "他虽在上古之战中身殒，但他的遗泽留在了艾泽拉斯，滋养着崇拜他的野猪人各部。",
+      "health": 9,
+      "id": "EDR_489",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "阿迦玛甘",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b>你使用的下一张牌会消耗<b>对手</b>的生命值而非法力值<i>（最高不超过10点）</i>。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Max Grecke",
+      "attack": 7,
+      "cardClass": "ROGUE",
+      "collectible": true,
+      "cost": 9,
+      "dbfId": 114527,
+      "elite": true,
+      "flavor": "早在上古时代，阿莎曼牺牲了自己，从军团手中拯救了暗夜精灵。她的名字至今仍在精灵一族中广为传颂。",
+      "health": 7,
+      "id": "EDR_527",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "阿莎曼",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b>用你对手牌库中牌的复制填满你的手牌，其法力值消耗减少（3）点。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Juan Calle",
+      "attack": 6,
+      "cardClass": "DEATHKNIGHT",
+      "collectible": true,
+      "cost": 9,
+      "dbfId": 116018,
+      "elite": true,
+      "flavor": "巨熊之神强壮如斯，梦魇只能腐蚀他的灵魂，无法腐蚀他的力量。",
+      "health": 14,
+      "id": "EDR_819",
+      "mechanics": [
+        "BATTLECRY",
+        "DEATHRATTLE"
+      ],
+      "name": "乌索克",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b>攻击所有其他随从。<b>亡语：</b>复活本随从消灭的随从。",
+      "type": "MINION"
+    },
+    {
+      "artist": "James Ryman",
+      "attack": 8,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 8,
+      "dbfId": 115186,
+      "elite": true,
+      "flavor": "玛洛恩是神话传奇中的存在，最古老的荒野诸神之一，也是塞纳留斯的父亲。",
+      "health": 6,
+      "id": "EDR_888",
+      "mechanics": [
+        "BATTLECRY",
+        "DISCOVER"
+      ],
+      "name": "护路者玛洛恩",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b><b>发现</b>一张<b>传说</b>荒野之神。如果你已<b>灌注</b>过你的英雄技能4次，则将发现的荒野之神的法力值消耗变为（1）点。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Zoltan Boros",
+      "attack": 7,
+      "cardClass": "PRIEST",
+      "collectible": true,
+      "cost": 9,
+      "dbfId": 115264,
+      "elite": true,
+      "flavor": "百鸟之神对所有的空中生物都抱有特别的兴趣。哪怕是那些生有翅膀却不能飞的生物。",
+      "health": 11,
+      "id": "EDR_895",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "艾维娜，艾露恩钦选者",
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b>开启为期三回合的月相演变。当满月升起时，在本局对战中你的卡牌法力值消耗为（1）点。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ursula Dorada",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 115648,
+      "flavor": "护花是为了择花。“她爱我……她不爱我……”",
+      "health": 3,
+      "id": "FIR_921",
+      "isMiniSet": true,
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "花木护侍",
+      "race": "DRAENEI",
+      "races": [
+        "DRAENEI"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b>如果你已<b>灌注</b>过你的英雄技能两次，抽两张牌。",
+      "type": "MINION"
+    }
+  ]
+}

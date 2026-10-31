@@ -26,6 +26,7 @@ public sealed class LocalToolsWindow : Window
     private readonly Button _remove = new() { Content = "移除选中动作" };
     private readonly ListBox _actions = new() { MinHeight = 80, MaxHeight = 150, DisplayMemberPath = nameof(LocalAction.Text) };
     private readonly Button _evaluate = new() { Content = "验证候选顺序" };
+    private readonly Button _previewDraw = new() { Content = "预览所选手牌抽牌" };
     private readonly TextBox _depth = new() { Text = "4", Width = 45 };
     private readonly TextBox _nodes = new() { Text = "1500", Width = 65 };
     private readonly Button _lethal = new() { Content = "有限搜索斩杀" };
@@ -71,6 +72,12 @@ public sealed class LocalToolsWindow : Window
             _ = RunToolAsync("calculate_draw_odds", new() { ["card_id"] = card.CardId, ["draws"] = draws });
         };
         _add.Click += (_, _) => AddAction();
+        _source.SelectionChanged += (_, _) => RefreshEnabled();
+        _previewDraw.Click += (_, _) =>
+        {
+            if (_source.SelectedItem is EntityOption source)
+                _ = RunToolAsync("evaluate_draw", new() { ["source_entity_id"] = source.Id });
+        };
         _remove.Click += (_, _) => { if (_actions.SelectedIndex is var index && index >= 0 && index < _line.Count) { _line.RemoveAt(index); RefreshLine(); } };
         _evaluate.Click += (_, _) =>
         {
@@ -291,6 +298,8 @@ public sealed class LocalToolsWindow : Window
         var ready = IsBindingValid && _calculation is null && _snapshot.Phase != GamePhase.Unknown;
         _odds.IsEnabled = ready && _card.Items.Count > 0;
         _evaluate.IsEnabled = ready && _line.Count > 0; _lethal.IsEnabled = ready;
+        _previewDraw.IsEnabled = ready && _snapshot.Phase == GamePhase.Main && _source.SelectedItem is EntityOption selected &&
+            _snapshot.Entities.TryGetValue(selected.Id, out var source) && source.Zone == "HAND" && source.CardId is "FIR_921" or "EDR_226";
         _add.IsEnabled = ready && _source.Items.Count > 0; _remove.IsEnabled = ready && _line.Count > 0;
         _kind.IsEnabled = _source.IsEnabled = _target.IsEnabled = _actions.IsEnabled = ready;
         if ((_kind.SelectedItem as KindOption)?.Kind == "end_turn") _target.IsEnabled = false;
@@ -313,7 +322,7 @@ public sealed class LocalToolsWindow : Window
         body.Children.Add(_deck); body.Children.Add(Row(_card, Label("抽取张数"), _draws, _odds));
         body.Children.Add(new TextBlock { Text = "候选顺序：编辑动作只影响本地计算", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
         body.Children.Add(Row(_kind, _source, Label("目标"), _target, _add));
-        body.Children.Add(_actions); body.Children.Add(Row(_remove, _evaluate));
+        body.Children.Add(_actions); body.Children.Add(Row(_remove, _evaluate, _previewDraw));
         body.Children.Add(Row(Label("搜索深度"), _depth, Label("节点上限"), _nodes, _lethal));
         body.Children.Add(new TextBlock { Text = "我方当前选择", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
         body.Children.Add(_choiceLabel); body.Children.Add(_choices); body.Children.Add(Row(_validateChoice, _evaluateChoice, _cancel));
@@ -324,6 +333,7 @@ public sealed class LocalToolsWindow : Window
         Register("LocalAddActionButton", _add); Register("LocalActionsList", _actions); Register("LocalEvaluateButton", _evaluate);
         Register("LocalLethalButton", _lethal); Register("LocalChoicesList", _choices); Register("LocalValidateChoiceButton", _validateChoice);
         Register("LocalEvaluateChoiceButton", _evaluateChoice);
+        Register("LocalPreviewDrawButton", _previewDraw);
         Register("LocalCancelButton", _cancel); Register("LocalResultBox", _result);
         return new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
@@ -357,6 +367,10 @@ public static class LocalToolResultFormatter
             else lines.Add("抽中概率：未知（没有足够证据给出精确数字）。");
             lines.Add(result["reason"]?.ToString() ?? "");
             return string.Join("\n", lines);
+        }
+        if (tool == "evaluate_draw")
+        {
+            AppendDraw(lines, result); return string.Join("\n", lines);
         }
         if (tool == "evaluate_choice")
         {
@@ -405,9 +419,19 @@ public static class LocalToolResultFormatter
                 if (rewind["GrantedEffectText"] is { } effect) lines.Add("授予效果：" + effect.ToString().Replace("<b>", "", StringComparison.Ordinal).Replace("</b>", "", StringComparison.Ordinal));
                 if (rewind["DestinationAfterGift"]?.ToString() == "DeckTop") lines.Add("所选赐福将目标置于我方牌库顶，不能按直接加入手牌计算。");
                 if (rewind["GrantedCostReduction"] is { } reduction) lines.Add("已确认授予减费：" + reduction + "；入手后当前费用等待结算。");
+                lines.Add("延系条件：" + (rewind["KindredActive"]?.ToString() switch { "true" => "已由上个己方回合实际出牌确认", "false" => "未满足", _ => "未知，历史类型或回合证据不足" }));
+                if (rewind["KindredCostReduction"] is { } kindred) lines.Add("本来源延系授予减费：" + kindred + "；与赐福自身减费分别记录，不从候选费用再次扣减。");
                 if (rewind["RequestsRewind"]?.ToString() == "true")
                     lines.Add("仅确认回溯请求；不自行恢复法力、手牌、旧局面或随机结果。");
                 if (rewind["KeepsTimeline"]?.ToString() == "true") lines.Add("维持当前已观察结果；不重复生成发现牌。");
+            }
+            if (result["Malorne"] is JsonObject malorne)
+            {
+                lines.Add("所选荒野之神：" + (malorne["Name"]?.ToString() ?? "未知"));
+                lines.Add("本局累计灌注：" + (malorne["Imbues"]?["Count"]?.ToString() ?? "未知"));
+                lines.Add("累计四次条件：" + (malorne["ImbueConditionMet"]?.ToString() switch { "true" => "满足", "false" => "未满足", _ => "未知" }));
+                if (malorne["GrantedSetCost"] is { } setCost) lines.Add("授予设费为 " + setCost + "；最终入手费用等待结算，不能当作减少一点费用。");
+                lines.Add("本次是否入手：" + (malorne["AddedToHand"]?.ToString() switch { "true" => "可加入一张", "false" => "满手不能加入", _ => "未知" }));
             }
             foreach (var (label, key) in new[] { ("失败原因", "Errors"), ("成立条件", "Assumptions"), ("未知与未结算", "Unknowns"), ("已覆盖规则", "RuleCoverage") })
                 if (result[key] is JsonArray { Count: > 0 } values)
@@ -441,6 +465,11 @@ public static class LocalToolResultFormatter
         Add("失败原因", "Errors"); Add("成立条件", "Assumptions"); Add("未覆盖机制", "UnsupportedMechanics"); Add("已覆盖规则", "RuleCoverage");
         if (evaluation["Result"] is JsonObject state)
         {
+            if (state["ImbueCountBefore"] is not null || state["ImbueCountAfter"] is not null)
+                lines.Add($"累计灌注预览：{state["ImbueCountBefore"]?.ToString() ?? "未知"} → {state["ImbueCountAfter"]?.ToString() ?? "未知或有后置灌注待确认"}");
+            if (state["DrawBoundaryReached"]?.ToString() == "true") lines.Add("实体和资源投影停在抽牌前；抽牌直接后果列于下方，后续动作须等待新局面。");
+            if (state["DrawPreviews"] is JsonArray drawPreviews)
+                foreach (var draw in drawPreviews.OfType<JsonObject>()) AppendDraw(lines, draw);
             lines.Add("模拟后可用法力：" + state["AvailableMana"]);
             if (state["TurnEnded"]?.GetValue<bool>() == true)
                 lines.Add("本地模拟已结束我方回合；仅计算本次回合末边界，不推断对手起手或后续回合。");
@@ -474,6 +503,25 @@ public static class LocalToolResultFormatter
         {
             if (evaluation[key] is JsonArray array && array.Count > 0) lines.Add(label + "：\n" + string.Join("\n", array.Select(item => "· " + item)));
         }
+    }
+
+    private static void AppendDraw(List<string> lines, JsonNode draw)
+    {
+        static string Range(JsonNode? range)
+        {
+            if (range is null) return "未知";
+            var minimum = range["Minimum"]?.ToString() ?? "未知"; var maximum = range["Maximum"]?.ToString();
+            return maximum == minimum ? minimum : maximum is null ? minimum + "～上界未知" : minimum + "～" + maximum;
+        }
+        lines.Add("抽牌直接后果预览（假设本体成功离手；不证明出牌合法）");
+        lines.Add($"抽取次数 {Range(draw["RequestedDraws"])}；牌库移出 {Range(draw["CardsRemovedFromDeck"])}；入手 {Range(draw["CardsAddedToHand"])}；满手损失 {Range(draw["CardsBurned"])}。");
+        lines.Add($"空库尝试 {Range(draw["EmptyDeckAttempts"])}；直接疲劳伤害 {Range(draw["FatigueDamage"])}（护甲吸收前，免疫另行计算）。");
+        lines.Add($"直接后果手牌数 {Range(draw["HandCountAfter"])} / 牌库数 {Range(draw["DeckCountAfter"])} / 疲劳计数 {Range(draw["FatigueAfter"])}。");
+        lines.Add($"仅本次疲劳后英雄生命 {Range(draw["HeroHealthAfter"])} / 护甲 {Range(draw["HeroArmorAfter"])}；其他触发未展开。");
+        if (draw["MayStopAtHeroDeath"]?.ToString() == "true") lines.Add("存在直接疲劳致死分支，可能提前停止后续抽取。");
+        foreach (var key in new[] { "Unknowns", "Assumptions" })
+            if (draw[key] is JsonArray values) foreach (var value in values) lines.Add("· " + value);
+        lines.Add("数量区间互相关联，不能独立拼接上下界；不生成新手牌实体，后续动作须等待新局面。");
     }
 
     private static string ActionName(string? kind) => kind switch { "Attack" => "攻击", "PlayCard" => "使用手牌", "HeroPower" => "英雄技能", "EndTurn" => "结束回合", _ => "动作" };

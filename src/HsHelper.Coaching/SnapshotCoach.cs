@@ -152,6 +152,9 @@ public sealed class SnapshotCoach
                 missing = ids.Except(cards.Select(c => c.Id), StringComparer.Ordinal).ToArray() });
         }
         var rulesCards = await RuleCardsAsync(token);
+        if (name == "evaluate_draw")
+            return Node(DrawResolutionRules.Evaluate(_snapshot, args["source_entity_id"]!.GetValue<int>(), rulesCards,
+                ImbueEvidence.Evaluate(_snapshot).AtLeast(2)));
         if (name == "evaluate_choice")
             return await Task.Run(() => Node(_rules.EvaluateChoice(_snapshot,
                 args["selected_entity_ids"]!.AsArray().Select(id => id!.GetValue<int>()).ToArray(), rulesCards,
@@ -188,6 +191,13 @@ public sealed class SnapshotCoach
         var ids = _snapshot.Entities.Values.Select(e => e.CardId).OfType<string>()
             .Concat(_snapshot.Choice?.Options.Select(o => o.CardId).OfType<string>() ?? [])
             .Concat(relevantHistoryIds)
+            .Concat(_snapshot.TurnHistory is { IsComplete: true } turns && turns.MatchId == _snapshot.MatchId &&
+                turns.StateVersion == _snapshot.StateVersion && turns.EventSequence == _snapshot.EventSequence && ownChoice is not null
+                ? turns.Turns.Where(turn => turn is not null && turn.PlayerId == _snapshot.LocalPlayerId)
+                    .SelectMany(turn => turn.Plays.Where(play => play is not null && play.AtPlay is not null).Select(play => play.AtPlay.CardId)).OfType<string>() : [])
+            .Concat(ChoiceVisibility.ConfirmedLocalPlayer(_snapshot).HasValue && _snapshot.DeckTracking is { KnownRemaining: not null } tracking &&
+                tracking.MatchId == _snapshot.MatchId && tracking.StateVersion == _snapshot.StateVersion && tracking.CardBuild == _build
+                ? tracking.KnownRemaining.Keys : [])
             .Concat(LineEvaluator.RequiredRelatedCardIds).Distinct().ToArray();
         var cards = (await _catalog.GetByIdsAsync(ids, _build!, cancellationToken: token)).ToDictionary(c => c.Id);
         var related = cards.Values.SelectMany(c => c.Entourage).Distinct().Where(id => !cards.ContainsKey(id)).Take(200).ToArray();
@@ -258,6 +268,8 @@ public sealed class SnapshotCoach
 
     public static IReadOnlyList<AgentToolDefinition> Definitions { get; } = Array.AsReadOnly(new[]
     {
+        new AgentToolDefinition("evaluate_draw", "预览已覆盖手牌成功使用后直接抽牌、满手损失、牌库减量与疲劳范围。假设本体成功离手；合法出牌另用evaluate_line核验。数量范围不生成新手牌实体或后续动作。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
+            args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("get_recent_events", "查询固定决策点及以前的匿名事件摘要。", Schema("""{"type":"object","properties":{},"required":[],"additionalProperties":false}"""), Empty),
         new AgentToolDefinition("validate_choice", "只验证当前我方选择的候选范围和数量，不模拟选择后效果，也不能证明斩杀。", Schema("""{"type":"object","properties":{"choice_id":{"type":"integer","minimum":1},"selected_entity_ids":{"type":"array","maxItems":30,"items":{"type":"integer","minimum":1}}},"required":["choice_id","selected_entity_ids"],"additionalProperties":false}"""),
             args => args.Count == 2 && Integer(args["choice_id"], 1, int.MaxValue) && args["selected_entity_ids"] is JsonArray { Count: <= 30 } ids && ids.All(id => Integer(id, 1, int.MaxValue))),

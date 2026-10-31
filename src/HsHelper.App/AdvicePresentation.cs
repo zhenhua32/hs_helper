@@ -69,6 +69,7 @@ public partial class MainWindow
                 "find_lethal" => $"已验证斩杀 {Field("VerifiedLethalFound")}；搜索节点 {Field("ExploredNodes")}；{Field("Coverage")}",
                 "validate_choice" => $"候选合法 {Field("IsLegal")}；仅验证当前选择，不模拟后续效果。",
                 "evaluate_choice" => $"选择直接后果 {Field("Verification")}；来源 {Field("SourceCardId")}；不作为已经发生的局面或后续动作依据。",
+                "evaluate_draw" => $"抽牌直接范围；来源 {Field("SourceCardId")}；不生成新手牌实体，不证明后续动作或斩杀。",
                 "get_matchup_plan" => "查询当时已有的用户计划/笔记版本：" + string.Join("、", (json?["entries"] as JsonArray ?? []).Select(e => $"{e?["EntryId"]} v{e?["Version"]}")),
                 "get_personal_stats" => $"此前已结束个人样本 {json?["stats"]?["Games"]?.ToString() ?? "未知"} 局，排除当前局。",
                 _ => summary

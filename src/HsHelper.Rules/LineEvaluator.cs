@@ -59,6 +59,7 @@ public sealed partial class LineEvaluator
             foreach (var action in actions)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (state.DrawBoundaryReached) { state.Unsupported("AWAIT_DRAW_SNAPSHOT", "抽牌直接后果已预览，但新手牌实体、牌库顺序及后续触发尚未观察；请等待新局面后继续动作。"); break; }
                 if (state.TurnEnded) { state.Invalid("己方回合已经结束，不能在未观察下一决策点前继续安排动作。"); break; }
                 if (state.EnemyHero!.Health <= 0 || state.OwnHero!.Health <= 0)
                 { state.Invalid("英雄已达到零生命，不能继续执行后续动作。"); break; }
@@ -367,6 +368,7 @@ public sealed partial class LineEvaluator
             Mana = Math.Max(0, (Player?.Int("RESOURCES") ?? 0) - (Player?.Int("RESOURCES_USED") ?? 0) - (Player?.Int("OVERLOAD_LOCKED") ?? 0) + (Player?.Int("TEMP_RESOURCES") ?? 0));
             MaximumMana = Player?.Int("MAXRESOURCES") ?? 10;
             InitializeOpponentHealthPayment();
+            InitializeImbueEvidence();
             Coverage.Add("complete-state-default-zero-flags");
         }
 
@@ -516,6 +518,7 @@ public sealed partial class LineEvaluator
                 (e.Type == "ENCHANTMENT" && e.Int("ATTACHED") is > 0 && e.Zone != "GRAVEYARD"))))
             {
                 if (entity.Flags.Any(flag => flag.Value != 0 && flag.Key.Length > 0 && flag.Key.All(char.IsDigit) &&
+                    !IsKnownImbueCounter(entity, flag.Key) &&
                     !((_snapshot.ClientBuild == AuditedBuild && entity.CardId == "EDR_850p" || IsObservedStatEnchantment(entity)) && flag.Key is "2" or "3")))
                     Conditional("存在尚未解释的数字状态标签，不能确认已覆盖全部动作限制。", "UNMAPPED_NUMERIC_TAG");
                 if (new[] { "HEALTH_MINIMUM", "MINIMUM_HEALTH", "DAMAGE_CANT_KILL", "INCOMING_DAMAGE_MULTIPLIER", "SPELL_DAMAGE_DOUBLE", "SPELLPOWER_DOUBLE", "SPELL_HEALING_DOUBLE", "HEALING_DOES_DAMAGE", "HEALING_DOUBLE", "MULTIPLY_HERO_DAMAGE", "RECEIVES_DOUBLE_SPELLDAMAGE_BONUS", "LIFESTEAL_DAMAGES_OPPOSING_HERO", "CANT_HEAL", "CANT_DAMAGE", "CANT_BE_DESTROYED", "HERO_CANT_BE_DESTROYED", "ALL_TARGETS_RANDOM", "FORGETFUL", "HEROPOWER_ADDITIONAL_ACTIVATIONS", "HEROPOWER_UNLIMITED_USES", "HEROPOWER_ACTIVATIONS_THIS_TURN", "CURRENT_HEROPOWER_DAMAGE_BONUS" }
@@ -588,6 +591,8 @@ public sealed partial class LineEvaluator
                 _assumptions.OrderBy(x => x, StringComparer.Ordinal).ToArray(), _unsupported.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
                 Coverage.OrderBy(x => x, StringComparer.Ordinal).ToArray(), new(Mana, Array.AsReadOnly(entities))
                 { HeroPowerChanges = Array.AsReadOnly(_heroPowerChanges.ToArray()),
+                  ImbueCountBefore = _initialImbues, ImbueCountAfter = _currentImbues,
+                  DrawBoundaryReached = DrawBoundaryReached, DrawPreviews = Array.AsReadOnly(_drawPreviews.ToArray()),
                     NextCardCostsOpponentHealth = _nextCardCostsOpponentHealth,
                     OpponentDefeatedByPayment = OpponentDefeatedByPayment,
                     OpponentHealthPayments = Array.AsReadOnly(_opponentHealthPayments.ToArray()),

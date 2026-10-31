@@ -19,11 +19,11 @@ public static class AdviceTaskTemplates
     };
 
     public static AdviceTaskTemplate Get(AdviceTaskKind task) => new(task,
-        task == AdviceTaskKind.Choice ? "hunter-v5/choice" : task == AdviceTaskKind.Turn ? "hunter-v4/turn" : Version + "/" + task.ToString().ToLowerInvariant(), task switch
+        task is AdviceTaskKind.Choice or AdviceTaskKind.Turn ? "hunter-v6/" + task.ToString().ToLowerInvariant() : Version + "/" + task.ToString().ToLowerInvariant(), task switch
     {
         AdviceTaskKind.Mulligan => "当前任务：开局留牌。逐张解释已确认我方起手牌的保留或替换理由，结合先后手、已知对手职业和导入套牌计划。先后手、职业或牌效未知时明确说明；不把未知牌或未来抽牌当作事实。留牌未结束时不提供出牌顺序或确定概率。",
-        AdviceTaskKind.Turn => "当前任务：回合建议。先指出当前目标、可用资源和最重要的取舍，再给出简短方案。动态费用、攻击、生命和状态以本次局面的tags为准，不能用卡库基础值覆盖。需要验证的候选动作调用本地规则工具；结束回合用end_turn，来源必须是当前我方PLAYER实体且不带目标，不能在结束后继续己方动作。回合末触发结果不代表对手起手或后续回合已被模拟。规则未完整覆盖时只给条件性策略，不宣布确定斩杀或胜率。",
-        AdviceTaskKind.Choice => "当前任务：当前选择。只比较choice中已确认属于我方且已完整读取的候选；不能推荐候选之外的牌，也不把对手选择或未知候选当作已知。缺失牌效先查工具，查不到则说明。可调用evaluate_choice比较已确认来源的直接入手、减费、牌库变化和多阶段选择后果；结果是候选后果预览，不是已经发生的当前局面。组件选择不等于获得成品，拼装阶段和前次组件须有同局历史证据；回溯按钮只表示请求重做，不能自行恢复法力、手牌、随机结果或历史局面。范围合法不代表效果完整，未知费用、随机和后续触发不补全，不能从直接后果推导已验证的后续动作或斩杀。",
+        AdviceTaskKind.Turn => "当前任务：回合建议。先指出目标、当前资源和取舍，再给出简短方案。动态费用、攻击、生命和状态以本次tags为准，不用印刷值覆盖。候选动作调用evaluate_line核验；evaluate_draw仅假设本体成功使用后预览直接抽牌、满手损失和疲劳范围，不能证明出牌合法。DrawBoundaryReached之后实体投影只到抽牌前，不生成新手牌或继续安排动作；训犬师抽牌后的灌注须等待新局面。结束回合用end_turn，来源必须是我方PLAYER实体且不带目标，不能在结束后继续己方动作。回合末结果不代表对手起手。未完整覆盖时只给条件性策略，不宣布确定斩杀或胜率。",
+        AdviceTaskKind.Choice => "当前任务：当前选择。只比较choice中确认我方且完整就绪的候选；不推荐候选之外的牌，不把对手或未知候选当已知。缺失牌效先查工具，查不到则说明。evaluate_choice比较直接入手、授予减费、设费、牌库变化和多阶段后果，预览不是已发生局面。组件不等于成品，阶段和前次组件须有同局实际已选证据。延系须有实际出牌时类型及上个己方真实回合证据，静态关键词不证明激活；玛洛恩设费为1不等于减1，最终费用仍未知。回溯仅表示请求重做，不能自行恢复法力、手牌、随机或旧局面。范围合法不代表效果完整，不能从预览推导后续动作或已验证斩杀。",
         AdviceTaskKind.Review => "当前任务：当时局面复盘。严格以event_sequence及以前的局面、公开出牌和事件为界，解释当时可见信息下的决策与备选。不得引用后续抽牌、最终胜负、未来公开身份或事后信息。信息不完整时保留不确定性；本地规则未覆盖的动作不标为已验证。",
         AdviceTaskKind.DeckPlan => "当前任务：赛前套牌分析。没有实时局面时，仅依据已导入的套牌、已核对的卡牌效果及主机提供的用户笔记解释胜利条件、留牌方向、资源分配和对局计划。缺少卡库或笔记就说明缺失，不虚构实时手牌、对手套牌、当前胜率、天梯统计或确定操作。",
         _ => throw new ArgumentOutOfRangeException(nameof(task))

@@ -22,6 +22,8 @@ public static class BattleViewRegression
         yield return ("local result formatting preserves unknown and conditional verification", ResultSemantics);
         yield return ("choice consequence display preserves scope, granted discount and unknown resulting cost", ChoiceEffectDisplay);
         yield return ("multi-stage choice display distinguishes components, assembled previews and rewind requests", MultiStageDisplay);
+        yield return ("draw preview display preserves correlated ranges, unknown upper bounds and direct fatigue scope", DrawDisplay);
+        yield return ("Kindred and Malorne display native discount separately from set cost and final cost", HistoryEffectDisplay);
         yield return ("end-turn display distinguishes computed damage from pending order and readiness", EndTurnDisplay);
     }
 
@@ -157,6 +159,37 @@ public static class BattleViewRegression
             """)!);
         Check(first.Contains("尚未获得成品", StringComparison.Ordinal) && !first.Contains("可直接加入一张成品", StringComparison.Ordinal),
             "The first component was presented as a new hand card.");
+    }
+
+    private static void DrawDisplay()
+    {
+        var text = LocalToolResultFormatter.Format("evaluate_draw", JsonNode.Parse("""
+            {"RequestedDraws":{"Minimum":0,"Maximum":2},"CardsRemovedFromDeck":{"Minimum":0,"Maximum":1},
+             "CardsAddedToHand":{"Minimum":0,"Maximum":1},"CardsBurned":{"Minimum":0,"Maximum":1},
+             "EmptyDeckAttempts":{"Minimum":0,"Maximum":2},"FatigueDamage":{"Minimum":0,"Maximum":null},
+             "HeroHealthAfter":null,"MayStopAtHeroDeath":true,"Unknowns":["计数未确认"]}
+            """)!);
+        Check(text.Contains("抽取次数 0～2", StringComparison.Ordinal) && text.Contains("0～上界未知", StringComparison.Ordinal) &&
+            text.Contains("互相关联", StringComparison.Ordinal) && text.Contains("不证明出牌合法", StringComparison.Ordinal) &&
+            text.Contains("英雄生命 未知", StringComparison.Ordinal) && text.Contains("致死分支", StringComparison.Ordinal),
+            "Draw ranges became exact independent outcomes or a full damage simulation.");
+        var line = LocalToolResultFormatter.Format("evaluate_line", JsonNode.Parse("""
+            {"Verification":"Conditional","AppliedActions":1,"Result":{"AvailableMana":3,"DrawBoundaryReached":true,
+             "ImbueCountBefore":1,"ImbueCountAfter":null,"DrawPreviews":[{"RequestedDraws":{"Minimum":1,"Maximum":1}}]}}
+            """)!);
+        Check(line.Contains("停在抽牌前", StringComparison.Ordinal) && line.Contains("后置灌注待确认", StringComparison.Ordinal),
+            "Line display hid the unresolved draw boundary or pending imbue.");
+    }
+
+    private static void HistoryEffectDisplay()
+    {
+        var text = LocalToolResultFormatter.Format("evaluate_choice", JsonNode.Parse("""
+            {"Verification":"Conditional","Rewind":{"Stage":"DarkGift","KindredActive":true,"KindredCostReduction":1,"GrantedCostReduction":2},
+             "Malorne":{"Name":"戈德林","Imbues":{"Count":4},"ImbueConditionMet":true,"GrantedSetCost":1,"AddedToHand":true}}
+            """)!);
+        Check(text.Contains("本来源延系授予减费：1", StringComparison.Ordinal) && text.Contains("已确认授予减费：2", StringComparison.Ordinal) &&
+            text.Contains("本局累计灌注：4", StringComparison.Ordinal) && text.Contains("授予设费为 1", StringComparison.Ordinal) &&
+            text.Contains("最终入手费用等待结算", StringComparison.Ordinal), "Native discount, gift discount and setting cost were conflated.");
     }
 
     private static void EndTurnDisplay()

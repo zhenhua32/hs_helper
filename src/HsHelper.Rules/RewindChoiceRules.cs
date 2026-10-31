@@ -13,7 +13,11 @@ public sealed record RewindChoiceResolution(string Stage, bool ResolvesEffects, 
     bool KeepsTimeline, bool RequestsRewind, bool HistoryBound, IReadOnlyList<string> Unknowns,
     IReadOnlyList<string> RuleCoverage)
 {
-    public bool? KindredActive => null;
+    public bool? KindredActive { get; init; }
+    public int? KindredCostReduction { get; init; }
+    public long? KindredSourcePlaySequence { get; init; }
+    public long? KindredPreviousOwnTurnStart { get; init; }
+    public long? KindredMatchingPlaySequence { get; init; }
     public int? ResultingCost => null;
     public int? ResultingAttack => null;
     public int? ResultingHealth => null;
@@ -86,6 +90,7 @@ public static class RewindChoiceRules
         string? giftId = null, giftName = null, text = null, destination = null;
         string[] keywords = [];
         var keep = false; var rewind = false; var bound = false;
+        KindredEvidence? kindred = null;
         var unknowns = new List<string>(); var coverage = new List<string>();
         if (choice.Options.Count == 2 && choice.Options.Select(option => option.CardId).ToHashSet(StringComparer.Ordinal)
                 .SetEquals(["TIME_000ta", "TIME_000tb"]) && choice.Options.All(option => IsTimelineButton(option.CardId, cards)))
@@ -138,12 +143,24 @@ public static class RewindChoiceRules
 
         if (stage is "DiscoverBeast" or "DarkGift")
         {
-            unknowns.Add("延系要求自己上回合曾使用同种族的牌；当前选择台账不能证明此前完整回合，不能把静态延系标签当已激活或直接授予一点减费。");
+            kindred = EvaluateKindred(snapshot, source, choice, cards);
+            if (kindred.Active is null)
+                unknowns.Add("缺少可绑定本次实际出牌及上个自己回合的完整时序/当时种族证据，延系保持未知；静态延系标签和当前实体身份不能补写历史。");
+            else coverage.Add(kindred.Active.Value ? "raptor-kindred-prior-own-turn-type-match" :
+                kindred.PreviousOwnTurnStart is null ? "raptor-kindred-first-own-turn-from-game-start" : "raptor-kindred-complete-prior-own-turn-no-match");
+            unknowns.Add("延系减费只单列本来源的原生授予，不再从候选当前费用中扣减；黑暗之赐自身的减费另列，最终费用仍须等待结算日志。");
             unknowns.Add("增量和授予文字不代表最终属性、费用或权威实体；其他入手触发、复制、亡语和后续选择未展开。");
         }
         return new(stage, resolves, adds, directId, directName, targetEntityId, targetId, targetName,
             giftId, giftName, attack, health, Array.AsReadOnly(keywords), text, discount, destination,
-            keep, rewind, bound, Array.AsReadOnly(unknowns.ToArray()), Array.AsReadOnly(coverage.ToArray()));
+            keep, rewind, bound, Array.AsReadOnly(unknowns.ToArray()), Array.AsReadOnly(coverage.ToArray()))
+        {
+            KindredActive = kindred?.Active,
+            KindredCostReduction = kindred?.Active switch { true => 1, false => 0, _ => null },
+            KindredSourcePlaySequence = kindred?.SourcePlaySequence,
+            KindredPreviousOwnTurnStart = kindred?.PreviousOwnTurnStart,
+            KindredMatchingPlaySequence = kindred?.MatchingPlaySequence
+        };
 
         ChoiceHistoryEntry? PreviousBeastChoice()
         {
@@ -181,6 +198,102 @@ public static class RewindChoiceRules
             return previous;
         }
     }
+
+    private sealed record KindredEvidence(bool? Active, long? SourcePlaySequence = null,
+        long? PreviousOwnTurnStart = null, long? MatchingPlaySequence = null);
+
+    private static KindredEvidence EvaluateKindred(GameSnapshot snapshot, EntitySnapshot source,
+        CurrentChoiceSnapshot choice, IReadOnlyDictionary<string, CardRecord> cards)
+    {
+        var unknown = new KindredEvidence(null);
+        var history = snapshot.TurnHistory;
+        if (history is null || history.MatchId != snapshot.MatchId || history.StateVersion != snapshot.StateVersion ||
+            history.EventSequence != snapshot.EventSequence || !history.IsComplete || history.TruncatedThroughSequence != 0 ||
+            history.Warnings is not { Count: 0 } || history.Turns is not { Count: > 0 } ||
+            snapshot.ActivePlayerId != snapshot.LocalPlayerId || choice.OfferedAtEventSequence <= 0 ||
+            choice.OfferedAtEventSequence > snapshot.EventSequence || history.Turns.Any(turn => turn is null)) return unknown;
+        var turns = history.Turns.OrderBy(turn => turn.StartedAtEventSequence).ToArray();
+        if (turns.Any(turn => turn.TurnNumber <= 0 || turn.PlayerId is not (1 or 2) || !turn.HasStartBoundary ||
+                turn.StartedAtEventSequence <= 0 || turn.StartedAtEventSequence > snapshot.EventSequence ||
+                turn.EndedAtEventSequence is { } end && (end <= turn.StartedAtEventSequence || end > snapshot.EventSequence) ||
+                turn.Plays is null || turn.Plays.Any(play => play is null || play.AtPlay is null || play.AtPlay.Tags is null ||
+                    play.AtPlay.Id <= 0 || play.AtPlay.Kind != EntityKind.Card ||
+                    play.AtPlay.Zone != "HAND" ||
+                    play.AtPlay.ControllerId is { } owner && owner != turn.PlayerId ||
+                    play.Sequence <= turn.StartedAtEventSequence || play.Sequence > snapshot.EventSequence ||
+                    turn.EndedAtEventSequence is { } closed && play.Sequence >= closed)) ||
+            turns.Select(turn => turn.StartedAtEventSequence).Distinct().Count() != turns.Length ||
+            turns.SelectMany(turn => turn.Plays).Select(play => play.Sequence).Distinct().Count() != turns.Sum(turn => turn.Plays.Count)) return unknown;
+        for (var index = 1; index < turns.Length; index++)
+            if (turns[index].TurnNumber != turns[index - 1].TurnNumber + 1 ||
+                turns[index - 1].EndedAtEventSequence is not { } priorEnd || priorEnd >= turns[index].StartedAtEventSequence) return unknown;
+        var current = turns[^1];
+        if (current.PlayerId != snapshot.LocalPlayerId || current.TurnNumber != snapshot.Turn || current.EndedAtEventSequence is not null ||
+            current.StartedAtEventSequence >= choice.OfferedAtEventSequence) return unknown;
+        // Choose the latest actual play of this entity, then check its frozen identity. Never fall back to an older matching play.
+        var sourcePlay = current.Plays.Where(play => play.AtPlay.Id == source.Id).OrderByDescending(play => play.Sequence).FirstOrDefault();
+        if (sourcePlay is null || sourcePlay.Sequence >= choice.OfferedAtEventSequence ||
+            sourcePlay.AtPlay.CardId != source.CardId || sourcePlay.AtPlay.ControllerId != snapshot.LocalPlayerId ||
+            PlayedTypes(sourcePlay.AtPlay, cards) is not { IsMinion: true } sourceTypes || sourceTypes.Types.Count == 0) return unknown;
+        var previous = turns.Take(turns.Length - 1).LastOrDefault(turn => turn.PlayerId == snapshot.LocalPlayerId);
+        // Only a continuous observation from actual turn one proves this is the first own turn.
+        if (previous is null)
+            return turns[0].TurnNumber == 1 ? new(false, sourcePlay.Sequence) : unknown;
+        if (previous.EndedAtEventSequence is null) return unknown;
+        var evidence = new KindredEvidence(null, sourcePlay.Sequence, previous.StartedAtEventSequence);
+        var allTypesKnown = true;
+        foreach (var play in previous.Plays)
+        {
+            var types = play.AtPlay.ControllerId == snapshot.LocalPlayerId ? PlayedTypes(play.AtPlay, cards) : null;
+            if (types is null) { allTypesKnown = false; continue; }
+            if (!types.IsMinion || types.Types.Count == 0) continue;
+            if (types.Types.Contains("ALL") || sourceTypes.Types.Contains("ALL") || types.Types.Overlaps(sourceTypes.Types))
+                return evidence with { Active = true, MatchingPlaySequence = play.Sequence };
+        }
+        // A complete observed own turn with every played type known proves absence; a short list never does.
+        return previous.IsComplete && allTypesKnown ? evidence with { Active = false } : evidence;
+    }
+
+    private sealed record PlayedTypeEvidence(bool IsMinion, HashSet<string> Types);
+
+    private static PlayedTypeEvidence? PlayedTypes(EntitySnapshot atPlay, IReadOnlyDictionary<string, CardRecord> cards)
+    {
+        var kind = atPlay.Tags.GetValueOrDefault("CARDTYPE");
+        if (kind is "SPELL" or "5" or "WEAPON" or "7" or "HERO" or "3" or "LOCATION" or "39") return new(false, []);
+        if (kind is not ("MINION" or "4")) return null;
+        var primary = RaceName(atPlay.Tags.GetValueOrDefault("CARDRACE"));
+        if (primary is "BEAST" or "ALL") return new(true, new(StringComparer.Ordinal) { primary });
+        // Other observed primary types may have a native second type. Only a definition bound to the frozen
+        // CardId with the same native primary may establish that second type, never a current entity lookup.
+        if (primary is null || !TryCard(atPlay.CardId, cards, out var card) || card.Type != "MINION" || string.IsNullOrWhiteSpace(card.RawJson)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(card.RawJson);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("race", out var native) ||
+                native.ValueKind != JsonValueKind.String || native.GetString() != primary) return null;
+            var types = new HashSet<string>(StringComparer.Ordinal) { primary };
+            if (root.TryGetProperty("races", out var races))
+            {
+                if (races.ValueKind != JsonValueKind.Array) return null;
+                foreach (var race in races.EnumerateArray())
+                {
+                    if (race.ValueKind != JsonValueKind.String || RaceName(race.GetString()) is not { } known) return null;
+                    types.Add(known);
+                }
+            }
+            return new(true, types);
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static string? RaceName(string? value) => value switch
+    {
+        "BEAST" or "20" => "BEAST", "ALL" or "26" => "ALL", "UNDEAD" or "11" => "UNDEAD",
+        "MURLOC" or "14" => "MURLOC", "DEMON" or "15" => "DEMON", "MECHANICAL" or "17" => "MECHANICAL",
+        "ELEMENTAL" or "18" => "ELEMENTAL", "TOTEM" or "21" => "TOTEM", "PIRATE" or "23" => "PIRATE",
+        "DRAGON" or "24" => "DRAGON", "QUILBOAR" or "43" => "QUILBOAR", "NAGA" or "92" => "NAGA", _ => null
+    };
 
     private static bool TryCard(string? id, IReadOnlyDictionary<string, CardRecord> cards, out CardRecord card)
     {
