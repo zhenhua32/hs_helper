@@ -131,7 +131,7 @@ public static class CraftChoiceRules
         {
             cards.TryGetValue(candidate.CardId ?? "", out var card);
             // HEALTH is the observed maximum, never RemainingHealth. A damaged/non-candidate entity is not a fresh component.
-            if (entity?.Zone != "SETASIDE" || entity.GetIntTag("DAMAGE") is not (null or 0)) entity = null;
+            if (entity?.CardId != candidate.CardId || entity?.Zone != "SETASIDE" || entity.GetIntTag("DAMAGE") is not (null or 0)) entity = null;
             return new(choiceId, candidate.EntityId, candidate.CardId,
                 card is not null && card.Id == candidate.CardId ? card.Name : "未知卡名",
                 Nonnegative(entity?.Cost), Nonnegative(entity?.Attack),

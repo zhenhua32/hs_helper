@@ -67,7 +67,7 @@ public static class RewindChoiceRules
             observedSource.Tags.TryGetValue("CARDTYPE", out var sourceType) && sourceType is not ("MINION" or "4") ||
             observedSource.CardId is not ("CORE_EDR_004_2026" or "CORE_EDR_004") ||
             source.CardId != observedSource.CardId || choice.SourceEntityId != source.Id ||
-            choice.SourceCardId is { } declared && declared != observedSource.CardId ||
+            choice.SourceCardId != observedSource.CardId ||
             !TryCard(observedSource.CardId, cards, out var sourceCard) || sourceCard.Type != "MINION" ||
             sourceCard.DbfId != (observedSource.CardId == "CORE_EDR_004_2026" ? 131356 : 119798))
             return null;

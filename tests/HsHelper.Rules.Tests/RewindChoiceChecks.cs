@@ -88,7 +88,6 @@ internal static class RewindChoiceChecks
             frame with { Choice = frame.Choice! with { PreviousOfferedAtEventSequence = 11 } },
             frame with { Choice = frame.Choice! with { OfferedAtEventSequence = 0 } },
             frame with { Choice = frame.Choice! with { OfferedAtEventSequence = 101 } },
-            frame with { Choice = frame.Choice! with { SourceCardId = null } },
             WithHistory(frame, [Entry(chosenAt: 31)]),
             WithHistory(frame, [Entry(chosenAt: 10)]),
             WithHistory(frame, [Entry(offeredAt: 21, chosenAt: 20)]),
@@ -203,9 +202,13 @@ internal static class RewindChoiceChecks
     {
         var frame = GiftFrame();
         foreach (var invalid in new[] { frame with { ClientBuild = "999999" }, frame with { IsSpectating = true },
+            frame with { Choice = frame.Choice! with { SourceCardId = null } },
             frame with { Quality = frame.Quality with { IsComplete = false } }, frame with { Quality = frame.Quality with { IsStable = false } },
             Replace(frame, Entity(30, "CORE_EDR_004_2026", "HAND")), Replace(frame, Entity(30, "CORE_EDR_004_2026", "PLAY", owner: 2)) })
             Check(Eval(invalid, cards) is null, "An unsafe source, build or perspective reached a Rewind effect.");
+        foreach (var offered in new[] { DiscoverFrame(), TimelineFrame() })
+            Check(Eval(offered with { Choice = offered.Choice! with { SourceCardId = null } }, cards) is null,
+                "A later Raptor identity filled a missing offered source identity in a direct helper call.");
         var mixed = frame with { Choice = frame.Choice! with { Options = [new(60, "EDR_100t", 1, 1), new(61, "EDR_227", 1, 2)] } };
         Check(Eval(mixed, cards) is { Stage: "Unknown", ResolvesEffects: false }, "Mixed candidates were forced into a known stage.");
         var malformed = cards.ToDictionary(); malformed["EDR_100t"] = cards["EDR_100t"] with { DbfId = 999 };

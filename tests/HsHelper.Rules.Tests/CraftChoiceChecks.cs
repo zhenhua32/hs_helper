@@ -71,6 +71,20 @@ internal static class CraftChoiceChecks
             var conflict = Replace(Frame(), Player(1, 1, 2, 10));
             Check(Evaluate(conflict, cards).AddedToHand is null, "Conflicting hand count was used.");
         });
+        yield return ("craft never binds leftover numeric tags on an unidentified entity to an offered card", () =>
+        {
+            var current = Replace(Frame(), Entity(60, "CRAFT_B", "SETASIDE", 1, ("COST", 4), ("ATK", 5), ("HEALTH", 6)) with { CardId = null });
+            var previous = Bind(Frame(), [Entry(entities:
+                [Entity(50, "CRAFT_A", "SETASIDE", 1, ("COST", 2), ("ATK", 3), ("HEALTH", 4)) with { CardId = null }])]);
+            foreach (var frame in new[] { current, previous })
+            {
+                var result = Evaluate(frame, cards);
+                Check(result.Stage == "ComponentTwo" && result.ResolvesEffects && result.GrantedCostReduction == 3 &&
+                    result.ResultingCost is null && result.ResultingAttack is null && result.ResultingHealth is null &&
+                    result.Components.Any(component => component.ObservedCost is null && component.ObservedAttack is null && component.ObservedHealth is null),
+                    "Unidentified current/historical entity supplied leftover statistics to a different offered identity.");
+            }
+        });
         yield return ("craft requires ledger match state event completeness and untruncated evidence", () =>
         {
             var frame = Frame();
