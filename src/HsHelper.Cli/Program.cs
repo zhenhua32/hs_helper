@@ -29,6 +29,7 @@ static string ToolEvidenceSummary(CoachToolObservation observation)
         "evaluate_generation" => $"随机生成数量范围；来源 {Field("SourceCardId")}；不选择随机身份或创建新实体。",
         "evaluate_wolf_blessing" => "巨狼祝福各候选直接增益分支；不指定实际命中或证明后续动作。",
         "evaluate_magma_split" => "熔岩猎犬攻击与逐包随机分配的条件分支；区间相关，截断不代表全部结果，不指定命中或证明斩杀。",
+        "evaluate_explosive_trap" => "我方已安装爆炸陷阱的当前来袭条件预览；仅列直接触发伤害，不执行对手攻击或给出权威后续局面。",
         "evaluate_play_triggers" => "原生发现、拼装、回溯入口及使用后任务、迅猛龙触发预览；选择和随机效果等待新局面，不证明完整结算或斩杀。",
         "get_entity_effect" => "已查询固定局面的可见实体文字；自定义文字重建不代表牌效脚本已经模拟。",
         "get_matchup_plan" => "已查询固定历史时点之前的用户计划/笔记版本。",

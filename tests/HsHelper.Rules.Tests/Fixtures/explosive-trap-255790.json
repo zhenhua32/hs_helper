@@ -1,0 +1,451 @@
+{
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "cards": [
+    {
+      "artist": "Wayne Reynolds",
+      "attack": 3,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 6,
+      "dbfId": 2595,
+      "elite": true,
+      "flavor": "博尔夫已经是第二次参加锦标赛了。今年他或许有希望，因为他的英雄没能通过预选赛。",
+      "health": 9,
+      "id": "AT_124",
+      "mechanics": [
+        "TRIGGER_VISUAL"
+      ],
+      "name": "博尔夫·碎盾",
+      "rarity": "LEGENDARY",
+      "set": "TGT",
+      "text": "每当你的英雄受到伤害，改为由本随从承担。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Gabor Szikszai",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 69539,
+      "faction": "HORDE",
+      "flavor": "在过去，狗头人是这片土地上最好的蜡烛交易商，直到它们被逼太甚...",
+      "health": 2,
+      "howToEarn": "完成教学后解锁。",
+      "howToEarnGolden": "总计赢得500场对战后解锁。",
+      "id": "CORE_CS2_142",
+      "mechanics": [
+        "SPELLPOWER"
+      ],
+      "name": "狗头人地卜师",
+      "rarity": "COMMON",
+      "set": "CORE_HIDDEN",
+      "spellDamage": 1,
+      "text": "<b>法术伤害+1</b>",
+      "type": "MINION"
+    },
+    {
+      "artist": "Brandon Kitkouski",
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 69603,
+      "flavor": "普通陷阱捉到的是猎物；爆炸陷阱捉到的是烤熟的食物！",
+      "howToEarn": "与猎人职业一同解锁。",
+      "howToEarnGolden": "使用猎人赢得50场对战后解锁。",
+      "id": "CORE_EX1_610",
+      "mechanics": [
+        "SECRET"
+      ],
+      "name": "爆炸陷阱",
+      "rarity": "COMMON",
+      "set": "CORE",
+      "spellSchool": "FIRE",
+      "text": "<b>奥秘：</b>当你的英雄受到攻击，对所有敌人造成$2点伤害。",
+      "type": "SPELL"
+    },
+    {
+      "artist": "Wayne Reynolds",
+      "attack": 9,
+      "cardClass": "WARLOCK",
+      "collectible": true,
+      "cost": 9,
+      "dbfId": 102213,
+      "elite": true,
+      "flavor": "背叛这种事情，如果是主角做了，他就会翻开历史新的一页；如果是配角做了，他的牺牲会帮助主角翻开历史新的一页。",
+      "health": 7,
+      "howToEarn": "与术士职业一同解锁。",
+      "howToEarnGolden": "使用术士赢得500场对战后解锁。",
+      "id": "CORE_GVG_021",
+      "mechanics": [
+        "AURA"
+      ],
+      "name": "玛尔加尼斯",
+      "race": "DEMON",
+      "races": [
+        "DEMON"
+      ],
+      "rarity": "LEGENDARY",
+      "referencedTags": [
+        "IMMUNE"
+      ],
+      "set": "CORE_HIDDEN",
+      "text": "你的英雄<b>免疫</b>。你的其他恶魔拥有+2/+2。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Anton Kagounkin",
+      "attack": 1,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 86543,
+      "durability": 0,
+      "flavor": "曾经被称作“卡恩迪洛尔”，精灵语的意思是“上古剃须匠的短弓”。",
+      "health": 3,
+      "howToEarn": "与猎人职业一同解锁。",
+      "howToEarnGolden": "使用猎人赢得50场对战后解锁。",
+      "id": "CORE_LOOT_222",
+      "name": "蜡烛弓",
+      "rarity": "COMMON",
+      "referencedTags": [
+        "IMMUNE"
+      ],
+      "set": "CORE_HIDDEN",
+      "text": "你的英雄在攻击时<b>免疫</b>。",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "James Ryman",
+      "attack": 1,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 97376,
+      "flavor": "地精珠宝商慕名而来，失望而归…",
+      "health": 2,
+      "howToEarn": "与猎人职业一同解锁。",
+      "howToEarnGolden": "使用猎人赢得50场对战后解锁。",
+      "id": "CORE_UNG_912",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "宝石鹦鹉",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "COMMON",
+      "set": "CORE",
+      "text": "<b>战吼：</b>&随机将一张野兽牌置入你的手牌。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Lucas Graciano",
+      "attack": 3,
+      "cardClass": "WARRIOR",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 401,
+      "durability": 0,
+      "flavor": "在安宁祥和的年代，人们用另一个不太流行的名字称呼这把武器，寒冰静谧战斧。",
+      "health": 2,
+      "id": "CS2_106",
+      "name": "炽炎战斧",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "Dan Brereton",
+      "attack": 3,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 216,
+      "faction": "HORDE",
+      "flavor": "“去杀30条迅猛龙。”——赫米特·奈辛瓦里",
+      "health": 2,
+      "id": "CS2_172",
+      "name": "血沼迅猛龙",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "type": "MINION"
+    },
+    {
+      "artist": "Peter C. Lee",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 7,
+      "dbfId": 311,
+      "durability": 0,
+      "flavor": "弓弦很长，这使得射手能够射得更远，对付那些难闻的目标尤其有效。",
+      "health": 2,
+      "id": "DS1_188",
+      "name": "角斗士的长弓",
+      "rarity": "EPIC",
+      "referencedTags": [
+        "IMMUNE"
+      ],
+      "set": "EXPERT1",
+      "text": "你的英雄在攻击时<b>免疫</b>。",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "Patrik Bjorkstrom",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 114020,
+      "flavor": "所谓物以类聚，那么幽爪熊该和谁一起冬眠？",
+      "health": 2,
+      "id": "EDR_227",
+      "mechanics": [
+        "DEATHRATTLE",
+        "RUSH"
+      ],
+      "name": "幽爪熊",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。<b>亡语：</b><b>灌注</b>你的英雄技能。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Eva Widermann",
+      "attack": 9,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 9,
+      "dbfId": 114254,
+      "elite": true,
+      "flavor": "以勇猛果决而闻名于世，且拥有的名号众多，其中包括洛戈什，还有巨狼。",
+      "health": 9,
+      "id": "EDR_480",
+      "mechanics": [
+        "AURA",
+        "RUSH"
+      ],
+      "name": "戈德林",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。友方野兽造成的伤害翻倍。",
+      "type": "MINION"
+    },
+    {
+      "artist": "BOSi Studio",
+      "cardClass": "HUNTER",
+      "collectionText": "随机使你手牌中的一张野兽牌获得+<b>",
+      "cost": 2,
+      "dbfId": 114052,
+      "id": "EDR_850p",
+      "name": "巨狼的祝福",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "随机使你手牌中的一张野兽牌获得+<b>@</b>攻击力，其法力值消耗减少（<b>@</b>）点。",
+      "type": "HERO_POWER"
+    },
+    {
+      "artist": "Brandon Kitkouski",
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 585,
+      "flavor": "普通陷阱捉到的是猎物；爆炸陷阱捉到的是烤熟的食物！",
+      "id": "EX1_610",
+      "mechanics": [
+        "SECRET"
+      ],
+      "name": "爆炸陷阱",
+      "rarity": "COMMON",
+      "set": "EXPERT1",
+      "spellSchool": "FIRE",
+      "text": "<b>奥秘：</b>当你的英雄受到攻击，对所有敌人造成$2点伤害。",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "WARRIOR",
+      "cost": 2,
+      "dbfId": 725,
+      "id": "HERO_01bp",
+      "name": "全副武装！",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "text": "<b>英雄技能</b>\n获得$d2点护甲值。",
+      "type": "HERO_POWER"
+    },
+    {
+      "cardClass": "SHAMAN",
+      "cost": 2,
+      "dbfId": 687,
+      "id": "HERO_02bp",
+      "name": "图腾召唤",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "text": "<b>英雄技能</b>\n随机召唤一个基础图腾。",
+      "type": "HERO_POWER"
+    },
+    {
+      "cardClass": "ROGUE",
+      "cost": 2,
+      "dbfId": 730,
+      "id": "HERO_03bp",
+      "name": "匕首精通",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "text": "<b>英雄技能</b>\n装备一把1/2的\n匕首。",
+      "type": "HERO_POWER"
+    },
+    {
+      "cardClass": "PALADIN",
+      "cost": 2,
+      "dbfId": 472,
+      "id": "HERO_04bp",
+      "name": "援军",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "text": "<b>英雄技能</b>\n召唤一个{0}的白银之手新兵。",
+      "type": "HERO_POWER"
+    },
+    {
+      "cardClass": "HUNTER",
+      "cost": 2,
+      "dbfId": 229,
+      "id": "HERO_05bp",
+      "name": "稳固射击",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "text": "<b>英雄技能</b>\n对敌方英雄造成$2点伤害。0<b>英雄技能</b>\n造成$2点伤害。",
+      "type": "HERO_POWER"
+    },
+    {
+      "cardClass": "DRUID",
+      "cost": 2,
+      "dbfId": 1123,
+      "id": "HERO_06bp",
+      "name": "变形",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "text": "<b>英雄技能</b>\n本回合+$a1攻击力。+$d1护甲值。",
+      "type": "HERO_POWER"
+    },
+    {
+      "cardClass": "WARLOCK",
+      "cost": 2,
+      "dbfId": 300,
+      "id": "HERO_07bp",
+      "name": "生命分流",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "text": "<b>英雄技能</b>\n抽一张牌并受到$2点伤害。",
+      "type": "HERO_POWER"
+    },
+    {
+      "cardClass": "MAGE",
+      "cost": 2,
+      "dbfId": 807,
+      "id": "HERO_08bp",
+      "name": "火焰冲击",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "targetingArrowText": "造成1点伤害。",
+      "text": "<b>英雄技能</b>\n造成$1点伤害。",
+      "type": "HERO_POWER"
+    },
+    {
+      "cardClass": "PRIEST",
+      "cost": 2,
+      "dbfId": 479,
+      "id": "HERO_09bp",
+      "name": "次级治疗术",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "text": "<b>英雄技能</b>\n恢复#2点生命值。",
+      "type": "HERO_POWER"
+    },
+    {
+      "artist": "Virtuos",
+      "cardClass": "DEMONHUNTER",
+      "cost": 1,
+      "dbfId": 60224,
+      "id": "HERO_10bp",
+      "name": "恶魔之爪",
+      "set": "LEGACY",
+      "text": "<b>英雄技能</b>\n在本回合中+$a1\n攻击力。",
+      "type": "HERO_POWER"
+    },
+    {
+      "artist": "Studio Hive",
+      "cardClass": "DEATHKNIGHT",
+      "cost": 2,
+      "dbfId": 78162,
+      "id": "HERO_11bp",
+      "name": "食尸鬼冲锋",
+      "rarity": "FREE",
+      "referencedTags": [
+        "CHARGE"
+      ],
+      "set": "BASIC",
+      "text": "<b>英雄技能</b>\n召唤一个1/1并具有<b>冲锋</b>的食尸鬼。它会在回合结束时死亡。",
+      "type": "HERO_POWER"
+    },
+    {
+      "artist": "Anton Kagounkin",
+      "attack": 1,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 45537,
+      "durability": 0,
+      "flavor": "曾经被称作“卡恩迪洛尔”，精灵语的意思是“上古剃须匠的短弓”。",
+      "health": 3,
+      "id": "LOOT_222",
+      "name": "蜡烛弓",
+      "rarity": "COMMON",
+      "referencedTags": [
+        "IMMUNE"
+      ],
+      "set": "LOOTAPALOOZA",
+      "text": "你的英雄在攻击时<b>免疫</b>。",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "James Ryman",
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 120648,
+      "flavor": "劫日快乐，失落之城！",
+      "howToEarn": "打开<i>安戈洛龟途</i>卡牌包后可解锁。",
+      "howToEarnGolden": "打开<i>安戈洛龟途</i>金色包后可解锁。",
+      "id": "TLC_EVENT_400",
+      "mechanics": [
+        "SIDE_QUEST"
+      ],
+      "name": "围攻城门",
+      "rarity": "EPIC",
+      "set": "EVENT",
+      "text": "<b>支线任务：</b>使用亡灵或野兽牌，总计3张。<b>奖励：</b>制造一个自定义的僵尸兽，其法力值消耗减少（3）点。",
+      "type": "SPELL"
+    }
+  ],
+  "build": "255790"
+}

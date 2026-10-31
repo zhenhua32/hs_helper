@@ -173,6 +173,24 @@ public sealed class SnapshotCoach
             return Node(GenerationResolutionRules.Evaluate(_snapshot, args["source_entity_id"]!.GetValue<int>(), rulesCards));
         if (name == "evaluate_wolf_blessing")
             return Node(WolfBlessingResolutionRules.Evaluate(_snapshot, args["source_entity_id"]!.GetValue<int>(), rulesCards));
+        if (name == "evaluate_explosive_trap")
+        {
+            var sourceId = args["source_entity_id"]!.GetValue<int>(); var attackerId = args["attacker_entity_id"]!.GetValue<int>();
+            if (ChoiceVisibility.ConfirmedLocalPlayer(_snapshot) is not { } local || local is not (1 or 2) || _snapshot.ClientBuild != "255790" ||
+                _snapshot.Phase != GamePhase.Main || !_snapshot.Quality.HasGameStart || !_snapshot.Quality.IsComplete ||
+                !_snapshot.Quality.IsStable || _snapshot.Quality.OpenBlockCount != 0 || _snapshot.Entities.Any(pair => pair.Key != pair.Value.Id) ||
+                !_snapshot.Entities.TryGetValue(sourceId, out var source) || source.Id != sourceId || source.Kind != EntityKind.Card ||
+                source.CardId is not ("CORE_EX1_610" or "EX1_610") || source.Zone != "SECRET" || !OwnController(source, local) ||
+                !ObservedType(source, "SPELL", "5") || AssembledCardText.RequiresCustomText(source.Tags) ||
+                source.Tags.TryGetValue("49", out var zone) && zone is not ("SECRET" or "7") ||
+                !_snapshot.Entities.TryGetValue(attackerId, out var attacker) || attacker.Id != attackerId || attacker.Kind != EntityKind.Card ||
+                attacker.Zone != "PLAY" || attacker.ControllerId is not (1 or 2) || attacker.ControllerId == local ||
+                !OwnController(attacker, attacker.ControllerId.Value) ||
+                !(ObservedType(attacker, "MINION", "4") || ObservedType(attacker, "HERO", "3")) ||
+                attacker.Tags.TryGetValue("49", out var attackerZone) && attackerZone is not ("PLAY" or "1"))
+                return new JsonObject { ["error"] = "需要完整稳定局面中已确认的我方已安装爆炸陷阱与敌方公开场上角色；不查询对方奥秘，也不模拟未来回合。" };
+            return Node(ExplosiveTrapRules.Evaluate(_snapshot, sourceId, attackerId, rulesCards));
+        }
         if (name == "evaluate_magma_split")
         {
             var sourceId = args["source_entity_id"]!.GetValue<int>(); var targetId = args["target_entity_id"]!.GetValue<int>();
@@ -315,6 +333,10 @@ public sealed class SnapshotCoach
     private static bool MagmaMinion(EntitySnapshot entity) => (entity.Tags.ContainsKey("CARDTYPE") || entity.Tags.ContainsKey("202")) &&
         (!entity.Tags.TryGetValue("CARDTYPE", out var named) || named is "MINION" or "4") &&
         (!entity.Tags.TryGetValue("202", out var numeric) || numeric is "MINION" or "4");
+    private static bool ObservedType(EntitySnapshot entity, string type, string code) =>
+        (entity.Tags.ContainsKey("CARDTYPE") || entity.Tags.ContainsKey("202")) &&
+        (!entity.Tags.TryGetValue("CARDTYPE", out var named) || named == type || named == code) &&
+        (!entity.Tags.TryGetValue("202", out var numeric) || numeric == type || numeric == code);
     private static JsonObject Schema(string json) => JsonNode.Parse(json)!.AsObject();
     private static bool Empty(JsonObject args) => args.Count == 0;
     private static bool ValidCardIds(JsonObject args) => args.Count == 1 && args["card_ids"] is JsonArray { Count: <= 30 } ids &&
@@ -342,6 +364,8 @@ public sealed class SnapshotCoach
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("evaluate_wolf_blessing", "比较巨狼祝福随机命中各野兽手牌的直接攻击/减费分支；不指定实际命中，不替换当前局面，不证明技能使用合法或后续斩杀。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
+        new AgentToolDefinition("evaluate_explosive_trap", "条件预览当前我方已安装爆炸陷阱在敌方公开角色攻击我方英雄时的直接触发伤害。只接收陷阱来源与来袭者，攻击目标固定我方英雄；不能指定伤害、受伤目标或未来回合。不执行对手动作、不探查对方奥秘，不把直接伤害后的存活当作完整攻击结算，也不提供权威新局面、后续动作或斩杀证明。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1},"attacker_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id","attacker_entity_id"],"additionalProperties":false}"""),
+            args => args.Count == 2 && Integer(args["source_entity_id"], 1, int.MaxValue) && Integer(args["attacker_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("evaluate_magma_split", "以当前我方原生熔岩猎犬及其攻击的敌方随从，预览基础攻击与后置逐包随机分配。target_entity_id仅为攻击对象，不是随机命中；不接受指定伤害、分配顺序、分支或概率。区间相关，截断分支不代表全部可能结果；整体是条件预览，不修改局面、不证明后续动作或斩杀。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1},"target_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id","target_entity_id"],"additionalProperties":false}"""),
             args => args.Count == 2 && Integer(args["source_entity_id"], 1, int.MaxValue) && Integer(args["target_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("evaluate_play_triggers", "核对当前我方手牌的原生发现、拼装、回溯入口，并预览主机自动绑定的围攻城门进度与梦缚迅猛龙直接触发次数。发现入口以成功离手为条件，使用后触发以前置效果完成为条件；各段不是已经发生的完整结算。不接受指定进度、触发来源、候选、目标或随机效果。达到发现、任务奖励或随机边界后等待真实选择和新局面；不创建手牌实体、成品或最终费用，也不证明斩杀，合法出牌另用evaluate_line核验。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),

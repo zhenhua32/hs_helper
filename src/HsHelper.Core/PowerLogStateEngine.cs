@@ -69,6 +69,7 @@ public sealed partial class PowerLogStateEngine
     private static readonly Regex DescriptorPlayerPattern = Pattern(@"\bplayer=(\d+)\b");
     private static readonly Regex DormantPattern = Pattern(@"^CACHED_TAG_FOR_DORMANT_CHANGE\s+Entity=(.+?)\s+tag=(\S+)\s+value=(.+)$");
     private static readonly HashSet<string> HiddenSafeTags = ["ZONE", "CONTROLLER", "ZONE_POSITION", "ENTITY_ID"];
+    private static readonly HashSet<string> PublicSecretSlotTags = ["SECRET", "QUEST", "SIDE_QUEST"];
     private static readonly HashSet<string> ChoiceObservedTags = ["ZONE", "CONTROLLER", "ZONE_POSITION", "ENTITY_ID", "CARDTYPE", "COST", "ATK", "HEALTH", "DAMAGE", "ARMOR", "DURABILITY",
         "TAUNT", "DIVINE_SHIELD", "CHARGE", "RUSH", "LIFESTEAL", "POISONOUS", "STEALTH", "WINDFURY", "MEGA_WINDFURY", "ELUSIVE", "REBORN", "SILENCED", "FROZEN", "EXHAUSTED", "NUM_TURNS_IN_PLAY", "CARDRACE", "TAG_SCRIPT_DATA_NUM_1", "TAG_SCRIPT_DATA_NUM_2",
         "CRAFTABLE_FIRST_HALF_DBID", "CRAFTABLE_SECOND_HALF_DBID"];
@@ -468,13 +469,19 @@ public sealed partial class PowerLogStateEngine
             optionTags["CONTROLLER"] = _localPlayerId!.Value.ToString(CultureInfo.InvariantCulture);
             return new(entity.Id, option.CardId, entity.Kind, optionTags.ToFrozenDictionary(StringComparer.Ordinal));
         }
+        // Only an opponent's already visible secret-zone slot has public Secret/Quest classification.
+        // These keywords must never identify a card in HAND/DECK/SETASIDE or an unconfirmed perspective.
+        var publicSecretSlot = !visible && hasPerspective && zone == "SECRET" && !own &&
+            IntTag(entity, "CONTROLLER") is 1 or 2;
         if (visible && entity.VisibleRevision == entity.Revision && entity.VisibleSnapshot is { } visibleCached) return visibleCached;
-        if (!visible && entity.HiddenRevision == entity.Revision && entity.HiddenSnapshot is { } hiddenCached) return hiddenCached;
-        var tags = visible ? entity.Tags : entity.Tags.Where(t => HiddenSafeTags.Contains(t.Key));
+        if (!visible && !publicSecretSlot && entity.HiddenRevision == entity.Revision && entity.HiddenSnapshot is { } hiddenCached) return hiddenCached;
+        var tags = visible ? entity.Tags : entity.Tags.Where(t => HiddenSafeTags.Contains(t.Key) || publicSecretSlot && PublicSecretSlotTags.Contains(t.Key))
+            .Select(pair => publicSecretSlot && PublicSecretSlotTags.Contains(pair.Key) && pair.Value is not ("0" or "1")
+                ? new KeyValuePair<string, string>(pair.Key, "unknown") : pair);
         var snapshot = new EntitySnapshot(entity.Id, visible ? entity.CardId : null, entity.Kind,
             tags.ToFrozenDictionary(StringComparer.Ordinal));
         if (visible) { entity.VisibleRevision = entity.Revision; entity.VisibleSnapshot = snapshot; }
-        else { entity.HiddenRevision = entity.Revision; entity.HiddenSnapshot = snapshot; }
+        else if (!publicSecretSlot) { entity.HiddenRevision = entity.Revision; entity.HiddenSnapshot = snapshot; }
         return snapshot;
     }
 
@@ -921,6 +928,7 @@ public sealed partial class PowerLogStateEngine
         "199" => "CLASS", "200" => "CARDRACE", "1635" => "SPELL_SCHOOL", "204" => "STATE", "263" => "ZONE_POSITION", "292" => "ARMOR", "305" => "MULLIGAN_STATE",
         "176" => "MAXRESOURCES", "187" => "DURABILITY", "188" => "SILENCED", "189" => "WINDFURY",
         "190" => "TAUNT", "191" => "STEALTH", "192" => "SPELLPOWER", "194" => "DIVINE_SHIELD", "197" => "CHARGE",
+        "219" => "SECRET", "462" => "QUEST",
         "227" => "CANT_ATTACK", "240" => "IMMUNE", "260" => "FROZEN", "271" => "NUM_TURNS_IN_PLAY",
         "295" => "TEMP_RESOURCES", "297" => "NUM_ATTACKS_THIS_TURN", "313" => "CREATOR", "385" => "DISPLAYED_CREATOR",
         "435" => "TRANSFORMED_FROM_CARD", "448" => "UNTOUCHABLE", "777" => "HERO_POWER_DISABLED",

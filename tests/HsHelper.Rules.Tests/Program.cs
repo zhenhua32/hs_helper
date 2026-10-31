@@ -674,6 +674,8 @@ foreach (var (name, run) in HunterDiscoveryLineChecks.Cases(cards)) Run(name, ru
 foreach (var (name, run) in HunterMapPlayChecks.Cases()) Run(name, run);
 foreach (var (name, run) in MagmaSplitChecks.Cases()) Run(name, run);
 foreach (var (name, run) in HunterMagmaLineChecks.Cases(cards)) Run(name, run);
+foreach (var (name, run) in ExplosiveTrapChecks.Cases()) Run(name, run);
+foreach (var (name, run) in HunterExplosiveTrapInstallChecks.Cases(cards)) Run(name, run);
 
 if (args.Length == 1)
 {

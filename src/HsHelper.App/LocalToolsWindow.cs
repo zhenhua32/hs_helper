@@ -30,6 +30,9 @@ public sealed class LocalToolsWindow : Window
     private readonly Button _previewGeneration = new() { Content = "预览随机生成数量" };
     private readonly Button _previewWolfBlessing = new() { Content = "比较巨狼祝福分支" };
     private readonly Button _previewMagmaSplit = new() { Content = "预览熔岩猎犬分配", ToolTip = "使用当前攻击者与攻击对象预览基础交换及后置逐包随机分配；攻击对象不是随机命中，不改变当前局面。" };
+    private readonly ComboBox _trapSource = new() { MinWidth = 180, DisplayMemberPath = nameof(EntityOption.Text) };
+    private readonly ComboBox _trapAttacker = new() { MinWidth = 190, DisplayMemberPath = nameof(EntityOption.Text) };
+    private readonly Button _previewExplosiveTrap = new() { Content = "预览爆炸陷阱来袭", ToolTip = "仅假设当前敌方角色攻击我方英雄，预览我方已安装陷阱的直接触发；不执行对手动作或修改局面。" };
     private readonly Button _previewPlayTriggers = new() { Content = "预览使用后触发", ToolTip = "预览原生发现、拼装、回溯入口及使用后任务和迅猛龙触发；各段条件独立，实际出牌仍须验证。" };
     private readonly Button _inspectEffect = new() { Content = "查看所选牌当前效果" };
     private readonly TextBox _depth = new() { Text = "4", Width = 45 };
@@ -79,6 +82,13 @@ public sealed class LocalToolsWindow : Window
         _add.Click += (_, _) => AddAction();
         _source.SelectionChanged += (_, _) => RefreshEnabled();
         _target.SelectionChanged += (_, _) => RefreshEnabled();
+        _trapSource.SelectionChanged += (_, _) => RefreshEnabled();
+        _trapAttacker.SelectionChanged += (_, _) => RefreshEnabled();
+        _previewExplosiveTrap.Click += (_, _) =>
+        {
+            if (_trapSource.SelectedItem is EntityOption source && _trapAttacker.SelectedItem is EntityOption attacker)
+                _ = RunToolAsync("evaluate_explosive_trap", new() { ["source_entity_id"] = source.Id, ["attacker_entity_id"] = attacker.Id });
+        };
         _previewDraw.Click += (_, _) =>
         {
             if (_source.SelectedItem is EntityOption source)
@@ -167,6 +177,7 @@ public sealed class LocalToolsWindow : Window
         _snapshot = snapshot; _fixedBuild = fixedBuild; _historical = isHistorical;
         _cards = new Dictionary<string, CardRecord>(); _line.Clear(); RefreshLine();
         _source.ItemsSource = Array.Empty<EntityOption>(); _target.ItemsSource = Array.Empty<EntityOption>();
+        _trapSource.ItemsSource = Array.Empty<EntityOption>(); _trapAttacker.ItemsSource = Array.Empty<EntityOption>();
         _choices.ItemsSource = Array.Empty<EntityOption>();
         try
         {
@@ -189,7 +200,8 @@ public sealed class LocalToolsWindow : Window
         {
             if (_fixedBuild is { Length: > 0 } build && build != "unknown")
             {
-                var cards = await _catalog.GetByIdsAsync(BattleViewBuilder.VisibleCardIds(snapshot, build), build, cancellationToken: token);
+                var visible = BattleViewBuilder.VisibleCardIds(snapshot, build).Concat(OwnInstalledTraps(snapshot).Select(entity => entity.CardId!)).Distinct(StringComparer.Ordinal);
+                var cards = await _catalog.GetByIdsAsync(visible, build, cancellationToken: token);
                 var completeCards = await SnapshotCardEffects.LoadDonorsAsync(snapshot, build, _catalog, cards, token);
                 if (!Current(revision)) return;
                 _cards = completeCards;
@@ -206,6 +218,8 @@ public sealed class LocalToolsWindow : Window
     private void RenderBinding()
     {
         var selectedTarget = (_target.SelectedItem as EntityOption)?.Id;
+        var selectedTrap = (_trapSource.SelectedItem as EntityOption)?.Id;
+        var selectedAttacker = (_trapAttacker.SelectedItem as EntityOption)?.Id;
         var selectedChoices = _choices.SelectedItems.OfType<EntityOption>().Select(option => option.Id).ToHashSet();
         _view = BattleViewBuilder.Build(_snapshot, _cards, _fixedBuild);
         if (IsBindingValid) _binding.Text = (_historical ? "历史局面（只复算此时信息）" : "当前绑定局面") +
@@ -226,6 +240,15 @@ public sealed class LocalToolsWindow : Window
         _target.ItemsSource = targets;
         _target.SelectedItem = targets.FirstOrDefault(target => target.Id == selectedTarget) ?? targets[0];
         RefreshSources();
+        var traps = OwnInstalledTraps(_snapshot).Select(entity => new EntityOption(entity.Id, CardName(entity.CardId) + $" #{entity.Id}")).ToArray();
+        _trapSource.ItemsSource = traps;
+        _trapSource.SelectedItem = traps.FirstOrDefault(entity => entity.Id == selectedTrap) ?? traps.FirstOrDefault();
+        var attackers = ChoiceVisibility.ConfirmedLocalPlayer(_snapshot) is { } trapLocal
+            ? _view.Opponent.Board.Concat(new[] { _view.Opponent.Hero }.OfType<BattleCardView>())
+                .Where(card => _snapshot.Entities.TryGetValue(card.EntityId, out var entity) && PreviewPublicCharacter(entity, trapLocal))
+                .Select(card => new EntityOption(card.EntityId, CardLabel(card))).ToArray() : [];
+        _trapAttacker.ItemsSource = attackers;
+        _trapAttacker.SelectedItem = attackers.FirstOrDefault(entity => entity.Id == selectedAttacker) ?? attackers.FirstOrDefault();
         if (OwnChoice() is { } choice)
         {
             _choiceLabel.Text = $"当前我方选择 #{choice.Id}，选择 {choice.CountMin}～{choice.CountMax} 个。可仅核对范围，或评估已覆盖来源的直接后果；预览不是已经发生的局面。";
@@ -324,7 +347,8 @@ public sealed class LocalToolsWindow : Window
     {
         var cards = _view is null ? [] : _view.Local.Hand.Concat(_view.Local.Board).Concat(_view.Opponent.Board)
             .Concat(new[] { _view.Local.Hero, _view.Opponent.Hero, _view.Local.HeroPower, _view.Opponent.HeroPower }.OfType<BattleCardView>());
-        return cards.FirstOrDefault(card => card.EntityId == id)?.Name ?? "实体 #" + id;
+        return cards.FirstOrDefault(card => card.EntityId == id)?.Name ??
+            (OwnInstalledTraps(_snapshot).FirstOrDefault(entity => entity.Id == id) is { } trap ? CardName(trap.CardId) : "实体 #" + id);
     }
 
     private void RefreshEnabled()
@@ -346,6 +370,14 @@ public sealed class LocalToolsWindow : Window
             PreviewBoardMinion(magmaSource, magmaLocal) && !AssembledCardText.RequiresCustomText(magmaSource.Tags) &&
             _snapshot.Entities.TryGetValue(attacked.Id, out var magmaTarget) && magmaTarget.ControllerId is { } targetOwner &&
             targetOwner is (1 or 2) && targetOwner != magmaLocal && PreviewBoardMinion(magmaTarget, targetOwner);
+        var trapReady = ready && _snapshot.ClientBuild == "255790" && _snapshot.Phase == GamePhase.Main && _snapshot.Quality.HasGameStart &&
+            _snapshot.Quality.IsStable && _snapshot.Quality.IsComplete && _snapshot.Quality.OpenBlockCount == 0 &&
+            ChoiceVisibility.ConfirmedLocalPlayer(_snapshot) is (1 or 2);
+        _trapSource.IsEnabled = _trapAttacker.IsEnabled = trapReady;
+        _previewExplosiveTrap.IsEnabled = trapReady && _trapSource.SelectedItem is EntityOption selectedTrap &&
+            OwnInstalledTraps(_snapshot).Any(entity => entity.Id == selectedTrap.Id) &&
+            _trapAttacker.SelectedItem is EntityOption selectedAttacker && _snapshot.Entities.TryGetValue(selectedAttacker.Id, out var incoming) &&
+            ChoiceVisibility.ConfirmedLocalPlayer(_snapshot) is { } trapLocal && PreviewPublicCharacter(incoming, trapLocal);
         _previewPlayTriggers.IsEnabled = ready && _snapshot.Phase == GamePhase.Main && _snapshot.Quality.HasGameStart && _snapshot.Quality.IsStable &&
             _snapshot.Quality.IsComplete && _snapshot.Quality.OpenBlockCount == 0 && (_kind.SelectedItem as KindOption)?.Kind == "play" &&
             ChoiceVisibility.ConfirmedLocalPlayer(_snapshot) is (1 or 2) and var local && _snapshot.ActivePlayerId == local && _source.SelectedItem is EntityOption played &&
@@ -374,6 +406,23 @@ public sealed class LocalToolsWindow : Window
         (!entity.Tags.TryGetValue("CARDTYPE", out var named) || named is "MINION" or "4") &&
         (!entity.Tags.TryGetValue("202", out var numeric) || numeric is "MINION" or "4");
 
+    private static IEnumerable<EntitySnapshot> OwnInstalledTraps(GameSnapshot snapshot) =>
+        ChoiceVisibility.ConfirmedLocalPlayer(snapshot) is not { } local ? [] : snapshot.Entities.Values.Where(entity =>
+            entity.Kind == EntityKind.Card && entity.Id > 0 && entity.ControllerId == local && entity.Zone == "SECRET" &&
+            entity.CardId is "CORE_EX1_610" or "EX1_610" &&
+            (!entity.Tags.TryGetValue("50", out var owner) || int.TryParse(owner, out var value) && value == local) &&
+            (!entity.Tags.TryGetValue("49", out var zone) || zone is "SECRET" or "7") && PreviewType(entity, "SPELL", "5") &&
+            !AssembledCardText.RequiresCustomText(entity.Tags));
+    private static bool PreviewPublicCharacter(EntitySnapshot entity, int local) => entity.Kind == EntityKind.Card && entity.Id > 0 &&
+        entity.Zone == "PLAY" && entity.ControllerId is (1 or 2) and var owner && owner != local &&
+        (!entity.Tags.TryGetValue("50", out var alias) || int.TryParse(alias, out var value) && value == owner) &&
+        (!entity.Tags.TryGetValue("49", out var zone) || zone is "PLAY" or "1") &&
+        (PreviewType(entity, "MINION", "4") || PreviewType(entity, "HERO", "3"));
+    private static bool PreviewType(EntitySnapshot entity, string type, string code) =>
+        (entity.Tags.ContainsKey("CARDTYPE") || entity.Tags.ContainsKey("202")) &&
+        (!entity.Tags.TryGetValue("CARDTYPE", out var named) || named == type || named == code) &&
+        (!entity.Tags.TryGetValue("202", out var alias) || alias == type || alias == code);
+
     private FrameworkElement BuildContent()
     {
         var body = new StackPanel { Margin = new Thickness(14) };
@@ -385,6 +434,8 @@ public sealed class LocalToolsWindow : Window
         body.Children.Add(_actions); body.Children.Add(Row(_remove, _evaluate, _inspectEffect));
         body.Children.Add(Row(_previewDraw, _previewGeneration, _previewWolfBlessing, _previewMagmaSplit, _previewPlayTriggers));
         body.Children.Add(Row(Label("搜索深度"), _depth, Label("节点上限"), _nodes, _lethal));
+        body.Children.Add(new TextBlock { Text = "我方陷阱来袭预览：固定攻击我方英雄，不执行敌方动作", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
+        body.Children.Add(Row(Label("我方陷阱"), _trapSource, Label("敌方来袭者"), _trapAttacker, _previewExplosiveTrap));
         body.Children.Add(new TextBlock { Text = "我方当前选择", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
         body.Children.Add(_choiceLabel); body.Children.Add(_choices); body.Children.Add(Row(_validateChoice, _evaluateChoice, _cancel));
         body.Children.Add(_result);
@@ -398,6 +449,8 @@ public sealed class LocalToolsWindow : Window
         Register("LocalPreviewGenerationButton", _previewGeneration);
         Register("LocalPreviewWolfBlessingButton", _previewWolfBlessing);
         Register("LocalPreviewMagmaSplitButton", _previewMagmaSplit);
+        Register("LocalTrapSourceBox", _trapSource); Register("LocalTrapAttackerBox", _trapAttacker);
+        Register("LocalPreviewExplosiveTrapButton", _previewExplosiveTrap);
         Register("LocalPreviewPlayTriggersButton", _previewPlayTriggers);
         Register("LocalInspectEffectButton", _inspectEffect);
         Register("LocalCancelButton", _cancel); Register("LocalResultBox", _result);
@@ -460,6 +513,41 @@ public static class LocalToolResultFormatter
         if (tool == "evaluate_wolf_blessing")
         {
             AppendWolfBlessing(lines, result, entityName); return string.Join("\n", lines);
+        }
+        if (tool == "evaluate_explosive_trap")
+        {
+            lines.Add("我方爆炸陷阱来袭 · 当前条件预览（未执行对手动作）");
+            lines.Add("当前触发条件：" + (result["TriggerActive"]?.ToString() switch
+            {
+                "true" => "在列出条件下满足，尚未证明攻击实际发生",
+                "false" => "当前不触发；不预测未来回合",
+                _ => "未知，不能默认触发或不触发"
+            }));
+            lines.Add("陷阱来源：" + TrapEntity("SecretEntityId") + "；假设来袭者：" + TrapEntity("AttackerEntityId") +
+                "；固定攻击对象：" + TrapEntity("DefendingHeroEntityId"));
+            lines.Add($"当前法术伤害加成：{result["SpellDamage"]?.ToString() ?? "未知"}；每个敌方角色的防御处理前伤害：{result["DamagePerEnemy"]?.ToString() ?? "未知"}；陷阱消耗：{TrapYesNo(result["TrapConsumed"])}。");
+            if (result["PriorResolutionPending"]?.ToString() == "true") lines.Add("前置奥秘或触发仍待结算，不能把本预览当作其后的实际状态。");
+            if (result["ResolvesDirectDamage"]?.ToString() != "true") lines.Add("直接伤害尚未完整覆盖；缺失数值保持未知，空列表不表示没有伤害。");
+            if (result["Targets"] is JsonArray trapTargets)
+                foreach (var target in trapTargets.OfType<JsonObject>())
+                {
+                    var targetName = target["EntityId"] is JsonValue value && value.TryGetValue<int>(out var id) ? entityName(id) : "未知公开角色";
+                    lines.Add($"· {targetName}：直接伤害 {target["Damage"]?.ToString() ?? "未知"}；生命 {target["HealthBefore"]?.ToString() ?? "未知"} → {target["HealthAfter"]?.ToString() ?? "未知"}；" +
+                        $"护甲 {target["ArmorBefore"]?.ToString() ?? "未知"} → {target["ArmorAfter"]?.ToString() ?? "未知"}；圣盾 {TrapYesNo(target["DivineShieldBefore"])} → {TrapYesNo(target["DivineShieldAfter"])}；直接伤害后存活 {TrapYesNo(target["IsAliveAfter"])}。");
+                }
+            lines.Add("来袭者直接伤害后存活：" + TrapYesNo(result["AttackerSurvivesDirectDamage"]) + "。");
+            lines.Add("攻击是否被本次直接伤害停止：" + (result["AttackStoppedByDirectDamage"]?.ToString() switch
+            {
+                "true" => "在所列条件下会停止；不表示其它触发已结算",
+                "false" => "未被本次直接伤害停止；完整攻击是否继续仍未知",
+                _ => "未知，不能补成攻击继续或停止"
+            }));
+            foreach (var key in new[] { "Unknowns", "Assumptions" })
+                if (result[key] is JsonArray values) foreach (var value in values) lines.Add("· " + value);
+            lines.Add("以上仅为当前来袭假设下的直接触发后果；不模拟未来回合、亡语或完整攻击，不修改原局面，不提供后续己方动作或斩杀证明。");
+            return string.Join("\n", lines);
+            string TrapEntity(string key) => result[key] is JsonValue value && value.TryGetValue<int>(out var id) ? entityName(id) : "未知";
+            static string TrapYesNo(JsonNode? value) => value?.ToString() switch { "true" => "是", "false" => "否", _ => "未知" };
         }
         if (tool == "evaluate_magma_split")
         {

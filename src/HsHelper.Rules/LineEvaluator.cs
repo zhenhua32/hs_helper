@@ -301,6 +301,7 @@ public sealed partial class LineEvaluator
         if (ExplosiveTrap.Contains(id))
         {
             if (action.TargetEntityId is not null) { state.Invalid("爆炸陷阱不需要目标。"); return; }
+            if (!state.AuditedExplosiveTrapSource(source)) return;
             if (!state.CanInstallInSecretZone(source)) return;
             if (!state.Pay(source)) return;
             if (state.OpponentDefeatedByPayment) return;
@@ -582,7 +583,8 @@ public sealed partial class LineEvaluator
                 { Conditional("假设对手奥秘不触发或不改变本序列，不能据此声称已验证斩杀。", "OPPONENT_SECRET"); continue; }
                 if (entity.Zone == "SECRET" && entity.Controller == Local)
                 {
-                    if (_snapshot.ClientBuild == "255790" && entity.CardId is { } secret && ExplosiveTrap.Contains(secret)) continue;
+                    if (_snapshot.ClientBuild == "255790" && entity.CardId is { } secret && ExplosiveTrap.Contains(secret) &&
+                        ExplosiveTrapRules.IsAuditedSource(_cards.GetValueOrDefault(secret))) continue;
                     if (IsNativeSidequest(entity)) continue;
                     Conditional("假设我方尚未覆盖的奥秘或任务不在本序列触发，奖励与触发效果未展开。", "FRIENDLY_SECRET_OR_QUEST"); continue;
                 }
