@@ -1,5 +1,6 @@
 param([Parameter(Mandatory = $true)][string]$PackageDirectory, [string]$ZipPath, [switch]$RunDiagnostics)
 . (Join-Path $PSScriptRoot 'package-common.ps1')
+. (Join-Path $PSScriptRoot 'package-guide.ps1')
 $taskPackage = [IO.Path]::GetFullPath($PackageDirectory).TrimEnd('\', '/')
 $taskFiles = @(Get-CheckedPackageFiles -Directory $taskPackage)
 $taskByPath = @{}
@@ -9,7 +10,7 @@ foreach ($taskRequired in @('package-manifest.json', 'SHA256SUMS', 'HsHelper.App
 }
 $taskManifest = Get-Content -LiteralPath $taskByPath['package-manifest.json'].FullName -Raw | ConvertFrom-Json
 if ($taskManifest.schemaVersion -ne 1 -or $taskManifest.product -ne 'HsHelper' -or $taskManifest.runtimeIdentifier -ne 'win-x64' -or
-    $taskManifest.version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$' -or
+    $taskManifest.version -notmatch '\A[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?\z' -or
     $taskManifest.entryPoint -ne 'HsHelper.App.exe' -or $taskManifest.dataDirectory -ne '%LOCALAPPDATA%\HsHelper' -or
     $taskManifest.deploymentMode -notin @('self-contained', 'framework-dependent') -or $taskManifest.dpiManifest -ne 'PerMonitorV2,PerMonitor') {
     throw 'Unsupported or inconsistent package manifest.'
@@ -101,6 +102,7 @@ foreach ($taskLine in Get-Content -LiteralPath $taskByPath['SHA256SUMS'].FullNam
     $taskChecksummed[$taskRelative] = $taskHash
 }
 if ($taskChecksummed.Count + 1 -ne $taskFiles.Count) { throw 'SHA256SUMS is incomplete.' }
+Assert-PackageQuickStart -GuidePath $taskByPath['QUICKSTART.zh-CN.md'].FullName -Version $taskManifest.version -DeploymentMode $taskManifest.deploymentMode
 if ($ZipPath) {
     $taskZipPath = [IO.Path]::GetFullPath($ZipPath)
     $taskZipReceipt = Get-Content -LiteralPath ($taskZipPath + '.sha256') -Raw

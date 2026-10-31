@@ -7,12 +7,13 @@ param(
 )
 . (Join-Path $PSScriptRoot 'environment.ps1')
 . (Join-Path $PSScriptRoot 'package-common.ps1')
+. (Join-Path $PSScriptRoot 'package-guide.ps1')
 
 if (-not $Version) {
     [xml]$taskProject = Get-Content -LiteralPath (Join-Path $taskWorkspace 'src/HsHelper.App/HsHelper.App.csproj') -Raw
     $Version = @($taskProject.Project.PropertyGroup.Version | Where-Object { $_ })[0]
 }
-if ($Version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$') { throw 'Use a three-part version with an optional prerelease suffix.' }
+if ($Version -notmatch '\A[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?\z') { throw 'Use a three-part version with an optional prerelease suffix.' }
 $taskMode = if ($FrameworkDependent) { 'framework-dependent' } else { 'self-contained' }
 $taskOutputRoot = Join-Path $taskWorkspace '.local/publish'
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $taskOutputRoot "$Version-$taskMode" }
@@ -34,7 +35,8 @@ try {
         -p:DebugType=None -p:DebugSymbols=false -p:UseSharedCompilation=false -m:1 --disable-build-servers
     if ($LASTEXITCODE -ne 0) { throw "Publish failed ($LASTEXITCODE). The partial output is retained for inspection; use a new directory on retry." }
     # Only these public repository files are added. Never copy a workspace directory recursively.
-    Copy-Item -LiteralPath (Join-Path $taskWorkspace 'doc/windows-release.md') -Destination (Join-Path $taskPackage 'QUICKSTART.zh-CN.md')
+    New-PackageQuickStart -TemplatePath (Join-Path $taskWorkspace 'doc/user-quickstart.zh-CN.md') -Version $Version `
+        -DeploymentMode $taskMode -Destination (Join-Path $taskPackage 'QUICKSTART.zh-CN.md')
     $taskFiles = @(Get-CheckedPackageFiles -Directory $taskPackage)
     $taskEntries = @($taskFiles | ForEach-Object {
         [ordered]@{ path = $_.RelativePath; bytes = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }

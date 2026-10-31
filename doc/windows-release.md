@@ -1,5 +1,7 @@
 # Windows 预览版发行与快速启动
 
+随包的 `QUICKSTART.zh-CN.md` 由独立的[用户指南正文](user-quickstart.zh-CN.md)和当前构建版本／发布方式生成。本页保留仓库中的构建说明与验收记录，不再整份复制进新包；包内 `package-manifest.json`、`SHA256SUMS` 和 ZIP 旁的收据提供该包的来源与完整性信息。
+
 此包面向 Windows x64。默认自包含包固定包含 .NET 10.0.14 Windows Desktop 运行时，使用者无需安装 SDK 或 .NET。请把 ZIP **完整解压**到一个新目录，再双击 `HsHelper.App.exe`；所有 DLL 和 `samples` 目录应留在程序旁。不要在 ZIP 预览窗口内启动。
 
 首次启动的数据目录默认为 `%LOCALAPPDATA%\HsHelper`，与程序目录分开。卡库、套牌、历史、模型加密配置和缓存都保存在该目录。替换程序目录升级时保留该数据目录；不要把它复制进发行包。使用 `--data-dir "D:\HsHelperData"` 或环境变量 `HSHELPER_DATA_DIR` 可指定其他数据目录，命令行优先；日常启动无需参数。
@@ -25,6 +27,8 @@
 本次发布保留默认 NuGet 审计（启用、全部依赖、low），首次还原与发布没有警告。机器收据和各阶段日志位于 `.local\publish\0.1.0-preview.14-*`。
 
 ## 构建发行包
+
+发布脚本先生成本包指南，再计算 manifest、逐文件校验和及 ZIP 收据。自包含包头明确无需另装运行时；依赖框架包头明确需要 x64 .NET 10 Windows Desktop Runtime。验包除了检查字节哈希，还会核对指南中的版本与发布方式，旧指南即使被重新计算哈希也不能冒充新包。指南不嵌入构建后才会产生的验收计数、ZIP 大小或哈希。
 
 开发机需要仓库 `global.json` 兼容的 .NET 10 SDK，首次发布可能需要联网下载官方 win-x64 运行时包。仓库根目录执行：
 

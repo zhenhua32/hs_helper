@@ -1,5 +1,6 @@
 param([Parameter(Mandatory = $true)][string]$PackageDirectory)
 . (Join-Path $PSScriptRoot 'package-common.ps1')
+. (Join-Path $PSScriptRoot 'package-guide.ps1')
 & (Join-Path $PSScriptRoot 'verify-package.ps1') -PackageDirectory $PackageDirectory
 $taskSource = [IO.Path]::GetFullPath($PackageDirectory)
 $taskSourceManifest = Get-Content -LiteralPath (Join-Path $taskSource 'package-manifest.json') -Raw | ConvertFrom-Json
@@ -7,6 +8,7 @@ $taskWorkspace = Split-Path -Parent $PSScriptRoot
 $taskTestRoot = Assert-NewPackagePath -Path (Join-Path $taskWorkspace ('.local/package-safety/' + [Guid]::NewGuid().ToString('N'))) -AllowedRoot (Join-Path $taskWorkspace '.local/package-safety')
 New-Item -ItemType Directory -Path $taskTestRoot | Out-Null
 $taskChecks = 0
+$taskGuideChecks = 0
 
 function New-SyntheticPackage {
     param([string]$Name)
@@ -16,7 +18,8 @@ function New-SyntheticPackage {
         Copy-Item -LiteralPath (Join-Path $taskSource $taskBinary) -Destination (Join-Path $taskFixture $taskBinary)
     }
     Set-Content -LiteralPath (Join-Path $taskFixture 'samples/decks/beast-hunter.txt') -Value 'SYNTHETIC PACKAGE CHECK: not a real deck.' -Encoding utf8
-    Set-Content -LiteralPath (Join-Path $taskFixture 'QUICKSTART.zh-CN.md') -Value 'Synthetic package validation fixture, never run as an app.' -Encoding utf8
+    New-PackageQuickStart -TemplatePath (Join-Path $taskWorkspace 'doc/user-quickstart.zh-CN.md') -Version $taskSourceManifest.version `
+        -DeploymentMode 'framework-dependent' -Destination (Join-Path $taskFixture 'QUICKSTART.zh-CN.md') | Out-Null
     @{ runtimeOptions = @{ tfm = 'net10.0'; frameworks = @(
         @{ name = 'Microsoft.NETCore.App'; version = '10.0.0' },
         @{ name = 'Microsoft.WindowsDesktop.App'; version = '10.0.0' }
@@ -43,6 +46,20 @@ function Assert-PackageRejected {
     try { & (Join-Path $PSScriptRoot 'verify-package.ps1') -PackageDirectory $Directory -ZipPath $ZipPath | Out-Null }
     catch { if ($_.Exception.Message -notmatch $Expected) { throw }; $taskRejected = $true }
     if (-not $taskRejected) { throw 'A deliberately invalid synthetic package was accepted.' }
+}
+
+function Update-SyntheticPackageIntegrity {
+    param([string]$Directory)
+    $taskManifestPath = Join-Path $Directory 'package-manifest.json'
+    $taskManifest = Get-Content -LiteralPath $taskManifestPath -Raw | ConvertFrom-Json
+    $taskPayload = @(Get-CheckedPackageFiles -Directory $Directory | Where-Object { $_.RelativePath -notin @('package-manifest.json', 'SHA256SUMS') })
+    $taskManifest.files = @($taskPayload | ForEach-Object {
+        [ordered]@{ path = $_.RelativePath; bytes = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+    })
+    $taskManifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $taskManifestPath -Encoding utf8
+    @(Get-CheckedPackageFiles -Directory $Directory | Where-Object { $_.RelativePath -ne 'SHA256SUMS' } | ForEach-Object {
+        (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + $_.RelativePath
+    }) | Set-Content -LiteralPath (Join-Path $Directory 'SHA256SUMS') -Encoding utf8
 }
 
 function Write-SyntheticZipReceipt {
@@ -165,3 +182,28 @@ try { Get-CheckedPackageFiles -Directory (Join-Path $taskFixture 'linked/samples
 if (-not $taskRejected) { throw 'A package through a junction ancestor was accepted.' }
 $taskChecks++
 Write-Host "Package safety checks: $taskChecks passed (synthetic fixtures retained under $taskTestRoot)."
+foreach ($taskGuideCase in @('old-version', 'wrong-mode', 'missing-header')) {
+    $taskFixture = New-SyntheticPackage ('guide-' + $taskGuideCase)
+    $taskGuidePath = Join-Path $taskFixture 'QUICKSTART.zh-CN.md'
+    switch ($taskGuideCase) {
+        'old-version' {
+            $taskOldVersion = if ($taskSourceManifest.version -ceq '0.0.0-stale.1') { '0.0.0-stale.2' } else { '0.0.0-stale.1' }
+            Remove-Item -LiteralPath $taskGuidePath
+            New-PackageQuickStart -TemplatePath (Join-Path $taskWorkspace 'doc/user-quickstart.zh-CN.md') -Version $taskOldVersion `
+                -DeploymentMode 'framework-dependent' -Destination $taskGuidePath | Out-Null
+        }
+        'wrong-mode' {
+            Remove-Item -LiteralPath $taskGuidePath
+            New-PackageQuickStart -TemplatePath (Join-Path $taskWorkspace 'doc/user-quickstart.zh-CN.md') -Version $taskSourceManifest.version `
+                -DeploymentMode 'self-contained' -Destination $taskGuidePath | Out-Null
+        }
+        'missing-header' {
+            Set-Content -LiteralPath $taskGuidePath -Value '合成包验证：缺少快速开始头部，不运行应用。' -Encoding utf8
+        }
+    }
+    # The bytes, manifest and checksum receipt agree. Only the guide's semantic binding is invalid.
+    Update-SyntheticPackageIntegrity -Directory $taskFixture
+    Assert-PackageRejected -Directory $taskFixture -Expected ([regex]::Escape('Package quickstart version or deployment mode does not match the manifest.'))
+    $taskGuideChecks++
+}
+Write-Host "Package quickstart semantic checks: $taskGuideChecks passed (separate from the $taskChecks package safety checks)."
