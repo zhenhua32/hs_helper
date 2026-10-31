@@ -164,17 +164,27 @@ public sealed class AdviceService(HttpClient http)
             {
                 if (round == settings.MaxToolRounds || (totalCalls += calls.Count) > 8)
                     throw new InvalidDataException("模型工具调用达到本次分析上限。");
-                messages.Add(message.DeepClone());
                 var callIds = new HashSet<string>(StringComparer.Ordinal);
+                // Audit identifiers must be safe before any callback observes the batch. Rejecting them
+                // here also leaves already observed HTTP usage available for durable budget settlement.
+                foreach (var call in calls)
+                {
+                    if (call is not JsonObject entry || entry["function"] is not JsonObject)
+                        throw new InvalidDataException("模型工具调用格式无效。");
+                    var sourceId = ReadString(entry["id"], "工具标识格式无效。");
+                    if (sourceId is null || !Regex.IsMatch(sourceId, @"\A[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}\z", RegexOptions.CultureInvariant) ||
+                        sourceId.Contains("://", StringComparison.Ordinal) || (!string.IsNullOrEmpty(apiKey) && sourceId.Contains(apiKey, StringComparison.Ordinal)) ||
+                        !callIds.Add(sourceId))
+                        throw new InvalidDataException("模型工具调用的来源标识无效或重复。");
+                }
+                messages.Add(message.DeepClone());
                 foreach (var call in calls)
                 {
                     EnsureCurrent(isCurrent, token);
                     if (call is not JsonObject callObject || callObject["function"] is not JsonObject function)
                         throw new InvalidDataException("模型工具调用格式无效。");
                     var name = ReadString(function["name"], "工具名称格式无效。");
-                    var id = ReadString(callObject["id"], "工具标识格式无效。");
-                    if (string.IsNullOrWhiteSpace(id) || !callIds.Add(id))
-                        throw new InvalidDataException("工具调用缺少标识或标识重复。");
+                    var id = callObject["id"]!.GetValue<string>();
                     JsonNode result;
                     if (name is not ("get_snapshot" or "get_cards") && (name is null || !registered.ContainsKey(name)))
                         result = new JsonObject { ["error"] = "该工具尚未实现，不能将其作为计算依据。" };

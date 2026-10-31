@@ -11,5 +11,15 @@
     <ProjectReference Include="../../src/HsHelper.Agent/HsHelper.Agent.csproj" />
     <ProjectReference Include="../../src/HsHelper.Rules/HsHelper.Rules.csproj" />
     <ProjectReference Include="../../src/HsHelper.Coaching/HsHelper.Coaching.csproj" />
+    <ProjectReference Include="../../src/HsHelper.Cli/HsHelper.Cli.csproj" ReferenceOutputAssembly="false" OutputItemType="CliTestTargetPath" />
   </ItemGroup>
+  <Target Name="RecordCliTestTargetPath" BeforeTargets="GetAssemblyAttributes" DependsOnTargets="ResolveProjectReferences">
+    <Error Condition="'@(CliTestTargetPath)' == ''" Text="The production CLI target path is required for CLI integration checks." />
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>CliTestTargetPath</_Parameter1>
+        <_Parameter2>@(CliTestTargetPath->'%(FullPath)')</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
 </Project>

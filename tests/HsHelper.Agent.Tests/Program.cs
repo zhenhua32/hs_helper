@@ -20,6 +20,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("action arrays and objects cannot bypass strategy-only output", RejectActions),
     ("malformed tool parameters never reach the callback", InvalidArguments),
     ("missing and duplicate tool IDs are rejected", InvalidCallIds),
+    ("unsafe provider tool IDs never reach callbacks and retain observed HTTP spend", ToolIdFailureUsage),
+    ("bounded opaque provider tool IDs preserve their exact audit source", OpaqueToolIds),
     ("unsupported tool reports limitation without executing it", UnsupportedTool),
     ("HTTP error retains status while keeping body and key private", HttpFailure),
     ("transport error cannot echo API key into diagnostics", NetworkFailure),
@@ -195,8 +197,46 @@ async Task InvalidArguments()
 }
 async Task InvalidCallIds()
 {
-    foreach (var calls in new[] { Calls(Tool(id: "")), Calls(Tool(id: "same"), Tool(id: "same")) })
-        await Throws<InvalidDataException>(() => Analyze(new FakeHandler((_, _) => Reply(calls))));
+    foreach (var calls in new[] { Calls(Tool(id: "")), Calls(Tool(id: "same"), Tool(id: "same")),
+        Calls(Tool(id: "valid-first"), Tool(id: "tail-newline\n")), Calls(Tool(id: "中文标识")) })
+    {
+        var executed = 0;
+        await Throws<InvalidDataException>(() => Analyze(new FakeHandler((_, _) => Reply(calls)), (_, _, _) =>
+        { executed++; return Task.FromResult<JsonNode>(new JsonObject()); }));
+        Check(executed == 0, "Part of an invalid ID batch executed before validation completed.");
+    }
+}
+async Task ToolIdFailureUsage()
+{
+    const string secret = "tool-id-private-key";
+    foreach (var id in new[] { secret, "prefix-" + secret + "-suffix", "https://private-fixture.invalid/id", new string('x', 201), "safe\n" })
+    {
+        var envelope = JsonNode.Parse(Calls(Tool(id: "valid-first"), Tool(id: id)))!.AsObject();
+        envelope["usage"] = new JsonObject { ["prompt_tokens"] = 60, ["completion_tokens"] = 15, ["total_tokens"] = 75 };
+        var handler = new FakeHandler((_, _) => Reply(envelope.ToJsonString()));
+        var budget = new AnalysisBudget(); var usages = new List<ModelUsage>(); var invoked = 0; var executed = 0;
+        var error = await Throws<InvalidDataException>(() => new AdviceService(new HttpClient(handler)).AnalyzeAsync(settings, secret, context,
+            (_, _, _) => { executed++; return Task.FromResult<JsonNode>(new JsonObject()); }, () => true,
+            capabilities: new() { Budget = budget, OnUsage = usages.Add, OnToolInvocation = _ => invoked++ }));
+        Check(handler.Calls == 1 && invoked == 0 && executed == 0 && usages is [{ Success: true, ChargedTokens: 75 }] &&
+            budget.Snapshot(context.MatchId) is { RequestsStarted: 1, ChargedTokens: 75, InFlightRequests: 0 },
+            "Rejected ID executed a tool or lost already observed HTTP usage/budget.");
+        Check(!error.ToString().Contains(secret, StringComparison.Ordinal) && !error.ToString().Contains(id, StringComparison.Ordinal) &&
+            usages[0].RequestId.Length > 0 && usages[0].AnalysisRunId is { Length: > 0 }, "Unsafe ID entered an error or displaced generated audit IDs.");
+    }
+}
+async Task OpaqueToolIds()
+{
+    foreach (var id in new[] { "0", "provider:call_0/part-2.v1", new string('i', 200) })
+    {
+        var handler = new FakeHandler((n, _) => Reply(n == 1 ? Calls(Tool(id: id)) : Final()));
+        var sources = new List<AgentToolInvocation>(); var executed = 0;
+        await new AdviceService(new HttpClient(handler)).AnalyzeAsync(settings, "tool-id-private-key", context,
+            (_, _, _) => { executed++; return Task.FromResult<JsonNode>(new JsonObject()); }, () => true,
+            capabilities: new() { OnToolInvocation = sources.Add });
+        Check(handler.Calls == 2 && executed == 1 && sources is [{ ToolCallId: var actual }] && actual == id,
+            "Valid provider ID was normalized, truncated or detached from its source.");
+    }
 }
 async Task UnsupportedTool()
 {

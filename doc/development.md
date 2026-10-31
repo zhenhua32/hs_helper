@@ -169,9 +169,13 @@ dotnet run --no-build --artifacts-path .local/build --project src/HsHelper.Cli -
 dotnet run --no-build --artifacts-path .local/build --project src/HsHelper.Cli -- timeline --session SESSION_ID --data-dir .local/demo-data
 ```
 
-`advise --snapshot path --env .env --data-dir path --task turn --out advice.json` 可对手动指定的过滤快照请求分析；任务可用 mulligan、turn、choice、review、deckplan 对应五种模板。程序读取固定 build 的本地卡库，使用紧凑上下文和主机动作复验，完成后归档建议；输出文件保留结构化 Advice 格式，控制台仅显示连接、验证、动作数量、耗时和用量摘要。该命令仍要求有效过滤快照；不等同于桌面中无需实时局面的独立套牌计划入口。
+`advise --snapshot path --env .env --data-dir path --task turn --out advice.json` 可对手动指定的过滤快照请求分析；任务可用 mulligan、turn、choice、review、deckplan 对应五种模板，已结束局面默认使用 review。程序读取固定 build 的本地卡库，使用紧凑上下文和主机动作复验，完成后归档建议；输出文件保留结构化 Advice 格式，控制台显示验证、动作数量、历史承接与知识截止、限制分类、耗时和用量摘要。该命令仍要求有效过滤快照；不等同于桌面中无需实时局面的独立套牌计划入口。
 
-CLI 仅在本地找到同 MatchId、EventSequence、StateVersion 且内容一致的稳定完整决策点时，才用该记录时间开放个人计划/历史工具。未知导入时间不会用当前时间代替。预算从持久化审计恢复，采用 `.env` 与已保存调优合并后的上限，Ctrl+C 仍刷新已经观察到的用量和工具耗时。输出不能覆盖输入快照、模型配置或所用数据库。
+CLI 仅在本地找到同 MatchId、EventSequence、StateVersion 且内容一致的稳定完整保存决策点时，才开放个人计划/历史工具，并用其真实录制时间固定 `KnowledgeAsOf`。套牌绑定与卡库取自该决策点的原始会话；旧快照缺 tracking 或 ClientBuild 时也可恢复原始来源，显式矛盾则在调用模型前拒绝。套牌版本的创建 build 不代替原对局 build。连续追问复用桌面的最多四轮筛选：同对局、套牌、卡库、状态/事件边界及不晚于本次知识截止的旧模型意见。查询 `AsOf` 单独固定为请求开始时间，因此后来针对同一旧局面生成的解释仍可承接，不能把它们当作当前事实。未匹配或改过内容的外部快照没有个人库、历史对话或伪造的知识截止。
+
+请求审计保留模型、运行、请求、事件、套牌与模板来源；工具审计保留对应的模型、运行、请求、工具调用标识及结果哈希。提供方的工具调用标识在整批执行前校验：必须满足审计的 1–200 字符匿名 ASCII 标识边界，不带地址或本次凭据；非法标识安全拒绝且不回显，已发生的 HTTP 用量仍会持久化。预算从持久化审计恢复，采用 `.env` 与已保存调优合并后的上限，Ctrl+C 仍刷新已经观察到的用量和工具耗时。输出不能覆盖输入快照、模型配置或所用数据库。
+
+CLI 接受 Core 为已确认视角匿名化的敌方 SECRET 槽公开分类：仅 `SECRET`、`QUEST`、`SIDE_QUEST` 的 `0`、`1` 或 `unknown` 值。隐藏 CardId、私有牌效标签、非 SECRET 区域、未知归属或未确认视角均不据此放开。模型接收的仍是过滤后的固定上下文。
 
 其他命令包括 config-preview、replay、watch、cards-import/search、deck-decode、pool-sync/import、historical-context 和 stats；运行 help 查看参数。record 共享读取并固定完整行边界，Ctrl+C 保存已观察部分。diagnose/config-preview 只读。沙箱可能重定向 LocalApplicationData，可用 diagnose --config 指定实际文件。
 
@@ -238,6 +242,8 @@ preview14 的独立发行验收来源为 `7cd1c35a2cf0d26bb7da125a3de5dbd68a4df4
 preview15 已以干净来源 `60596b5f8971eb2e5b3428d48896983b1325cf62` 完成双模式真实发行：自包含 ZIP 67,188,296 字节，415 文件展开 150,698,342 字节，SHA256 `b21e9af5c828f3ee53e091858664a1ef5d0638931c945c2413a633ebca0b5a5a`；依赖框架 ZIP 2,062,505 字节，20 文件展开 4,373,058 字节，SHA256 `6f60fd2ffa419ce7c2a259122332c8aad867f2bb4e15ede86dd5730223d98db3`。独立指南生成 27 项、两包各 27 安全＋3 语义及 ZIP/逐文件/无窗口诊断均通过，指南正文逐字等于固定模板，包头与各自 manifest 一致；均无旧提交、ZIP 哈希或开发收据。自包含 Core/Desktop 10.0.14 的七 DLL 与官方缓存/nupkg 条目及两整包 SHA512 匹配；依赖框架诊断仅使用本机可用的 10.0.0，未验证干净 Windows。默认 NuGetAudit 保留，两次首次构建均零警告、零错误；所有产物与补充双指南收据只在 `.local/publish/0.1.0-preview.15-*`，未上传或加入 Git。
 
 2026-10-31 最终建议限制更新通过 `scripts/verify.ps1` 的 1103 项源码回归：Core 103、Ingestion 9、Cards 36、Agent 82、Configuration 26、Storage 113、Rules 485、App 113、Integration 136，另 27 项指南生成检查通过，构建零警告、零错误。同一生产 AdviceService 无网络复现现保留全部 5 条主机限制、动作移除说明及三类输出字段；新增回归覆盖模型伪造主机字段、空数组不能升级验证、条件与未覆盖动作移除、真实已验证斩杀正控、不相关候选隔离、旧归档哈希、深只读及实际隐藏 WPF 主/归档显示。交叉审查另复现短凭据脱敏展开后裁掉限制尾部但未标记的问题，现由归档传播截断标记，重开及重存幂等均通过，CLI 回填归档后的字段和标记。另用本机假 HTTP 服务实际运行最终 CLI，模型意见与未覆盖动作两个场景均通过，导出 JSON 与重开的 SQLite 保持一致、敏感内容已过滤、模型/运行/请求来源保留。这里只更新源码，未重打或改写 preview15；CLI 历史截止/连续追问、真实模型质量、国服对局、多屏及干净 Windows 验收仍待后续完成。
+
+其后的 CLI 历史与审计更新通过 1115 项完整源码回归：Core 103、Ingestion 9、Cards 36、Agent 84、Configuration 26、Storage 113、Rules 485、App 113、Integration 146，另 27 项指南生成检查通过，构建零警告、零错误。新增 10 组持续回归通过 MSBuild 提供的实际 CLI 产物路径启动生产进程，使用隔离 SQLite 与仅本机的假 HTTP：核对连续两次追问、四轮上限、精确来源、旧计划与笔记、未来知识/事件及其他套牌/卡库排除、同序号不同内容与无保存点、缺 tracking/build 的原绑定恢复及矛盾拒绝、HTTP 失败与超时结算、恶意工具 ID、默认结束局面复盘。真实 Core 的三态匿名奥秘分类均可通过，11 种隐私反例在 HTTP 前拒绝；提供方回显假凭据与非法 URL 标识也被整批阻断，已发生请求的令牌用量账本仍保留。独立复现与审查均已核对；未调用真实模型、读取真实配置或操作游戏，本轮仍只更新源码。
 
 Integration 的 --export-fixture .local/synthetic-smoke 可导出明确标记的合成快照和卡库，用于真实服务额外验收。普通回归使用假 HTTP，不产生模型费用。源日志仅共享读取，不复制到仓库；验证下载与数据保存在 .local，日常运行数据使用配置的数据目录。
 

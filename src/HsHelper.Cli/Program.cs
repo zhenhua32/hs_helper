@@ -105,13 +105,45 @@ static async Task<int> MainAsync(string[] args)
                     throw new ArgumentException("输出不能覆盖输入、模型配置或数据库。");
                 var snapshot = SnapshotCodec.Deserialize(await File.ReadAllTextAsync(snapshotPath));
                 var identityTags = new HashSet<string>(["NAME", "PLAYER_NAME", "ENTITY_NAME", "ACCOUNT_ID", "GAME_ACCOUNT_ID", "PlayerName", "EntityName", "AccountId", "GameAccountId"], StringComparer.OrdinalIgnoreCase);
+                var confirmedLocal = ChoiceVisibility.ConfirmedLocalPlayer(snapshot);
+                bool PublicSecretClassification(EntitySnapshot entity, KeyValuePair<string, string> tag) =>
+                    confirmedLocal.HasValue && entity.Zone == "SECRET" && entity.ControllerId is 1 or 2 && entity.ControllerId != confirmedLocal &&
+                    tag.Key is "SECRET" or "QUEST" or "SIDE_QUEST" && tag.Value is "0" or "1" or "unknown";
                 if (!snapshot.Quality.IsComplete || !snapshot.Quality.IsStable || !snapshot.Quality.HasLocalPerspective || snapshot.IsSpectating ||
                     snapshot.LocalPlayerId is not (1 or 2) || snapshot.Entities.Values.Any(entity =>
                         entity.Tags.Keys.Any(identityTags.Contains) || (entity.Kind == EntityKind.Card &&
                          !(entity.Zone is "PLAY" or "GRAVEYARD" || (entity.ControllerId == snapshot.LocalPlayerId && entity.Zone is "HAND" or "SECRET")) &&
-                         (entity.CardId is not null || entity.Tags.Keys.Any(tag => tag is not ("ZONE" or "CONTROLLER" or "ZONE_POSITION" or "ENTITY_ID"))))))
+                         (entity.CardId is not null || entity.Tags.Any(tag => tag.Key is not ("ZONE" or "CONTROLLER" or "ZONE_POSITION" or "ENTITY_ID") &&
+                             !PublicSecretClassification(entity, tag))))))
                     throw new InvalidDataException("需要稳定、完整且已过滤隐藏身份与账号信息的玩家视角局面。");
-                var build = snapshot.ClientBuild ?? snapshot.DeckTracking?.CardBuild;
+                var requestStartedAt = DateTimeOffset.UtcNow;
+                var sessions = new SessionStore(Path.Combine(dataRoot, "sessions.db")); await sessions.InitializeAsync();
+                var point = (await sessions.ListDecisionPointsAsync(snapshot.MatchId, includeUnstable: true))
+                    .FirstOrDefault(p => p.EventSequence == snapshot.EventSequence && p.StateVersion == snapshot.StateVersion &&
+                        p.IsDecisionPoint && p.IsStable && p.IsComplete);
+                var historical = point is null ? null : await sessions.GetHistoricalDecisionAsync(point.Id);
+                if (historical is not null && (!historical.Point.IsDecisionPoint || !historical.Point.IsStable || !historical.Point.IsComplete ||
+                    SnapshotCodec.Serialize(historical.Context.Snapshot) != SnapshotCodec.Serialize(snapshot))) historical = null;
+                string? KnownBuild(string? value) => string.IsNullOrWhiteSpace(value) || value == "unknown" ? null : value;
+                var build = KnownBuild(snapshot.ClientBuild) ??
+                    (snapshot.DeckTracking is { } candidate && candidate.MatchId == snapshot.MatchId && candidate.StateVersion == snapshot.StateVersion
+                        ? KnownBuild(candidate.CardBuild) : null);
+                if (historical is not null)
+                {
+                    var savedBuild = KnownBuild(historical.Context.CardBuild);
+                    if (savedBuild is null) historical = null;
+                    else
+                    {
+                        if (KnownBuild(snapshot.ClientBuild) is { } observedBuild && observedBuild != savedBuild ||
+                            snapshot.DeckTracking is { } tracked && (tracked.MatchId != snapshot.MatchId || tracked.StateVersion != snapshot.StateVersion ||
+                                KnownBuild(tracked.CardBuild) is { } trackingBuild && trackingBuild != savedBuild ||
+                                tracked.DeckVersion != historical.Context.DeckVersionId))
+                            throw new InvalidDataException("保存决策点的卡库或套牌绑定与快照冲突，不能承接个人历史。");
+                        if (historical.Point.RecordedAt > requestStartedAt)
+                            throw new InvalidDataException("保存决策点的录制时间晚于本次查询，无法确定历史知识边界。");
+                        build = savedBuild;
+                    }
+                }
                 if (string.IsNullOrWhiteSpace(build) || build == "unknown") throw new InvalidDataException("局面没有固定卡库版本。");
                 var catalog = new CardCatalog(Path.Combine(dataRoot, "cards.db")); await catalog.InitializeAsync();
                 if (await catalog.GetManifestAsync(build) is null) throw new InvalidDataException("缺少局面对应的固定版本卡库。");
@@ -121,12 +153,12 @@ static async Task<int> MainAsync(string[] args)
                     ? await new ProtectedModelConfigurationStore(tuningPath, new WindowsSecretProtector()).LoadAsync() : null;
                 config = EnvironmentModelConfiguration.MergeTuning(config, saved?.Settings);
                 if (config.Settings.Model.Contains("://", StringComparison.Ordinal)) throw new InvalidDataException("模型标识不能包含地址。");
-                var sessions = new SessionStore(Path.Combine(dataRoot, "sessions.db")); await sessions.InitializeAsync();
                 var knowledge = new CoachKnowledgeStore(Path.Combine(dataRoot, "knowledge.db")); await knowledge.InitializeAsync();
                 var archive = new AdviceArchiveStore(Path.Combine(dataRoot, "advice-archive.db")); await archive.InitializeAsync();
-                DeckVersion? deck = null;
-                if (snapshot.DeckTracking is { } tracking && tracking.MatchId == snapshot.MatchId && tracking.StateVersion == snapshot.StateVersion && tracking.CardBuild == build)
+                DeckVersion? deck = historical?.Context.Deck;
+                if (historical is null && snapshot.DeckTracking is { } tracking && tracking.MatchId == snapshot.MatchId && tracking.StateVersion == snapshot.StateVersion && tracking.CardBuild == build)
                     deck = await sessions.GetDeckVersionAsync(tracking.DeckVersion);
+                var deckVersionId = historical is null ? deck?.Id : historical.Context.DeckVersionId;
                 var relevantCards = (await catalog.GetByIdsAsync(snapshot.Entities.Values
                     .Where(e => e.Zone == "PLAY" || e.ControllerId == snapshot.LocalPlayerId && e.Zone is "HAND" or "SECRET")
                     .Select(e => e.CardId).OfType<string>()
@@ -139,17 +171,12 @@ static async Task<int> MainAsync(string[] args)
                 { GamePhase.Choice => AdviceTaskKind.Choice, GamePhase.Mulligan => AdviceTaskKind.Mulligan,
                     GamePhase.Complete => AdviceTaskKind.Review, _ => AdviceTaskKind.Turn };
                 var context = CompactAdviceContextBuilder.Create(snapshot, build, taskKind, deck?.Definition, relevantCards.Values)
-                    with { UserQuestion = Option("question") ?? Option("task") };
-                var point = (await sessions.ListDecisionPointsAsync(snapshot.MatchId, includeUnstable: true))
-                    .FirstOrDefault(p => p.EventSequence == snapshot.EventSequence && p.StateVersion == snapshot.StateVersion &&
-                        p.IsDecisionPoint && p.IsStable && p.IsComplete);
-                if (point is not null)
-                {
-                    var stored = await sessions.GetDecisionSnapshotAsync(point.Id);
-                    if (stored is null || SnapshotCodec.Serialize(stored) != SnapshotCodec.Serialize(snapshot)) point = null;
-                }
-                CoachLibraryContext? library = point is null ? null : new(sessions, knowledge,
-                    new(snapshot.MatchId, snapshot.StateVersion, build, deck?.Id, point.RecordedAt, snapshot.OpponentClass,
+                    with { UserQuestion = Option("question") ?? Option("task"), DeckVersionId = deckVersionId,
+                        AsOf = requestStartedAt, KnowledgeAsOf = historical?.Point.RecordedAt };
+                if (historical is not null)
+                    context = await ConversationHistoryBuilder.AttachAsync(context, archive, deckVersionId, requestStartedAt);
+                CoachLibraryContext? library = historical is null ? null : new(sessions, knowledge,
+                    new(snapshot.MatchId, snapshot.StateVersion, build, deckVersionId, historical.Point.RecordedAt, snapshot.OpponentClass,
                         snapshot.FirstPlayerId is null ? null : snapshot.FirstPlayerId == snapshot.LocalPlayerId,
                         Format: snapshot.Format ?? "STANDARD", GameType: snapshot.GameType ?? "GT_RANKED", EventSequence: snapshot.EventSequence));
                 context.Snapshot["personal_library_available"] = library is not null;
@@ -162,7 +189,8 @@ static async Task<int> MainAsync(string[] args)
                 {
                     tools.Enqueue(new(Guid.NewGuid().ToString("N"), snapshot.MatchId, snapshot.StateVersion, observation.Name,
                         observation.ElapsedMilliseconds, observation.Success ? AnalysisTraceStatus.Completed : AnalysisTraceStatus.Failed)
-                        { ResultHash = observation.ResultHash });
+                        { ResultHash = observation.ResultHash, Model = observation.Model, AnalysisRunId = observation.AnalysisRunId,
+                            RequestId = observation.RequestId, ToolCallId = observation.ToolCallId, EventSequence = observation.EventSequence });
                     evidence.Enqueue(new(observation.Name, ToolEvidenceSummary(observation), observation.ResultHash));
                 }, taskKind: context.TaskKind);
                 var usages = new ConcurrentQueue<ModelUsage>();
@@ -172,7 +200,8 @@ static async Task<int> MainAsync(string[] args)
                     requests.Enqueue(new(usage.RequestId, usage.MatchId, usage.StateVersion, usage.Model, usage.Round,
                         usage.InputTokens, usage.OutputTokens, usage.TotalTokens, usage.ChargedTokens, usage.ElapsedMilliseconds,
                         usage.Success ? AnalysisTraceStatus.Completed : AnalysisTraceStatus.Failed, usage.ConservativeCharge)
-                        { CardBuild = build, Task = context.Task, PromptTemplateVersion = context.TemplateVersion });
+                        { CardBuild = usage.CardBuild ?? build, Task = context.Task, PromptTemplateVersion = usage.PromptTemplateVersion ?? context.TemplateVersion,
+                            AnalysisRunId = usage.AnalysisRunId, EventSequence = usage.EventSequence, DeckVersionId = usage.DeckVersionId });
                 }
                 using var cancellation = new CancellationTokenSource();
                 ConsoleCancelEventHandler cancel = (_, e) => { e.Cancel = true; cancellation.Cancel(); };
@@ -188,7 +217,7 @@ static async Task<int> MainAsync(string[] args)
                     adviceStage = "archive";
                     var archived = await archive.SaveAsync(new(snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence, build, context.TemplateVersion, advice.Summary)
                     {
-                        DeckVersionId = deck?.Id, Task = context.Task, UserQuestion = context.UserQuestion, Reasons = advice.Reasons, Alternative = advice.Alternative, Risks = advice.Risks,
+                        DeckVersionId = deckVersionId, Task = context.Task, UserQuestion = context.UserQuestion, Reasons = advice.Reasons, Alternative = advice.Alternative, Risks = advice.Risks,
                         Verification = advice.Verification, VerifiedLethal = advice.VerifiedLethal,
                         LimitationsVersion = advice.LimitationsVersion, Assumptions = advice.Assumptions, Unknowns = advice.Unknowns,
                         UnsupportedMechanics = advice.UnsupportedMechanics, HostRisks = advice.HostRisks,
@@ -222,6 +251,7 @@ static async Task<int> MainAsync(string[] args)
                 }
                 var usage = usages.ToArray();
                 Print(new { Connected = true, advice.Verification, Actions = advice.Actions.Count, ElapsedMilliseconds = clock.ElapsedMilliseconds,
+                    PersonalLibraryAvailable = library is not null, ConversationTurns = advice.ConversationArchiveIds.Count, advice.KnowledgeAsOf,
                     Limitations = new { advice.LimitationsVersion, ModelAssumptions = advice.Assumptions?.Count,
                         ModelUnknowns = advice.Unknowns?.Count, ModelUnsupportedMechanics = advice.UnsupportedMechanics?.Count,
                         HostRisks = advice.HostRisks?.Count, HostAssumptions = advice.HostAssumptions?.Count,
