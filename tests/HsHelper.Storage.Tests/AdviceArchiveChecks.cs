@@ -15,6 +15,7 @@ static class AdviceArchiveChecks
         yield return ("raw HTTP bodies and source log lines never enter advice archives", () => RawBodies(Path.Combine(root, "raw.db")));
         yield return ("archive validation cancellation and future schemas preserve records", () => Invalid(Path.Combine(root, "invalid.db")));
         yield return ("archive preparation validates and freezes before any persistence", () => Prepare(Path.Combine(root, "prepare.db")));
+        yield return ("end turn archives preserve player sources and legacy source-less records", () => EndTurnSources(Path.Combine(root, "end-turn.db")));
         yield return ("short credentials cannot expand prepared records past archive limits", () => ShortCredentials(Path.Combine(root, "short-credentials.db")));
     }
     private static void Check(bool value, string text) { if (!value) throw new InvalidOperationException(text); }
@@ -123,6 +124,21 @@ static class AdviceArchiveChecks
         var store = new AdviceArchiveStore(path); await store.InitializeAsync();
         var saved = await store.SaveAsync(prepared);
         Check(JsonSerializer.Serialize(saved.Advice) == JsonSerializer.Serialize(prepared), "Save revalidation changed a prepared immutable record.");
+    }
+    private static async Task EndTurnSources(string path)
+    {
+        var store = new AdviceArchiveStore(path); await store.InitializeAsync();
+        foreach (var source in new int?[] { null, 42 })
+        {
+            var draft = Draft() with { Actions = [new("end_turn", source)] };
+            var saved = await store.SaveAsync(draft);
+            Check((await store.GetAsync(saved.Id))!.Advice.Actions.Single() == new ArchivedAdviceAction("end_turn", source),
+                "End-turn player source or legacy source-less action did not survive archival.");
+            Check((await store.SaveAsync(draft)).Id == saved.Id, "End-turn source changed the idempotent saved identity.");
+        }
+        foreach (var action in new ArchivedAdviceAction[] { new("end_turn", 0), new("end_turn", -1), new("end_turn", 42, 99), new("end_turn", null, 99), new("attack", null, 99), new("play", 0) })
+            await Throws<ArgumentException>(() => store.SaveAsync(Draft() with { Actions = [action] }));
+        Check((await store.ListAsync()).Count == 2, "Invalid action shapes entered the archive.");
     }
     private static async Task ShortCredentials(string path)
     {

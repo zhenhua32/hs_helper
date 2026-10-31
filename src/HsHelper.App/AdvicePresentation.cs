@@ -160,10 +160,10 @@ public partial class MainWindow
             finally { if (ReferenceEquals(_analysis, cancellation)) { AnalyzeButton.IsEnabled = true; _analysis = null; } }
         }
     }
-    private async void ViewDeckAdviceArchiveClicked(object sender, RoutedEventArgs e) => await Run(async () =>
+    private void ViewDeckAdviceArchiveClicked(object sender, RoutedEventArgs e)
     {
-        var deck = (PlanDeckBox.SelectedItem as DeckItem)?.Value ?? throw new InvalidOperationException("请先选择套牌版本。");
-        var records = await _adviceArchive.ListAsync(new AdviceArchiveFilter(MatchId: "deck-" + deck.Id));
-        ShowAdviceArchive(records);
-    });
+        if (_closing || _adviceArchive is null) return;
+        if ((PlanDeckBox.SelectedItem as DeckItem)?.Value is not { } deck) { StatusText.Text = "请先选择套牌版本。"; return; }
+        OpenAdviceArchive(new("deck-" + deck.Id, $"套牌 {deck.Name} · 版本 {deck.Id}", AdviceArchiveScopeKind.DeckPlan, deck.Id));
+    }
 }

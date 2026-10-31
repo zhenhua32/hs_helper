@@ -39,6 +39,7 @@ checks.AddRange(ChoiceHistoryStorageChecks.Cases(database));
 checks.AddRange(TurnHistoryStorageChecks.Cases(database));
 checks.AddRange(SessionPagingChecks.Cases(database));
 checks.AddRange(KnowledgePagingChecks.Cases(database));
+checks.AddRange(ArchivePagingChecks.Cases(database));
 var completed = 0;
 foreach (var check in checks)
 {

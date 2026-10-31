@@ -1,5 +1,4 @@
 using System.IO;
-using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using HsHelper.Storage;
@@ -330,43 +329,22 @@ public partial class MainWindow
         RefreshKnowledgeDraftStatus(); RefreshKnowledgeControls();
         MainTabs.SelectedItem = KnowledgeTab;
     });
-    private async void ViewAdviceArchiveClicked(object sender, RoutedEventArgs e) => await Run(async () =>
+    private Action<AdviceArchiveWindow>? _showAdviceArchiveWindow = null;
+    private void ViewAdviceArchiveClicked(object sender, RoutedEventArgs e)
     {
-        var match = (SessionsGrid.SelectedItem as SessionItem)?.Value.Id ?? DisplaySnapshot.MatchId;
-        var records = await _adviceArchive.ListAsync(new AdviceArchiveFilter(MatchId: match));
-        ShowAdviceArchive(records);
-    });
-    private void ShowAdviceArchive(IReadOnlyList<ArchivedAdviceRecord> records)
-    {
-        var list = new ListBox { Margin = new Thickness(12), DisplayMemberPath = "Label", ItemsSource = records.Select(r => new ArchiveItem(r)).ToArray() };
-        var text = new TextBox { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(12) };
-        list.SelectionChanged += (_, _) =>
-        {
-            if (list.SelectedItem is ArchiveItem item) text.Text = RenderArchivedAdvice(item.Value);
-        };
-        var panel = new Grid(); panel.ColumnDefinitions.Add(new() { Width = new GridLength(260) }); panel.ColumnDefinitions.Add(new());
-        Grid.SetColumn(text, 1); panel.Children.Add(list); panel.Children.Add(text);
-        var window = new Window { Owner = this, Title = "本局建议记录（事后资料）", Width = 900, Height = 650, Content = panel };
-        if (records.Count == 0) text.Text = "该局尚无已保存的建议。";
-        window.Show(); list.SelectedIndex = records.Count == 0 ? -1 : 0;
+        if (_closing || _adviceArchive is null) return;
+        var session = (SessionsGrid.SelectedItem as SessionItem)?.Value;
+        var state = DisplaySnapshot;
+        var match = session?.Id ?? state.MatchId;
+        if (string.IsNullOrWhiteSpace(match)) { StatusText.Text = "请先选择一个对局。"; return; }
+        OpenAdviceArchive(new(match, session is null ? $"对局 {match}" : $"对局 {match} · {session.StartedAt.ToLocalTime():yyyy-MM-dd HH:mm}",
+            AdviceArchiveScopeKind.Session, session is not null ? session.DeckVersionId : _historyContext is { } historical ? historical.DeckVersionId : _sourceDeckVersion?.Id,
+            state.MatchId == match ? state.EventSequence : null));
     }
-    private sealed record ArchiveItem(ArchivedAdviceRecord Value)
+    private void OpenAdviceArchive(AdviceArchiveScope scope)
     {
-        public string Label => $"{Value.RecordedAt.ToLocalTime():MM-dd HH:mm:ss} · v{Value.Advice.StateVersion} · {Value.Advice.Task}";
-    }
-    private static string RenderArchivedAdvice(ArchivedAdviceRecord value)
-    {
-        var a = value.Advice;
-        var text = new StringBuilder($"{a.Task} · v{a.StateVersion} · #{a.EventSequence} · {a.Verification}\n{a.Summary}\n\n依据\n");
-        text.Insert(0, $"模型：{a.Model ?? "旧记录未保存来源"} · 模板：{a.PromptTemplateVersion}\n分析：{a.AnalysisRunId ?? "未知"}\n\n");
-        if (!string.IsNullOrWhiteSpace(a.UserQuestion)) text.Insert(0, $"当时提问：{a.UserQuestion}\n\n");
-        foreach (var reason in a.Reasons) text.AppendLine(reason);
-        text.AppendLine($"\n备选\n{a.Alternative ?? "无"}\n\n风险");
-        foreach (var risk in a.Risks) text.AppendLine(risk);
-        text.AppendLine("\n工具依据");
-        foreach (var evidence in a.Evidence) text.AppendLine($"{evidence.ToolName} · {evidence.Summary}");
-        text.AppendLine("\n这是当时生成的建议记录，不能继续当作当前可执行步骤。");
-        return text.ToString();
+        var browser = new AdviceArchiveWindow(_adviceArchive, scope);
+        if (_showAdviceArchiveWindow is { } present) present(browser);
+        else { browser.Owner = this; browser.Show(); }
     }
 }

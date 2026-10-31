@@ -35,7 +35,16 @@ public sealed record AdviceRecordDraft(string MatchId, long StateVersion, long E
 public sealed record ArchivedAdviceRecord(string Id, DateTimeOffset RecordedAt, AdviceRecordDraft Advice);
 public sealed record AdviceArchiveFilter(string? MatchId = null, long? StateVersion = null,
     long? ThroughEventSequence = null, string? CardBuild = null, string? DeckVersionId = null,
-    DateTimeOffset? RecordedBefore = null, int Limit = 100);
+    DateTimeOffset? RecordedBefore = null, int Limit = 100)
+{
+    public string? Task { get; init; }
+    public string? TextContains { get; init; }
+}
+public sealed record AdviceArchivePage(IReadOnlyList<ArchivedAdviceRecord> Records, int PageNumber,
+    int PageSize, bool HasMore, DateTimeOffset AsOf)
+{
+    public bool HasPrevious => PageNumber > 1;
+}
 public sealed record AdviceConversationQuery(string MatchId, string? DeckVersionId, string CardBuild,
     long StateVersion, long EventSequence, DateTimeOffset AsOf, int MaxTurns = 4, DateTimeOffset? MaxKnowledgeAsOf = null);
 public sealed record AdviceHistoryResult(IReadOnlyList<ArchivedAdviceRecord> Records, bool IsTruncated);
@@ -60,6 +69,7 @@ public sealed class AdviceArchiveStore
               card_build TEXT NOT NULL,prompt_template_version TEXT NOT NULL,deck_version_id TEXT,recorded_at TEXT NOT NULL,
               content_hash TEXT NOT NULL,payload_json TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS coach_advice_state ON coach_advice_records(match_id,state_version,event_sequence,recorded_at);
+            CREATE INDEX IF NOT EXISTS coach_advice_browse ON coach_advice_records(match_id,recorded_at DESC,id ASC);
             """;
         await command.ExecuteNonQueryAsync(cancellationToken); transaction.Commit();
     }
@@ -105,14 +115,43 @@ public sealed class AdviceArchiveStore
             ? new(id, DateTimeOffset.Parse(reader.GetString(0), CultureInfo.InvariantCulture), Freeze(Read(reader.GetString(1)))) : null;
     }
 
-    public async Task<IReadOnlyList<ArchivedAdviceRecord>> ListAsync(AdviceArchiveFilter? filter = null,
+    public Task<IReadOnlyList<ArchivedAdviceRecord>> ListAsync(AdviceArchiveFilter? filter = null,
         CancellationToken cancellationToken = default)
     {
         filter ??= new();
-        if (filter.Limit is < 1 or > 1000 || filter.StateVersion < 0 || filter.ThroughEventSequence < 0)
+        if (filter.Limit is < 1 or > 1000) throw new ArgumentException("建议归档筛选条件无效。");
+        return ReadRangeAsync(filter, filter.Limit, 0, cancellationToken);
+    }
+
+    public Task<AdviceArchivePage> ListPageAsync(AdviceArchiveFilter? filter = null, int pageNumber = 1,
+        int pageSize = 100, CancellationToken cancellationToken = default) =>
+        ListPageAsOfAsync(DateTimeOffset.MaxValue, filter, pageNumber, pageSize, cancellationToken);
+
+    /// <summary>Human archive browsing only. The earlier requested/explicit time boundary is fixed across pages.</summary>
+    public async Task<AdviceArchivePage> ListPageAsOfAsync(DateTimeOffset asOf, AdviceArchiveFilter? filter = null,
+        int pageNumber = 1, int pageSize = 100, CancellationToken cancellationToken = default)
+    {
+        if (pageNumber < 1) throw new ArgumentOutOfRangeException(nameof(pageNumber));
+        if (pageSize is < 1 or > 200) throw new ArgumentOutOfRangeException(nameof(pageSize));
+        cancellationToken.ThrowIfCancellationRequested();
+        filter ??= new();
+        var cutoff = filter.RecordedBefore is { } explicitCutoff && explicitCutoff < asOf ? explicitCutoff : asOf;
+        var rows = await ReadRangeAsync(filter with { RecordedBefore = cutoff }, pageSize + 1,
+            checked(((long)pageNumber - 1) * pageSize), cancellationToken);
+        return new(Array.AsReadOnly(rows.Take(pageSize).ToArray()), pageNumber, pageSize, rows.Count > pageSize, cutoff.ToUniversalTime());
+    }
+
+    private async Task<IReadOnlyList<ArchivedAdviceRecord>> ReadRangeAsync(AdviceArchiveFilter filter, int limit,
+        long offset, CancellationToken cancellationToken)
+    {
+        if (filter.StateVersion < 0 || filter.ThroughEventSequence < 0)
             throw new ArgumentException("建议归档筛选条件无效。");
         foreach (var id in new[] { filter.MatchId, filter.CardBuild, filter.DeckVersionId })
             if (id is not null) CoachLocalDatabase.Identifier(id);
+        if (filter.Task is { } task && (task.Length > 80 || task.Any(char.IsControl)) ||
+            filter.TextContains is { } text && (text.Length > 200 || text.Any(char.IsControl)))
+            throw new ArgumentException("归档任务或文字筛选长度无效，或包含控制符。");
+        cancellationToken.ThrowIfCancellationRequested();
         await using var connection = await _database.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         var clauses = new List<string>();
@@ -125,9 +164,19 @@ public sealed class AdviceArchiveStore
         Where("event_sequence", "$sequence", filter.ThroughEventSequence, "<=");
         Where("card_build", "$build", filter.CardBuild); Where("deck_version_id", "$deck", filter.DeckVersionId);
         Where("recorded_at", "$at", filter.RecordedBefore.HasValue ? CoachLocalDatabase.Timestamp(filter.RecordedBefore.Value) : null, "<=");
+        if (filter.Task is not null)
+        {
+            clauses.Add("COALESCE(json_extract(payload_json,'$.Task'),'')=$task");
+            CoachLocalDatabase.Add(command, "$task", filter.Task);
+        }
+        if (!string.IsNullOrEmpty(filter.TextContains))
+        {
+            clauses.Add("(instr(json_extract(payload_json,'$.Summary'),$text)>0 OR instr(json_extract(payload_json,'$.UserQuestion'),$text)>0)");
+            CoachLocalDatabase.Add(command, "$text", filter.TextContains);
+        }
         command.CommandText = "SELECT id,recorded_at,payload_json FROM coach_advice_records" +
-            (clauses.Count == 0 ? "" : " WHERE " + string.Join(" AND ", clauses)) + " ORDER BY recorded_at DESC,id LIMIT $limit";
-        CoachLocalDatabase.Add(command, "$limit", filter.Limit);
+            (clauses.Count == 0 ? "" : " WHERE " + string.Join(" AND ", clauses)) + " ORDER BY recorded_at DESC,id ASC LIMIT $limit OFFSET $offset";
+        CoachLocalDatabase.Add(command, "$limit", limit); CoachLocalDatabase.Add(command, "$offset", offset);
         var result = new List<ArchivedAdviceRecord>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -201,9 +250,10 @@ public sealed class AdviceArchiveStore
         foreach (var action in actions)
             if (action is null || action.Kind is not ("play" or "attack" or "hero_power" or "end_turn" or "choose") ||
                 (action.Kind != "end_turn" && action.SourceEntityId is not > 0) ||
+                (action.SourceEntityId.HasValue && action.SourceEntityId <= 0) ||
                 (action.TargetEntityId.HasValue && action.TargetEntityId <= 0) ||
                 (action.Kind == "attack" && action.TargetEntityId is null) ||
-                (action.Kind == "end_turn" && (action.SourceEntityId.HasValue || action.TargetEntityId.HasValue)))
+                (action.Kind == "end_turn" && action.TargetEntityId.HasValue))
                 throw new ArgumentException("归档动作结构无效。");
         var evidence = draft.Evidence.Select(value =>
         {
