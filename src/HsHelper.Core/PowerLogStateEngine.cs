@@ -70,7 +70,8 @@ public sealed partial class PowerLogStateEngine
     private static readonly Regex DormantPattern = Pattern(@"^CACHED_TAG_FOR_DORMANT_CHANGE\s+Entity=(.+?)\s+tag=(\S+)\s+value=(.+)$");
     private static readonly HashSet<string> HiddenSafeTags = ["ZONE", "CONTROLLER", "ZONE_POSITION", "ENTITY_ID"];
     private static readonly HashSet<string> ChoiceObservedTags = ["ZONE", "CONTROLLER", "ZONE_POSITION", "ENTITY_ID", "CARDTYPE", "COST", "ATK", "HEALTH", "DAMAGE", "ARMOR", "DURABILITY",
-        "TAUNT", "DIVINE_SHIELD", "CHARGE", "RUSH", "LIFESTEAL", "POISONOUS", "STEALTH", "WINDFURY", "MEGA_WINDFURY", "ELUSIVE", "REBORN", "SILENCED", "FROZEN", "EXHAUSTED", "NUM_TURNS_IN_PLAY", "CARDRACE", "TAG_SCRIPT_DATA_NUM_1", "TAG_SCRIPT_DATA_NUM_2"];
+        "TAUNT", "DIVINE_SHIELD", "CHARGE", "RUSH", "LIFESTEAL", "POISONOUS", "STEALTH", "WINDFURY", "MEGA_WINDFURY", "ELUSIVE", "REBORN", "SILENCED", "FROZEN", "EXHAUSTED", "NUM_TURNS_IN_PLAY", "CARDRACE", "TAG_SCRIPT_DATA_NUM_1", "TAG_SCRIPT_DATA_NUM_2",
+        "CRAFTABLE_FIRST_HALF_DBID", "CRAFTABLE_SECOND_HALF_DBID"];
     private const int MaximumChoiceHistoryEntries = 32;
     private const int MaximumRememberedChoices = 64;
     private const int MaximumChoiceOptions = 64;
@@ -924,6 +925,7 @@ public sealed partial class PowerLogStateEngine
         "295" => "TEMP_RESOURCES", "297" => "NUM_ATTACKS_THIS_TURN", "313" => "CREATOR", "385" => "DISPLAYED_CREATOR",
         "435" => "TRANSFORMED_FROM_CARD", "448" => "UNTOUCHABLE", "777" => "HERO_POWER_DISABLED",
         "791" => "RUSH", "1518" => "DORMANT", "1565" => "COPIED_FROM_ENTITY_ID", "1646" => "HERO_POWER_ENTITY",
+        "4572" => "CRAFTABLE_FIRST_HALF_DBID", "4573" => "CRAFTABLE_SECOND_HALF_DBID",
         _ => tag
     };
 

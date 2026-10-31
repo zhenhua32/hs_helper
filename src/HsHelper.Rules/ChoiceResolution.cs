@@ -86,6 +86,8 @@ public sealed partial class LineEvaluator
             choice.SourceCardId != source.CardId)
         { unknowns.Add("未确认我方已使用的选择来源，不能把手中、牌库中或对手的卡当作已触发的来源。"); return Result(LineVerification.Unsupported, true); }
         sourceEntityId = source.Id; sourceCardId = source.CardId;
+        if (AssembledCardText.RequiresCustomText(source.Tags))
+        { unknowns.Add("选择来源具有拼装文字，不能按原卡ID展开原生牌效。"); return Result(LineVerification.Unsupported, true); }
         if (!cards.TryGetValue(source.CardId, out var sourceCard) || sourceCard.Id != source.CardId || string.IsNullOrWhiteSpace(sourceCard.Name))
         { unknowns.Add("固定版本卡库缺少选择来源的资料，不能核对其效果。"); return Result(LineVerification.Unsupported, true); }
         sourceName = sourceCard.Name;

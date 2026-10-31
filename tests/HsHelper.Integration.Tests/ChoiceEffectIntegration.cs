@@ -66,7 +66,7 @@ internal static class ChoiceEffectIntegration
             "choice-fixture-unused-key", context, coach.ExecuteAsync, () => true,
             capabilities: coach.Capabilities());
         Check(handler.Calls == 2 && handler.CheckedEffect && advice.Actions is [{ Kind: "choose", SourceEntityId: 80 }] &&
-            !advice.VerifiedLethal && context.TemplateVersion == "hunter-v6/choice",
+            !advice.VerifiedLethal && context.TemplateVersion == "hunter-v7/choice",
             "Fake model choice loop lost its scoped template, legal chosen action or direct-effect boundaries.");
         Check(observations.Last().Name == "evaluate_choice" && observations.Last().RequestId is not null &&
             observations.Last().EventSequence == frame.EventSequence, "Model choice effect call lost request/state provenance.");
@@ -165,7 +165,7 @@ internal static class ChoiceEffectIntegration
             object message;
             if (Calls == 1)
             {
-                Check(text.Contains("hunter-v6/choice", StringComparison.Ordinal) && text.Contains("evaluate_choice", StringComparison.Ordinal),
+                Check(text.Contains("hunter-v7/choice", StringComparison.Ordinal) && text.Contains("evaluate_choice", StringComparison.Ordinal),
                     "Choice template or registered effect tool was missing from request.");
                 message = new { role = "assistant", tool_calls = new[] { new { id = "choice-direct", type = "function",
                     function = new { name = "evaluate_choice", arguments = "{\"choice_id\":77,\"selected_entity_ids\":[80]}" } } } };

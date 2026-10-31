@@ -76,6 +76,8 @@ public static class DrawResolutionRules
             source.Tags.GetValueOrDefault("CARDTYPE") is { } sourceType && sourceType is not ("MINION" or "4"))
         { unknowns.Add("抽牌来源的身份、随从类型或我方归属未确认；场上旧随从不能自行再次触发战吼。"); return Unresolved(); }
         sourceId = source.CardId; kind = sourceId == "FIR_921" ? "Ordinary" : "Beast";
+        if (AssembledCardText.RequiresCustomText(source.Tags))
+        { unknowns.Add("抽牌来源具有拼装文字，不能按原卡ID展开原生抽牌。"); return Unresolved(); }
         if (!cards.TryGetValue(sourceId, out var sourceCard) || sourceCard is null || sourceCard.Id != sourceId ||
             sourceCard.Type != "MINION" || sourceCard.DbfId != (sourceId == "FIR_921" ? 115648 : 114018) || !AuditedSource(sourceCard))
         { unknowns.Add("缺少与固定来源 ID、DBF 和战吼定义一致的卡牌资料，未按同名或印刷费用猜测牌效。"); return Unresolved(); }

@@ -14,6 +14,8 @@ public sealed record CraftChoiceOutcome(string Mechanism, string Stage,
     bool? RequiresAnotherChoice, bool ResolvesEffects, IReadOnlyList<string> Unknowns,
     IReadOnlyList<string> RuleCoverage)
 {
+    public string? OfferedHalf { get; init; }
+    public string? OfferedHalfText { get; init; }
     public bool CanEvaluateFollowupActions => false;
 }
 
@@ -36,6 +38,7 @@ public static class CraftChoiceRules
         var components = new List<CraftComponentOutcome>();
         var mechanism = "Unknown";
         var stage = "Unconfirmed";
+        string? offeredHalf = null, offeredHalfText = null;
         bool? added = null, another = null;
         int? reduction = null, cost = null, attack = null, health = null;
         var resolves = false;
@@ -52,7 +55,7 @@ public static class CraftChoiceRules
         if (choice.SourceEntityId is not { } sourceId || !snapshot.Entities.TryGetValue(sourceId, out var source) ||
             source.Id != sourceId || source.Kind != EntityKind.Card || source.ControllerId != snapshot.LocalPlayerId ||
             source.Zone is not ("PLAY" or "GRAVEYARD") || source.CardId is not ("TLC_EVENT_400" or "BE_044") ||
-            choice.SourceCardId is { } offeredSource && offeredSource != source.CardId ||
+            choice.SourceCardId != source.CardId ||
             !cards.TryGetValue(source.CardId, out var sourceCard) || sourceCard is null || sourceCard.Id != source.CardId ||
             sourceCard.Type != (source.CardId == "BE_044" ? "MINION" : "SPELL"))
         {
@@ -62,6 +65,8 @@ public static class CraftChoiceRules
         if (source.Tags.GetValueOrDefault("CARDTYPE") is { } sourceKind &&
             (source.CardId == "BE_044" ? sourceKind is not ("MINION" or "4") : sourceKind is not ("SPELL" or "5")))
         { unknowns.Add("构筑来源的已观察卡牌类别与固定卡库冲突。"); return Result(); }
+        if (AssembledCardText.RequiresCustomText(source.Tags))
+        { unknowns.Add("构筑来源具有拼装文字，不能按原卡ID展开原生牌效。"); return Result(); }
         mechanism = source.CardId == "BE_044" ? "Assemble" : "BuildABeast";
         var option = choice.Options.Single(option => option.EntityId == selectedEntityId);
         snapshot.Entities.TryGetValue(selectedEntityId, out var observed);
@@ -78,6 +83,27 @@ public static class CraftChoiceRules
         if (mechanism == "Assemble")
         {
             coverage.Add("BE_044-assemble-is-not-zombeast");
+            var halves = new Dictionary<int, AssembledTextResolution>();
+            if (choice.Options.Count == 4)
+                foreach (var candidate in choice.Options)
+                {
+                    if (!snapshot.Entities.TryGetValue(candidate.EntityId, out var halfEntity) ||
+                        halfEntity.Id != candidate.EntityId || halfEntity.Kind != EntityKind.Card ||
+                        halfEntity.CardId != candidate.CardId || halfEntity.ControllerId != snapshot.LocalPlayerId || halfEntity.Zone != "SETASIDE") break;
+                    var half = AssembledCardText.Resolve(snapshot.ClientBuild, candidate.CardId, halfEntity.Tags, cards);
+                    if (!half.IsOffer || half.OfferedHalf is not ("Trigger" or "Effect") || string.IsNullOrWhiteSpace(half.OfferedHalfText)) break;
+                    halves[candidate.EntityId] = half;
+                }
+            if (halves.Count == 4 && halves.Values.Count(half => half.OfferedHalf == "Trigger") == 2 &&
+                halves.Values.Count(half => half.OfferedHalf == "Effect") == 2)
+            {
+                stage = "HalfSelection"; added = false; resolves = true;
+                offeredHalf = halves[selectedEntityId].OfferedHalf;
+                offeredHalfText = halves[selectedEntityId].OfferedHalfText;
+                coverage.Add("BE_044-current-observed-half-selection");
+                unknowns.Add("只确认所选拼装半段，本次不新增手牌；主随从、替换位置及完整成品未绑定。");
+                return Result();
+            }
             unknowns.Add("F3TCH3R 的拼装保留主随从的费用、属性、名字和类型，仅替换部分文字；不能将两张候选的费用或属性相加。");
             unknowns.Add("当前协议未确认拼装阶段、主随从实体及被替换的半段文字；不能凭四费、名字、候选位置或 CREATOR 猜测关联，也不能重复将已在手牌的主随从入手。");
             return Result();
@@ -252,7 +278,8 @@ public static class CraftChoiceRules
         CraftChoiceOutcome Result() => new(mechanism, stage, Array.AsReadOnly(components.ToArray()),
             null, added, reduction, cost, attack, health, another, resolves,
             Array.AsReadOnly(unknowns.Distinct(StringComparer.Ordinal).ToArray()),
-            Array.AsReadOnly(coverage.Distinct(StringComparer.Ordinal).ToArray()));
+            Array.AsReadOnly(coverage.Distinct(StringComparer.Ordinal).ToArray()))
+            { OfferedHalf = offeredHalf, OfferedHalfText = offeredHalfText };
     }
 
     private static int? Nonnegative(int? value) => value is >= 0 ? value : null;

@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Net;
+using System.Text.RegularExpressions;
 using HsHelper.Cards;
 using HsHelper.Core;
 
@@ -7,10 +9,24 @@ namespace HsHelper.App;
 /// <summary>Only observed, perspective-safe attributes; null means the current value is unknown.</summary>
 public sealed record BattleCardView(int EntityId, string? CardId, string Name, string Type,
     int? Cost, int? Attack, int? Health, int? Armor, int? Durability, bool? IsExhausted,
-    string? Zone, int? Position, string Status);
+    string? Zone, int? Position, string Status)
+{
+    public string? EffectiveText { get; init; }
+    public string EffectTextStatus { get; init; } = "文字未知";
+    public bool IsAssembled { get; init; }
+    public bool IsAssembledOffer { get; init; }
+    public string EffectTextDisplay => EffectiveText is null ? "当前效果未知" : EffectiveText.Length == 0 ? "无效果文字" : EffectiveText;
+}
 public sealed record BattlePlayedCardView(long Sequence, int EntityId, string? CardId, string Name);
 public sealed record BattleDeckCardView(string CardId, string Name, int Copies);
-public sealed record BattleChoiceOptionView(int EntityId, string? CardId, string Name, int? Position);
+public sealed record BattleChoiceOptionView(int EntityId, string? CardId, string Name, int? Position)
+{
+    public string? EffectiveText { get; init; }
+    public string EffectTextStatus { get; init; } = "文字未知";
+    public bool IsAssembled { get; init; }
+    public bool IsAssembledOffer { get; init; }
+    public string EffectTextDisplay => EffectiveText is null ? "当前效果未知" : EffectiveText.Length == 0 ? "无效果文字" : EffectiveText;
+}
 
 public sealed record BattleChoiceView
 {
@@ -123,6 +139,20 @@ public static class BattleViewBuilder
             ? card.Name : id is null ? "未知卡牌" : "未识别卡牌（" + id + "）";
         string Type(EntitySnapshot entity) => CardType(entity.Tags.GetValueOrDefault("CARDTYPE")) ??
             (entity.CardId is { } id && cards?.TryGetValue(id, out var card) == true ? card.Type : "UNKNOWN");
+        (string? Text, string Status, bool Assembled, bool Offer) Effect(string? cardId, IReadOnlyDictionary<string, string> tags)
+        {
+            if (!AssembledCardText.RequiresCustomText(tags))
+                return cardId is not null && cards?.TryGetValue(cardId, out var ordinary) == true
+                    ? (PlainText(ordinary.Text), "固定版本基础文字", false, false) : (null, "文字资料未知", false, false);
+            if (fixedBuild != "255790" || snapshot.ClientBuild != fixedBuild)
+                return (null, "拼装文字未知：尚未确认匹配的客户端版本", true, false);
+            var effect = AssembledCardText.Resolve(fixedBuild, cardId ?? "", tags, cards ?? new Dictionary<string, CardRecord>());
+            if (effect.IsOffer && effect.OfferedHalfText is { } half)
+                return (PlainText(half), effect.OfferedHalf == "Trigger" ? "拼装候选：触发半段，尚未合成" : "拼装候选：效果半段，尚未合成", true, true);
+            return effect.IsObserved && effect.IsResolved && effect.EffectiveText is { } text
+                ? (PlainText(text), "已观察的实体拼装文字", true, false)
+                : (null, "拼装文字未知：组件或当前文字尚未完整确认", true, effect.IsOffer);
+        }
         BattleCardView Card(EntitySnapshot entity)
         {
             var type = Type(entity);
@@ -133,9 +163,11 @@ public static class BattleViewBuilder
                 if (entity.GetIntTag("HERO_POWER_DISABLED") is > 0 || snapshot.Entities.Values.Any(e => e.Kind == EntityKind.Player &&
                     e.GetIntTag("PLAYER_ID") == entity.ControllerId && e.GetIntTag("HERO_POWER_DISABLED") is > 0)) statuses.Add("技能禁用");
             }
+            var effect = Effect(entity.CardId, entity.Tags);
             return new(entity.Id, entity.CardId, Name(entity.CardId), type, entity.Cost, entity.Attack, entity.RemainingHealth,
                 entity.GetIntTag("ARMOR"), entity.GetIntTag("DURABILITY"), entity.GetIntTag("EXHAUSTED") is { } exhausted ? exhausted != 0 : null,
-                entity.Zone, entity.ZonePosition, string.Join("、", statuses));
+                entity.Zone, entity.ZonePosition, string.Join("、", statuses))
+                { EffectiveText = effect.Text, EffectTextStatus = effect.Status, IsAssembled = effect.Assembled, IsAssembledOffer = effect.Offer };
         }
         BattlePlayerView Player(int? id, bool own)
         {
@@ -170,8 +202,17 @@ public static class BattleViewBuilder
         var currentChoice = ConfirmedChoice(snapshot, local);
         var choice = currentChoice is null ? null : new BattleChoiceView(currentChoice.Id, currentChoice.CountMin,
             currentChoice.CountMax, currentChoice.Options.OrderBy(option => option.Position ?? int.MaxValue)
-                .ThenBy(option => option.EntityId).Select(option => new BattleChoiceOptionView(option.EntityId,
-                    option.CardId, Name(option.CardId), option.Position)));
+                .ThenBy(option => option.EntityId).Select(option =>
+                {
+                    var hasEntity = snapshot.Entities.TryGetValue(option.EntityId, out var entity);
+                    var bound = hasEntity && entity!.Kind == EntityKind.Card && entity.CardId == option.CardId && entity.ControllerId == local;
+                    IReadOnlyDictionary<string, string> tags = bound ? entity!.Tags : new Dictionary<string, string>();
+                    var effect = !bound && hasEntity && AssembledCardText.RequiresCustomText(entity!.Tags)
+                        ? (Text: (string?)null, Status: "拼装候选文字未知：实体身份尚未绑定", Assembled: true, Offer: false)
+                        : Effect(option.CardId, tags);
+                    return new BattleChoiceOptionView(option.EntityId, option.CardId, Name(option.CardId), option.Position)
+                    { EffectiveText = effect.Text, EffectTextStatus = effect.Status, IsAssembled = effect.Assembled, IsAssembledOffer = effect.Offer };
+                }));
         var choiceStatus = choice is not null ? $"当前我方选择 #{choice.Id}，选择 {choice.CountMin}～{choice.CountMax} 个。这里只展示候选，不模拟选择后效果。" :
             snapshot.Phase is GamePhase.Choice or GamePhase.Mulligan ? "我方选择尚未确认或候选未完整读取；暂不展示候选身份。" :
             "当前未处于留牌或选择阶段。";
@@ -198,6 +239,23 @@ public static class BattleViewBuilder
         if (MatchesDeckBinding(snapshot, fixedBuild)) ids = ids.Concat(snapshot.DeckTracking!.KnownRemaining.Keys);
         return Array.AsReadOnly(ids.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
     }
+
+    /// <summary>Observed donor references of the actual visible instances, never hidden hand/deck identities.</summary>
+    public static IReadOnlyList<int> VisibleEffectDbfIds(GameSnapshot snapshot, string? fixedBuild = null)
+    {
+        if (fixedBuild != "255790" || snapshot.ClientBuild != fixedBuild) return Array.Empty<int>();
+        var local = ConfirmedLocalPlayer(snapshot);
+        var visible = snapshot.Entities.Values.Where(entity => entity.Kind == EntityKind.Card && entity.CardId is not null &&
+            (entity.Zone == "PLAY" || local.HasValue && entity.ControllerId == local && entity.Zone == "HAND"));
+        if (ConfirmedChoice(snapshot, local) is { } choice)
+            visible = visible.Concat(choice.Options.Select(option => snapshot.Entities.GetValueOrDefault(option.EntityId))
+                .Where(entity => entity is not null && entity.Kind == EntityKind.Card && entity.ControllerId == local &&
+                    choice.Options.Any(option => option.EntityId == entity.Id && option.CardId == entity.CardId)).OfType<EntitySnapshot>());
+        return Array.AsReadOnly(visible.SelectMany(entity => AssembledCardText.ReferencedDbfIds(entity.Tags)).Distinct().Order().ToArray());
+    }
+
+    private static string PlainText(string text) => WebUtility.HtmlDecode(Regex.Replace(text.Replace("<br>", "\n", StringComparison.OrdinalIgnoreCase)
+        .Replace("<br/>", "\n", StringComparison.OrdinalIgnoreCase).Replace("[x]", "", StringComparison.Ordinal), "<[^>]*>", "", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)));
 
     private static int? ConfirmedLocalPlayer(GameSnapshot snapshot) => ChoiceVisibility.ConfirmedLocalPlayer(snapshot);
 

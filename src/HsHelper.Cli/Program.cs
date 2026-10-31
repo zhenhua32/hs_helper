@@ -26,6 +26,7 @@ static string ToolEvidenceSummary(CoachToolObservation observation)
         "validate_choice" => $"候选合法 {Field("IsLegal")}；只验证选择范围，不模拟选择后的效果。",
         "evaluate_choice" => $"选择直接后果 {Field("Verification")}；来源 {Field("SourceCardId")}；不代表已经发生的局面或后续动作。",
         "evaluate_draw" => $"抽牌直接范围；来源 {Field("SourceCardId")}；不生成新手牌实体或证明后续动作。",
+        "get_entity_effect" => "已查询固定局面的可见实体文字；自定义文字重建不代表牌效脚本已经模拟。",
         "get_matchup_plan" => "已查询固定历史时点之前的用户计划/笔记版本。",
         "get_personal_stats" => $"此前已结束个人样本 {result?["stats"]?["Games"]?.ToString() ?? "未知"} 局，排除当前局。",
         _ => "工具查询已完成。"
@@ -128,6 +129,7 @@ static async Task<int> MainAsync(string[] args)
                 if (deck is not null)
                     foreach (var card in await catalog.GetByDbfIdsAsync(deck.Definition.Cards.Select(c => c.DbfId)
                         .Concat(deck.Definition.Sideboards.SelectMany(s => s.Cards.Select(c => c.DbfId))).Distinct(), build)) relevantCards[card.Id] = card;
+                foreach (var card in await SnapshotCardEffects.LoadDonorsAsync(snapshot, build, catalog, relevantCards.Values)) relevantCards[card.Key] = card.Value;
                 var taskKind = Option("task") is { } namedTask ? AdviceTaskTemplates.Resolve(namedTask) : snapshot.Phase switch
                 { GamePhase.Choice => AdviceTaskKind.Choice, GamePhase.Mulligan => AdviceTaskKind.Mulligan,
                     GamePhase.Complete => AdviceTaskKind.Review, _ => AdviceTaskKind.Turn };

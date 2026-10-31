@@ -30,6 +30,15 @@ public static class LocalToolsHiddenSmoke
             foreach (var definition in fixture.RootElement.GetProperty("cards").EnumerateArray()
                 .Where(card => card.GetProperty("id").GetString() is "CORE_DS1_184" or "FIR_921"))
                 cardDefinitions.Add(JsonNode.Parse(definition.GetRawText()));
+        var effectDonor = 0;
+        using (var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(workspace!.FullName,
+            "tests", "HsHelper.Cards.Tests", "Fixtures", "assembled-card-text-255790.json"))))
+            foreach (var definition in fixture.RootElement.GetProperty("cards").EnumerateArray()
+                .Where(card => card.GetProperty("id").GetString() is "TIME_428" or "CORE_REV_308"))
+            {
+                cardDefinitions.Add(JsonNode.Parse(definition.GetRawText()));
+                if (definition.GetProperty("id").GetString() == "CORE_REV_308") effectDonor = definition.GetProperty("dbfId").GetInt32();
+            }
         using (var cards = new MemoryStream(Encoding.UTF8.GetBytes(cardDefinitions.ToJsonString())))
             Await(catalog.ImportAsync(cards, BattleViewRegression.Build, source: "synthetic://hidden-local-tools"));
         var frame = BattleViewRegression.Frame();
@@ -107,6 +116,24 @@ public static class LocalToolsHiddenSmoke
             WaitUntil(() => !window.HasPendingCalculation && window.ResultText.Contains("抽取次数 2", StringComparison.Ordinal), "Draw preview button did not reach the actual tool.");
             Check(window.ResultText.Contains("不证明出牌合法", StringComparison.Ordinal) && window.ResultText.Contains("不生成新手牌实体", StringComparison.Ordinal),
                 "Draw UI turned a scoped preview into an executable next state.");
+            var assemblyEntities = drawFrame.Entities.ToDictionary();
+            var assemblyTags = assemblyEntities[30].Tags.ToDictionary();
+            assemblyTags["CRAFTABLE_FIRST_HALF_DBID"] = "0"; assemblyTags["CRAFTABLE_SECOND_HALF_DBID"] = effectDonor.ToString();
+            assemblyEntities[30] = assemblyEntities[30] with { CardId = "TIME_428", Tags = assemblyTags.ToFrozenDictionary() };
+            var assemblyFrame = drawFrame with { StateVersion = 10, EventSequence = 125, Entities = assemblyEntities.ToFrozenDictionary() };
+            window.UpdateBinding(assemblyFrame, BattleViewRegression.Build, false); Await(window.BindingReady);
+            var effectSources = Control<ComboBox>(window, "LocalSourceBox");
+            effectSources.SelectedItem = effectSources.Items.OfType<object>().Single(item => (int)item.GetType().GetProperty("Id")!.GetValue(item)! == 30);
+            Check(Control<Button>(window, "LocalInspectEffectButton").IsEnabled, "Visible assembled source did not enable effect lookup.");
+            Click(Control<Button>(window, "LocalInspectEffectButton"));
+            WaitUntil(() => !window.HasPendingCalculation && window.ResultText.Contains("可读文字：", StringComparison.Ordinal), "Effect lookup did not query the actual entity tool.");
+            Check(window.ResultText.Contains("召唤", StringComparison.Ordinal) && window.ResultText.Contains("不改变当前费用和属性", StringComparison.Ordinal),
+                "Entity effect lookup lost the donor text or changed the current stat contract.");
+            assemblyTags["CRAFTABLE_SECOND_HALF_DBID"] = "2147483000";
+            assemblyEntities[30] = assemblyEntities[30] with { Tags = assemblyTags.ToFrozenDictionary() };
+            window.UpdateBinding(assemblyFrame with { StateVersion = 11, EventSequence = 126, Entities = assemblyEntities.ToFrozenDictionary() }, BattleViewRegression.Build, false);
+            Await(window.BindingReady); Click(Control<Button>(window, "LocalInspectEffectButton"));
+            WaitUntil(() => !window.HasPendingCalculation && window.ResultText.Contains("当前效果未知", StringComparison.Ordinal), "Missing donor fell back to the native base text.");
             foreach (var rejected in new[]
             {
                 trackingChoice with { IsSpectating = true },

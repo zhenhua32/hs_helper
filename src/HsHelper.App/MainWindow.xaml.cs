@@ -452,6 +452,9 @@ public partial class MainWindow : Window
                 }
             }
             if (!IsCurrent()) throw new OperationCanceledException("所选局面已经改变。");
+            if (pinnedManifest is not null)
+                foreach (var card in await SnapshotCardEffects.LoadDonorsAsync(snapshot, requestedBuild, _catalog, related.Values, cancellation.Token)) related[card.Key] = card.Value;
+            if (!IsCurrent()) throw new OperationCanceledException("所选局面已经改变。");
             var context = CompactAdviceContextBuilder.Create(snapshot, requestedBuild, AdviceTaskTemplates.Resolve(task), importedDeck, related.Values)
                 with { UserQuestion = userQuestion, KnowledgeAsOf = asOf };
             context = await ConversationHistoryBuilder.AttachAsync(context, _adviceArchive, deckVersionId, requestStartedAt,

@@ -40,8 +40,12 @@ public partial class MainWindow
         var build = _historyContext?.CardBuild ?? snapshot.ClientBuild ?? SessionBuildBox.Text.Trim();
         var cards = string.IsNullOrWhiteSpace(build) || build == "unknown" ? [] :
             await _catalog.GetByIdsAsync(BattleViewBuilder.VisibleCardIds(snapshot, build), build);
+        var donorDbfIds = BattleViewBuilder.VisibleEffectDbfIds(snapshot, build);
+        if (donorDbfIds.Count > 0)
+            cards = cards.Concat(await _catalog.GetByDbfIdsAsync(donorDbfIds, build)).DistinctBy(card => card.Id).ToArray();
         if (revision != _battleRenderRevision || DisplaySnapshot.MatchId != snapshot.MatchId ||
-            DisplaySnapshot.StateVersion != snapshot.StateVersion || DisplaySnapshot.LocalPlayerId != snapshot.LocalPlayerId ||
+            DisplaySnapshot.StateVersion != snapshot.StateVersion || DisplaySnapshot.EventSequence != snapshot.EventSequence ||
+            DisplaySnapshot.LocalPlayerId != snapshot.LocalPlayerId ||
             (_historyContext?.CardBuild ?? DisplaySnapshot.ClientBuild ?? SessionBuildBox.Text.Trim()) != build) return;
         var view = BattleViewBuilder.Build(snapshot, cards.ToDictionary(c => c.Id), build);
         BattleViewRoot.DataContext = view;

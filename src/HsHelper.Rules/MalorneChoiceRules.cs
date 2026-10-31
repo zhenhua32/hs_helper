@@ -42,6 +42,7 @@ public static class MalorneChoiceRules
             choice is not { Type: "GENERAL", CountMin: 1, CountMax: 1, SourceCardId: "EDR_888" } ||
             choice.SourceEntityId is not { } sourceId || !snapshot.Entities.TryGetValue(sourceId, out var source) ||
             source.Id != sourceId || source.Kind != EntityKind.Card || source.ControllerId != snapshot.LocalPlayerId ||
+            AssembledCardText.RequiresCustomText(source.Tags) ||
             source.CardId != "EDR_888" || source.Zone is not ("PLAY" or "GRAVEYARD") ||
             source.Tags.GetValueOrDefault("CARDTYPE") is { } sourceType && sourceType is not ("MINION" or "4") ||
             !cards.TryGetValue("EDR_888", out var sourceCard) || sourceCard is not { Id: "EDR_888", DbfId: 115186, Type: "MINION" } ||

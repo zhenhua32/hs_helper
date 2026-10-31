@@ -51,12 +51,21 @@ public static class CompactAdviceContextBuilder
             entity.Zone == "PLAY" || local.HasValue && entity.ControllerId == local && entity.Zone is "HAND" or "SECRET")
             .OrderBy(entity => entity.Id).ToArray();
         var choice = OwnChoice(snapshot);
+        var definitionsById = (cards ?? []).DistinctBy(card => card.Id).ToDictionary(card => card.Id, StringComparer.Ordinal);
+        var effectEntities = SnapshotCardEffects.VisibleCards(snapshot);
+        var customCardIds = effectEntities.Where(entity => AssembledCardText.RequiresCustomText(entity.Tags))
+            .Select(entity => entity.CardId!).ToHashSet(StringComparer.Ordinal);
+        // The same CardId can have both a native instance and a different assembled instance.
+        var effects = effectEntities.Where(entity => customCardIds.Contains(entity.CardId!)).ToDictionary(entity => entity.Id,
+            entity => SnapshotCardEffects.Resolve(snapshot, build, entity, definitionsById));
         var choiceSourceCardId = choice?.SourceEntityId is { } sourceId && snapshot.Entities.TryGetValue(sourceId, out var source) &&
             source.Kind == EntityKind.Card && source.ControllerId == local && source.Zone is "PLAY" or "GRAVEYARD" &&
             choice.SourceCardId == source.CardId ? source.CardId : null;
         var contextLimits = new List<string>();
         if (snapshot.Choice is not null && choice is null)
             contextLimits.Add("当前选择的视角、稳定性或候选证据未通过核对，已省略其候选身份。");
+        if (effects.Values.Any(effect => !effect.IsResolved && effect.OfferedHalfText is null))
+            contextLimits.Add("存在尚未重建的拼装效果；基础卡库文字不能当作该实体的当前效果，可用get_entity_effect补查。");
         var playTracking = snapshot.PublicPlays is { } publicPlays && publicPlays.MatchId == snapshot.MatchId &&
             publicPlays.StateVersion == snapshot.StateVersion ? publicPlays : null;
         if (snapshot.PublicPlays is not null && playTracking is null)
@@ -74,8 +83,8 @@ public static class CompactAdviceContextBuilder
             .Concat(tracking?.KnownRemaining.Keys ?? []).ToHashSet(StringComparer.Ordinal);
         var dbfIds = (deck?.Cards.Select(card => card.DbfId) ?? [])
             .Concat(deck?.Sideboards.SelectMany(board => board.Cards.Select(card => card.DbfId)) ?? []).ToHashSet();
-        var definitions = (cards ?? []).Where(card => cardIds.Contains(card.Id) || card.DbfId is { } id && dbfIds.Contains(id))
-            .DistinctBy(card => card.Id).OrderBy(card => card.Id, StringComparer.Ordinal).Select(CardSummary).ToArray();
+        var definitions = definitionsById.Values.Where(card => cardIds.Contains(card.Id) || card.DbfId is { } id && dbfIds.Contains(id))
+            .OrderBy(card => card.Id, StringComparer.Ordinal).Select(card => CardSummary(card, customCardIds.Contains(card.Id))).ToArray();
         var events = (recentEvents ?? snapshot.RecentEvents).Where(observed => observed.Sequence > 0 && observed.Sequence <= snapshot.EventSequence)
             .Where(observed => observed.Kind is "ZoneChanged" or "CardRevealed" or "CardChanged" or "AttributeChanged" or "PhaseChanged")
             .OrderBy(observed => observed.Sequence).TakeLast(12).Select(observed => new
@@ -99,7 +108,8 @@ public static class CompactAdviceContextBuilder
             entities = visible.Select(entity => new
             {
                 id = entity.Id, kind = entity.Kind, card_id = entity.CardId, controller = entity.ControllerId,
-                zone = Zone(entity.Zone), position = entity.ZonePosition, tags = Tags(entity)
+                zone = Zone(entity.Zone), position = entity.ZonePosition, tags = Tags(entity),
+                effect = effects.TryGetValue(entity.Id, out var effect) ? EffectSummary(effect) : null
             }).ToArray(),
             zone_counts = snapshot.Entities.Values.Where(entity => entity.Kind == EntityKind.Card && entity.Zone is "DECK" or "HAND" or "SECRET")
                 .GroupBy(entity => (entity.ControllerId, entity.Zone)).OrderBy(group => group.Key.ControllerId).ThenBy(group => group.Key.Zone)
@@ -112,7 +122,8 @@ public static class CompactAdviceContextBuilder
                 options = choice.Options.OrderBy(option => option.Position).Select(option => new
                 {
                     entity_id = option.EntityId, card_id = option.CardId, position = option.Position,
-                    observed_tags = snapshot.Entities.TryGetValue(option.EntityId, out var candidate) ? Tags(candidate) : null
+                    observed_tags = snapshot.Entities.TryGetValue(option.EntityId, out var candidate) ? Tags(candidate) : null,
+                    effect = effects.TryGetValue(option.EntityId, out var effect) ? EffectSummary(effect) : null
                 }).ToArray()
             },
             imported_deck = deck is null ? null : new
@@ -151,6 +162,8 @@ public static class CompactAdviceContextBuilder
         var tags = new SortedDictionary<string, string>(StringComparer.Ordinal);
         foreach (var (key, value) in entity.Tags)
         {
+            if ((entity.Kind != EntityKind.Card || string.IsNullOrWhiteSpace(entity.CardId)) &&
+                key is "CRAFTABLE_FIRST_HALF_DBID" or "CRAFTABLE_SECOND_HALF_DBID" or "4572" or "4573") continue;
             if (key is "ZONE" or "CONTROLLER" or "ZONE_POSITION" || IdentityTags.Contains(key) ||
                 key.Contains("NAME", StringComparison.OrdinalIgnoreCase) || key.Contains("ACCOUNT", StringComparison.OrdinalIgnoreCase) ||
                 key.Contains("BATTLETAG", StringComparison.OrdinalIgnoreCase) || key.Contains("USER_ID", StringComparison.OrdinalIgnoreCase)) continue;
@@ -176,7 +189,15 @@ public static class CompactAdviceContextBuilder
             entity.Zone is "PLAY" or "GRAVEYARD" && entity.CardId == observed.CardId ? observed.CardId : null;
     }
 
-    private static object CardSummary(CardRecord card)
+    public static object EffectSummary(AssembledTextResolution effect) => new
+    {
+        is_observed = effect.IsObserved, is_offer = effect.IsOffer, is_resolved = effect.IsResolved,
+        text = effect.EffectiveText, trigger_card_id = effect.TriggerCardId, effect_card_id = effect.EffectCardId,
+        offered_half = effect.OfferedHalf, offered_half_text = effect.OfferedHalfText, unknowns = effect.Unknowns,
+        scope = "版本文字与已观察拼装半段；动态参数以当前tags为准，不是动作或结算证明"
+    };
+
+    private static object CardSummary(CardRecord card, bool printedOnly = false)
     {
         int? attack = null, health = null, durability = null;
         string[] mechanics = [];
@@ -195,7 +216,8 @@ public static class CompactAdviceContextBuilder
             }
         }
         catch (JsonException) { /* Text and current dynamic tags remain available when optional metadata is invalid. */ }
-        return new { id = card.Id, dbf_id = card.DbfId, name = card.Name, text = card.Text, cost = card.Cost,
+        return new { id = card.Id, dbf_id = card.DbfId, name = card.Name, text = printedOnly ? null : card.Text,
+            printed_text = printedOnly ? card.Text : null, text_scope = printedOnly ? "基础定义；按实体effect读取当前拼装文字" : null, cost = card.Cost,
             type = card.Type, card_class = card.CardClass, attack, health, durability, mechanics, entourage = card.Entourage };
     }
 }

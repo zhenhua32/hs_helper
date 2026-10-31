@@ -67,6 +67,7 @@ public static class RewindChoiceRules
             choice is not { Type: "GENERAL", CountMin: 1, CountMax: 1 } ||
             !snapshot.Entities.TryGetValue(source.Id, out var observedSource) ||
             observedSource.Kind != EntityKind.Card || observedSource.ControllerId != snapshot.LocalPlayerId ||
+            AssembledCardText.RequiresCustomText(observedSource.Tags) ||
             observedSource.Zone is not ("PLAY" or "GRAVEYARD") ||
             observedSource.Tags.TryGetValue("CARDTYPE", out var sourceType) && sourceType is not ("MINION" or "4") ||
             observedSource.CardId is not ("CORE_EDR_004_2026" or "CORE_EDR_004") ||

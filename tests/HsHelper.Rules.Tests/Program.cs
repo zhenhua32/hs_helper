@@ -659,6 +659,7 @@ foreach (var (name, run) in RewindChoiceChecks.Cases()) Run(name, run);
 foreach (var (name, run) in ImbueAndMalorneChecks.Cases()) Run(name, run);
 foreach (var (name, run) in DrawResolutionChecks.Cases()) Run(name, run);
 foreach (var (name, run) in HunterDrawLineChecks.Cases(cards)) Run(name, run);
+foreach (var (name, run) in AssembledRuleChecks.Cases(cards)) Run(name, run);
 
 if (args.Length == 1)
 {

@@ -148,8 +148,22 @@ public sealed class SnapshotCoach
         {
             var ids = args["card_ids"]!.AsArray().Select(x => x!.GetValue<string>()).ToArray();
             var cards = await _catalog.GetByIdsAsync(ids, _build, cancellationToken: token);
-            return Node(new { build = _build, cards = cards.Select(c => new { c.Id, c.Name, c.Text, c.Cost, c.Type, c.Entourage }),
+            return Node(new { build = _build, scope = "固定版本印刷定义；拼装实体当前文字须查询get_entity_effect，不用这里的基础文字覆盖。",
+                cards = cards.Select(c => new { c.Id, c.Name, c.Text, c.Cost, c.Type, c.Entourage }),
                 missing = ids.Except(cards.Select(c => c.Id), StringComparer.Ordinal).ToArray() });
+        }
+        if (name == "get_entity_effect")
+        {
+            var id = args["entity_id"]!.GetValue<int>();
+            var entity = SnapshotCardEffects.VisibleCards(_snapshot, includePublicGraveyard: true).SingleOrDefault(entity => entity.Id == id);
+            if (entity is null) return new JsonObject { ["error"] = "未确认该实体的当前可见卡牌身份，不能查询其效果。" };
+            var cardMap = (await _catalog.GetByIdsAsync([entity.CardId!], _build, cancellationToken: token)).ToDictionary(card => card.Id);
+            if (_build == _snapshot.ClientBuild && _build == "255790")
+                foreach (var donor in await _catalog.GetByDbfIdsAsync(AssembledCardText.ReferencedDbfIds(entity.Tags), _build, cancellationToken: token)) cardMap.TryAdd(donor.Id, donor);
+            var effect = SnapshotCardEffects.Resolve(_snapshot, _build, entity, cardMap);
+            return Node(new { _snapshot.MatchId, _snapshot.StateVersion, _snapshot.EventSequence, build = _build,
+                entity_id = entity.Id, card_id = entity.CardId, name = cardMap.GetValueOrDefault(entity.CardId!)?.Name,
+                effect = CompactAdviceContextBuilder.EffectSummary(effect), can_evaluate_followup_actions = false });
         }
         var rulesCards = await RuleCardsAsync(token);
         if (name == "evaluate_draw")
@@ -268,6 +282,8 @@ public sealed class SnapshotCoach
 
     public static IReadOnlyList<AgentToolDefinition> Definitions { get; } = Array.AsReadOnly(new[]
     {
+        new AgentToolDefinition("get_entity_effect", "查询当前可见实体的基础或已观察拼装文字；按固定版本DBF重建半段。未确认半段/供体不回退成原牌效。候选半段不是成品，不改变费用属性，也不证明可执行动作。", Schema("""{"type":"object","properties":{"entity_id":{"type":"integer","minimum":1}},"required":["entity_id"],"additionalProperties":false}"""),
+            args => args.Count == 1 && Integer(args["entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("evaluate_draw", "预览已覆盖手牌成功使用后直接抽牌、满手损失、牌库减量与疲劳范围。假设本体成功离手；合法出牌另用evaluate_line核验。数量范围不生成新手牌实体或后续动作。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("get_recent_events", "查询固定决策点及以前的匿名事件摘要。", Schema("""{"type":"object","properties":{},"required":[],"additionalProperties":false}"""), Empty),

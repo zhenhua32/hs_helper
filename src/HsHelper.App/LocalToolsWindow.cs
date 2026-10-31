@@ -27,6 +27,7 @@ public sealed class LocalToolsWindow : Window
     private readonly ListBox _actions = new() { MinHeight = 80, MaxHeight = 150, DisplayMemberPath = nameof(LocalAction.Text) };
     private readonly Button _evaluate = new() { Content = "验证候选顺序" };
     private readonly Button _previewDraw = new() { Content = "预览所选手牌抽牌" };
+    private readonly Button _inspectEffect = new() { Content = "查看所选牌当前效果" };
     private readonly TextBox _depth = new() { Text = "4", Width = 45 };
     private readonly TextBox _nodes = new() { Text = "1500", Width = 65 };
     private readonly Button _lethal = new() { Content = "有限搜索斩杀" };
@@ -77,6 +78,11 @@ public sealed class LocalToolsWindow : Window
         {
             if (_source.SelectedItem is EntityOption source)
                 _ = RunToolAsync("evaluate_draw", new() { ["source_entity_id"] = source.Id });
+        };
+        _inspectEffect.Click += (_, _) =>
+        {
+            if (_source.SelectedItem is EntityOption source)
+                _ = RunToolAsync("get_entity_effect", new() { ["entity_id"] = source.Id });
         };
         _remove.Click += (_, _) => { if (_actions.SelectedIndex is var index && index >= 0 && index < _line.Count) { _line.RemoveAt(index); RefreshLine(); } };
         _evaluate.Click += (_, _) =>
@@ -153,13 +159,15 @@ public sealed class LocalToolsWindow : Window
 
     private async Task LoadNamesAsync(long revision, CancellationToken token)
     {
+        var snapshot = _snapshot;
         try
         {
             if (_fixedBuild is { Length: > 0 } build && build != "unknown")
             {
-                var cards = await _catalog.GetByIdsAsync(BattleViewBuilder.VisibleCardIds(_snapshot, build), build, cancellationToken: token);
+                var cards = await _catalog.GetByIdsAsync(BattleViewBuilder.VisibleCardIds(snapshot, build), build, cancellationToken: token);
+                var completeCards = await SnapshotCardEffects.LoadDonorsAsync(snapshot, build, _catalog, cards, token);
                 if (!Current(revision)) return;
-                _cards = cards.ToDictionary(card => card.Id, StringComparer.Ordinal);
+                _cards = completeCards;
                 RenderBinding();
             }
         }
@@ -196,8 +204,9 @@ public sealed class LocalToolsWindow : Window
         if (OwnChoice() is { } choice)
         {
             _choiceLabel.Text = $"当前我方选择 #{choice.Id}，选择 {choice.CountMin}～{choice.CountMax} 个。可仅核对范围，或评估已覆盖来源的直接后果；预览不是已经发生的局面。";
-            _choices.ItemsSource = choice.Options.OrderBy(option => option.Position ?? int.MaxValue)
-                .Select(option => new EntityOption(option.EntityId, CardName(option.CardId) + $" #{option.EntityId}")).ToArray();
+            _choices.ItemsSource = (_view.Choice?.Options ?? []).OrderBy(option => option.Position ?? int.MaxValue)
+                .Select(option => new EntityOption(option.EntityId, option.Name + $" #{option.EntityId}" +
+                    (option.IsAssembled ? " · " + option.EffectTextStatus + " · " + option.EffectTextDisplay : ""))).ToArray();
             foreach (var option in _choices.Items.OfType<EntityOption>().Where(option => selectedChoices.Contains(option.Id))) _choices.SelectedItems.Add(option);
         }
         else { _choiceLabel.Text = "当前没有已确认的我方选择；不能使用残留或对方候选。"; _choices.ItemsSource = Array.Empty<EntityOption>(); }
@@ -300,6 +309,8 @@ public sealed class LocalToolsWindow : Window
         _evaluate.IsEnabled = ready && _line.Count > 0; _lethal.IsEnabled = ready;
         _previewDraw.IsEnabled = ready && _snapshot.Phase == GamePhase.Main && _source.SelectedItem is EntityOption selected &&
             _snapshot.Entities.TryGetValue(selected.Id, out var source) && source.Zone == "HAND" && source.CardId is "FIR_921" or "EDR_226";
+        _inspectEffect.IsEnabled = ready && _source.SelectedItem is EntityOption selectedEffect &&
+            SnapshotCardEffects.VisibleCards(_snapshot, includePublicGraveyard: true).Any(entity => entity.Id == selectedEffect.Id);
         _add.IsEnabled = ready && _source.Items.Count > 0; _remove.IsEnabled = ready && _line.Count > 0;
         _kind.IsEnabled = _source.IsEnabled = _target.IsEnabled = _actions.IsEnabled = ready;
         if ((_kind.SelectedItem as KindOption)?.Kind == "end_turn") _target.IsEnabled = false;
@@ -322,7 +333,7 @@ public sealed class LocalToolsWindow : Window
         body.Children.Add(_deck); body.Children.Add(Row(_card, Label("抽取张数"), _draws, _odds));
         body.Children.Add(new TextBlock { Text = "候选顺序：编辑动作只影响本地计算", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
         body.Children.Add(Row(_kind, _source, Label("目标"), _target, _add));
-        body.Children.Add(_actions); body.Children.Add(Row(_remove, _evaluate, _previewDraw));
+        body.Children.Add(_actions); body.Children.Add(Row(_remove, _evaluate, _previewDraw, _inspectEffect));
         body.Children.Add(Row(Label("搜索深度"), _depth, Label("节点上限"), _nodes, _lethal));
         body.Children.Add(new TextBlock { Text = "我方当前选择", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
         body.Children.Add(_choiceLabel); body.Children.Add(_choices); body.Children.Add(Row(_validateChoice, _evaluateChoice, _cancel));
@@ -334,6 +345,7 @@ public sealed class LocalToolsWindow : Window
         Register("LocalLethalButton", _lethal); Register("LocalChoicesList", _choices); Register("LocalValidateChoiceButton", _validateChoice);
         Register("LocalEvaluateChoiceButton", _evaluateChoice);
         Register("LocalPreviewDrawButton", _previewDraw);
+        Register("LocalInspectEffectButton", _inspectEffect);
         Register("LocalCancelButton", _cancel); Register("LocalResultBox", _result);
         return new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
@@ -368,6 +380,21 @@ public static class LocalToolResultFormatter
             lines.Add(result["reason"]?.ToString() ?? "");
             return string.Join("\n", lines);
         }
+        if (tool == "get_entity_effect")
+        {
+            lines.Add("所选实体效果 · " + (result["name"]?.ToString() ?? "未知卡牌"));
+            if (result["effect"] is JsonObject effect)
+            {
+                lines.Add(effect["is_offer"]?.ToString() == "true" ? "当前为拼装候选半段，不是成品。" : "根据固定版本资料与当前已观察标签读取。动态参数和属性仍以日志为准。");
+                lines.Add(effect["is_offer"]?.ToString() == "true" ? "所提供半段：" + (effect["offered_half"]?.ToString() == "Trigger" ? "触发" : "效果") :
+                    effect["is_resolved"]?.ToString() == "true" ? "可读文字：" : "当前文字尚未确认：");
+                var text = effect["text"]?.ToString() ?? effect["offered_half_text"]?.ToString();
+                lines.Add(text is null ? "当前效果未知，不能回退使用原卡文字。" : text.Replace("<b>", "", StringComparison.Ordinal).Replace("</b>", "", StringComparison.Ordinal).Replace("<i>", "", StringComparison.Ordinal).Replace("</i>", "", StringComparison.Ordinal));
+                if (effect["unknowns"] is JsonArray unknowns) foreach (var unknown in unknowns) lines.Add("· " + unknown);
+            }
+            lines.Add("文字查询不证明可执行动作或结算结果，也不改变当前费用和属性。");
+            return string.Join("\n", lines);
+        }
         if (tool == "evaluate_draw")
         {
             AppendDraw(lines, result); return string.Join("\n", lines);
@@ -398,7 +425,9 @@ public static class LocalToolResultFormatter
                 lines.Add("制造方式：" + (crafting["Mechanism"]?.ToString() switch
                 { "BuildABeast" => "僵尸兽合成", "Assemble" => "拼装（保留主随从属性，替换文字）", _ => "未知" }));
                 lines.Add("当前阶段：" + (crafting["Stage"]?.ToString() switch
-                { "ComponentOne" => "选择第一组件，尚未获得成品", "ComponentTwo" => "选择第二组件，预览合成的直接后果", _ => "尚未确认，不能提前当作成品" }));
+                { "ComponentOne" => "选择第一组件，尚未获得成品", "ComponentTwo" => "选择第二组件，预览合成的直接后果", "HalfSelection" => "选择替换文字的半段；主随从尚未绑定", _ => "尚未确认，不能提前当作成品" }));
+                if (crafting["OfferedHalfText"] is { } offeredText)
+                    lines.Add("本次选择" + (crafting["OfferedHalf"]?.ToString() == "Trigger" ? "触发半段" : "效果半段") + "：" + offeredText.ToString().Replace("<b>", "", StringComparison.Ordinal).Replace("</b>", "", StringComparison.Ordinal));
                 if (crafting["Components"] is JsonArray components)
                     foreach (var component in components.OfType<JsonObject>())
                         lines.Add($"· {(component["FromHistory"]?.ToString() == "true" ? "前次实际已选" : "本次候选")}：{component["Name"]?.ToString() ?? "未知组件"}；观察费用 {component["ObservedCost"]?.ToString() ?? "未知"} / 攻击 {component["ObservedAttack"]?.ToString() ?? "未知"} / 生命 {component["ObservedHealth"]?.ToString() ?? "未知"}。");
@@ -406,7 +435,7 @@ public static class LocalToolResultFormatter
                 if (crafting["Stage"]?.ToString() == "ComponentTwo")
                     lines.Add($"合成数值预览：费用 {crafting["ResultingCost"]?.ToString() ?? "未知"} / 攻击 {crafting["ResultingAttack"]?.ToString() ?? "未知"} / 生命 {crafting["ResultingHealth"]?.ToString() ?? "未知"}；成品实体与其他触发等待客户端结算。");
                 lines.Add("本次选择新增手牌：" + (crafting["AddedToHand"]?.ToString() switch
-                { "true" => "可直接加入一张成品", "false" => "没有新增（组件阶段或手牌已满）", _ => "未知" }));
+                { "true" => "可直接加入一张成品", "false" => "本次没有新增", _ => "未知" }));
             }
             if (result["Rewind"] is JsonObject rewind)
             {

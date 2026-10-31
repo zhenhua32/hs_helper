@@ -228,6 +228,8 @@ public sealed partial class LineEvaluator
     private static void Play(Runtime state, PlannedAction action)
     {
         var source = state.Source(action.SourceEntityId, "HAND"); if (source is null) return;
+        if (state.HasCustomAssembledText(source))
+        { state.Unsupported("CUSTOM_ASSEMBLED_SOURCE", "拼装牌的自定义文字尚未模拟，不能按原卡ID结算。"); return; }
         if (state.Has(source, "CANT_PLAY")) { state.Invalid("该手牌当前不能使用。"); return; }
         var profile = state.Profile(source);
         if (profile is null) { state.Unsupported("UNKNOWN_CARD_EFFECT", "当前卡库缺少这张手牌的效果。"); return; }
@@ -514,9 +516,18 @@ public sealed partial class LineEvaluator
         }
         public void InspectInteractions(PlannedAction action)
         {
+            if (Entities.TryGetValue(action.SourceEntityId, out var selectedSource) && HasCustomAssembledText(selectedSource))
+            { Unsupported("CUSTOM_ASSEMBLED_SOURCE", "拼装牌的自定义文字尚未模拟，不能按原卡ID结算。"); return; }
             foreach (var entity in Entities.Values.Where(e => e.Alive && (e.Zone is "PLAY" or "HAND" || e.Type == "PLAYER" ||
                 (e.Type == "ENCHANTMENT" && e.Int("ATTACHED") is > 0 && e.Zone != "GRAVEYARD"))))
             {
+                if (HasCustomAssembledText(entity))
+                {
+                    if (entity.Zone == "PLAY")
+                    { Unsupported("CUSTOM_ASSEMBLED_ACTIVE", "场上拼装文字可能改变光环或触发，不能按原牌效验证动作。"); return; }
+                    Conditional("存在未覆盖的拼装文字，手牌或附加触发可能改变后果。", "CUSTOM_ASSEMBLED_HAND");
+                    continue;
+                }
                 if (entity.Flags.Any(flag => flag.Value != 0 && flag.Key.Length > 0 && flag.Key.All(char.IsDigit) &&
                     !IsKnownImbueCounter(entity, flag.Key) &&
                     !((_snapshot.ClientBuild == AuditedBuild && entity.CardId == "EDR_850p" || IsObservedStatEnchantment(entity)) && flag.Key is "2" or "3")))
@@ -578,6 +589,9 @@ public sealed partial class LineEvaluator
                 _assumptions.Add("未覆盖的前序效果可能改变后续动作是否合法，不能把条件状态下的失败视为确定非法。");
             }
         }
+        // Summon replaces runtime flags; the observed half evidence remains on the original immutable frame.
+        public bool HasCustomAssembledText(Entity entity) =>
+            _snapshot.Entities.TryGetValue(entity.Id, out var observed) && AssembledCardText.RequiresCustomText(observed.Tags);
         public void Unsupported(string kind, string message) { _unsupported.Add(kind); _assumptions.Add(message); _unresolved = true; Stopped = true; }
         public void Conditional(string assumption, string kind) { _assumptions.Add(assumption); _unsupported.Add(kind); }
         public LineEvaluation Build()
