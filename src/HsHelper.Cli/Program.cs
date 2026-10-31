@@ -190,10 +190,21 @@ static async Task<int> MainAsync(string[] args)
                     {
                         DeckVersionId = deck?.Id, Task = context.Task, UserQuestion = context.UserQuestion, Reasons = advice.Reasons, Alternative = advice.Alternative, Risks = advice.Risks,
                         Verification = advice.Verification, VerifiedLethal = advice.VerifiedLethal,
+                        LimitationsVersion = advice.LimitationsVersion, Assumptions = advice.Assumptions, Unknowns = advice.Unknowns,
+                        UnsupportedMechanics = advice.UnsupportedMechanics, HostRisks = advice.HostRisks,
+                        HostAssumptions = advice.HostAssumptions, HostUnknowns = advice.HostUnknowns,
+                        HostUnsupportedMechanics = advice.HostUnsupportedMechanics, HostLimitationsTruncated = advice.HostLimitationsTruncated,
+                        Model = advice.Model, AnalysisRunId = advice.AnalysisRunId, RequestIds = advice.RequestIds,
+                        ConversationArchiveIds = advice.ConversationArchiveIds, KnowledgeAsOf = advice.KnowledgeAsOf,
                         Actions = advice.Actions.Select(a => new ArchivedAdviceAction(a.Kind, a.SourceEntityId, a.TargetEntityId)).ToArray(), Evidence = evidence.ToArray()
                     }, sensitiveValues: [config.ApiKey, config.Settings.Endpoint.ToString()], cancellationToken: CancellationToken.None);
                     advice = advice with { Summary = archived.Advice.Summary, Reasons = archived.Advice.Reasons.ToArray(),
-                        Alternative = archived.Advice.Alternative, Risks = archived.Advice.Risks.ToArray(), UserQuestion = archived.Advice.UserQuestion };
+                        Alternative = archived.Advice.Alternative, Risks = archived.Advice.Risks.ToArray(), UserQuestion = archived.Advice.UserQuestion,
+                        LimitationsVersion = archived.Advice.LimitationsVersion, HostLimitationsTruncated = archived.Advice.HostLimitationsTruncated,
+                        Assumptions = archived.Advice.Assumptions, Unknowns = archived.Advice.Unknowns,
+                        UnsupportedMechanics = archived.Advice.UnsupportedMechanics, HostRisks = archived.Advice.HostRisks,
+                        HostAssumptions = archived.Advice.HostAssumptions, HostUnknowns = archived.Advice.HostUnknowns,
+                        HostUnsupportedMechanics = archived.Advice.HostUnsupportedMechanics };
                     var result = JsonSerializer.Serialize(advice, jsonOptions);
                     if (!string.IsNullOrEmpty(config.ApiKey) && result.Contains(config.ApiKey, StringComparison.Ordinal))
                         throw new InvalidDataException("模型结果包含不应导出的敏感内容。");
@@ -211,6 +222,11 @@ static async Task<int> MainAsync(string[] args)
                 }
                 var usage = usages.ToArray();
                 Print(new { Connected = true, advice.Verification, Actions = advice.Actions.Count, ElapsedMilliseconds = clock.ElapsedMilliseconds,
+                    Limitations = new { advice.LimitationsVersion, ModelAssumptions = advice.Assumptions?.Count,
+                        ModelUnknowns = advice.Unknowns?.Count, ModelUnsupportedMechanics = advice.UnsupportedMechanics?.Count,
+                        HostRisks = advice.HostRisks?.Count, HostAssumptions = advice.HostAssumptions?.Count,
+                        HostUnknowns = advice.HostUnknowns?.Count, HostUnsupportedMechanics = advice.HostUnsupportedMechanics?.Count,
+                        advice.HostLimitationsTruncated },
                     Usage = new { Requests = usage.Length, ChargedTokens = usage.Sum(u => u.ChargedTokens),
                         ReportedTotalTokens = usage.All(u => u.TotalTokens.HasValue) ? usage.Sum(u => u.TotalTokens!.Value) : (long?)null,
                         MatchRequests = budget.Snapshot(snapshot.MatchId).RequestsStarted } });

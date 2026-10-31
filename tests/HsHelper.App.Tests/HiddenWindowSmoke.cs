@@ -123,7 +123,7 @@ internal static class HiddenWindowSmoke
             var archive = (AdviceArchiveStore)Field(window, "_adviceArchive")!;
             var records = Await(archive.ListAsync(new AdviceArchiveFilter(MatchId: "deck-" + deck!.Id)), () => unhandled);
             Check(records.Count == 1 && records[0].Advice is { StateVersion: 0, EventSequence: 0, Verification: "strategy" } &&
-                records[0].Advice.DeckVersionId == deck.Id && records[0].Advice.PromptTemplateVersion == "hunter-v4/deckplan" &&
+                records[0].Advice.DeckVersionId == deck.Id && records[0].Advice.PromptTemplateVersion == "hunter-v5/deckplan" &&
                 records[0].Advice.Summary.Contains(ProposedSummary, StringComparison.Ordinal), "Planning UI archived the wrong state, deck or template.");
             var adviceText = Control<TextBox>(window, "AdviceBox").Text;
             Check(adviceText.Contains("已保存建议记录", StringComparison.Ordinal) && !adviceText.Contains(FakeKey, StringComparison.Ordinal) &&
@@ -138,6 +138,7 @@ internal static class HiddenWindowSmoke
             DeckExportChecks.RunOnDispatcher(window);
             KnowledgeNavigationChecks.RunOnDispatcher(window);
             StatsDateChecks.RunOnDispatcher(window);
+            AdviceLimitationsChecks.RunOnDispatcher(window);
             LocalToolsHiddenSmoke.RunOnDispatcher(Path.Combine(Environment.CurrentDirectory, "local-tools"));
             WindowClosingRegression.RunOnDispatcher(Path.Combine(Environment.CurrentDirectory, "closing"));
             AssertPassive(window);

@@ -26,6 +26,10 @@ public partial class MainWindow
         {
             DeckVersionId = deckVersion, Task = context.Task, UserQuestion = context.UserQuestion, Reasons = advice.Reasons, Alternative = advice.Alternative,
             Risks = advice.Risks, Verification = advice.Verification, VerifiedLethal = advice.VerifiedLethal,
+            LimitationsVersion = advice.LimitationsVersion, Assumptions = advice.Assumptions, Unknowns = advice.Unknowns,
+            UnsupportedMechanics = advice.UnsupportedMechanics, HostRisks = advice.HostRisks, HostAssumptions = advice.HostAssumptions,
+            HostUnknowns = advice.HostUnknowns, HostUnsupportedMechanics = advice.HostUnsupportedMechanics,
+            HostLimitationsTruncated = advice.HostLimitationsTruncated,
             Actions = advice.Actions.Select(a => new ArchivedAdviceAction(a.Kind, a.SourceEntityId, a.TargetEntityId)).ToArray(),
             Evidence = evidence, Model = advice.Model, AnalysisRunId = advice.AnalysisRunId, RequestIds = advice.RequestIds,
             ConversationArchiveIds = advice.ConversationArchiveIds, KnowledgeAsOf = advice.KnowledgeAsOf
@@ -88,15 +92,21 @@ public partial class MainWindow
     {
         var advice = saved.Advice;
         var choiceOnly = advice.Actions.Count > 0 && advice.Actions.All(a => a.Kind == "choose");
-        var label = advice.Verification == "verified" ? choiceOnly ? "选择范围已验证" : "动作已通过本地规则验证" : "策略建议";
-        if (advice.Task.Equals(AdviceTaskKind.DeckPlan.ToString(), StringComparison.Ordinal)) label = "赛前套牌计划";
+        var label = advice.Verification switch
+        {
+            "verified" => choiceOnly ? "选择范围已验证" : "动作已通过本地规则验证",
+            "conditional" => "有条件建议（具体动作已移除）",
+            "unsupported" => "规则未覆盖（具体动作已移除）",
+            _ => "策略建议"
+        };
+        if (string.Equals(advice.Task, AdviceTaskKind.DeckPlan.ToString(), StringComparison.Ordinal)) label = "赛前套牌计划";
         else if (CurrentAccess.IsHistorical) label = "历史复盘 · " + label;
         var text = new StringBuilder($"{label} · 局面 v{advice.StateVersion}\n\n{advice.Summary}\n\n依据\n");
         if (!string.IsNullOrWhiteSpace(advice.UserQuestion)) text.Insert(0, $"本次提问：{advice.UserQuestion}\n\n");
         if (advice.ConversationArchiveIds is { Count: > 0 }) text.AppendLine($"承接 {advice.ConversationArchiveIds.Count} 条此前解释；当前局面和工具结果优先。\n");
         foreach (var reason in advice.Reasons) text.AppendLine(reason);
-        text.AppendLine($"\n备选\n{advice.Alternative ?? "无"}\n\n风险与未知");
-        foreach (var risk in advice.Risks) text.AppendLine(risk);
+        text.AppendLine($"\n备选\n{advice.Alternative ?? "无"}");
+        text.Append(AdviceLimitationsPresentation.Render(advice));
         if (advice.Actions.Count > 0)
         {
             text.AppendLine("\n已验证动作");
@@ -106,7 +116,7 @@ public partial class MainWindow
         text.AppendLine($"\n已保存建议记录 · {saved.RecordedAt.ToLocalTime():HH:mm:ss}");
         AdviceBox.Text = text.ToString();
         if (advice.MatchId == DisplaySnapshot.MatchId && advice.StateVersion == DisplaySnapshot.StateVersion)
-            _overlayAdvice = advice.Summary + (advice.Risks.Count > 0 ? "\n风险：" + advice.Risks[0] : "");
+            _overlayAdvice = AdviceLimitationsPresentation.OverlayText(advice);
     }
     private async void AnalyzeDeckPlanClicked(object sender, RoutedEventArgs e) => await Run(() => TrackAnalysisAsync(AnalyzeDeckPlanCoreAsync));
     private async Task AnalyzeDeckPlanCoreAsync()

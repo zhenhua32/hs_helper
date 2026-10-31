@@ -33,6 +33,7 @@ var checks = new List<(string Name, Func<Task> Run)>
 checks.AddRange(AnalysisTraceChecks.Cases(database));
 checks.AddRange(CoachKnowledgeChecks.Cases(database));
 checks.AddRange(AdviceArchiveChecks.Cases(database));
+checks.AddRange(AdviceLimitationsChecks.Cases(database));
 checks.AddRange(HistoricalStatsChecks.Cases(database));
 checks.AddRange(ConversationArchiveChecks.Cases(database));
 checks.AddRange(ChoiceHistoryStorageChecks.Cases(database));

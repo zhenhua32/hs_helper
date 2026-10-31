@@ -7,7 +7,12 @@ public sealed record AdviceAction(string Kind, int? SourceEntityId, int? TargetE
 public enum AdviceValidationStatus { Verified, Conditional, Unsupported, Invalid }
 
 public sealed record ActionValidationResult(AdviceValidationStatus Status, bool IsLegal,
-    bool VerifiedLethal = false, IReadOnlyList<string>? Risks = null);
+    bool VerifiedLethal = false, IReadOnlyList<string>? Risks = null)
+{
+    public IReadOnlyList<string>? Assumptions { get; init; }
+    public IReadOnlyList<string>? Unknowns { get; init; }
+    public IReadOnlyList<string>? UnsupportedMechanics { get; init; }
+}
 
 /// <summary>Only explicitly registered local tools can reach the execution callback.</summary>
 public sealed record AgentToolDefinition(string Name, string Description, JsonObject Parameters,

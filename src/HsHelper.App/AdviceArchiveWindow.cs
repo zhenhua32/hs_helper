@@ -187,7 +187,8 @@ public sealed class AdviceArchiveWindow : Window
         if (a.Task == "DeckPlan") text.AppendLine("赛前套牌分析，不是实时对局局面。");
         if (!string.IsNullOrWhiteSpace(a.UserQuestion)) text.AppendLine($"\n当时提问\n{a.UserQuestion}");
         text.AppendLine($"\n建议\n{a.Summary}\n\n依据"); foreach (var reason in a.Reasons) text.AppendLine(reason);
-        text.AppendLine($"\n备选\n{a.Alternative ?? "无"}\n\n风险"); foreach (var risk in a.Risks) text.AppendLine(risk);
+        text.AppendLine($"\n备选\n{a.Alternative ?? "无"}");
+        text.Append(AdviceLimitationsPresentation.Render(a));
         text.AppendLine($"\n当时的归档判断\n斩杀标记：{(a.VerifiedLethal ? "是" : "否")}（不是对当前局面的认证）\n\n当时的归档动作（仅供复盘）");
         if (a.Actions.Count == 0) text.AppendLine("未保存动作。");
         foreach (var action in a.Actions)

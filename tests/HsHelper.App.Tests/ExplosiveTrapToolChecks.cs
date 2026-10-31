@@ -85,7 +85,7 @@ public static class ExplosiveTrapToolChecks
         foreach (var task in new[] { AdviceTaskKind.Turn, AdviceTaskKind.Choice })
         {
             var policy = AdviceTaskTemplates.Get(task);
-            Check(policy.Version == "hunter-v14/" + task.ToString().ToLowerInvariant() &&
+            Check(policy.Version == "hunter-v15/" + task.ToString().ToLowerInvariant() &&
                 policy.Instructions.Contains("evaluate_explosive_trap", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("攻击对象固定为我方英雄", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("完整攻击会继续或已经结算", StringComparison.Ordinal) &&
@@ -93,7 +93,7 @@ public static class ExplosiveTrapToolChecks
                 policy.Instructions.Contains("MapPlayPreviews", StringComparison.Ordinal), "The v14 trap policy lost conditional scope or prior lifecycle constraints.");
         }
         foreach (var task in new[] { AdviceTaskKind.Mulligan, AdviceTaskKind.Review, AdviceTaskKind.DeckPlan })
-            Check(AdviceTaskTemplates.Get(task).Version.StartsWith("hunter-v4/", StringComparison.Ordinal) &&
+            Check(AdviceTaskTemplates.Get(task).Version.StartsWith("hunter-v5/", StringComparison.Ordinal) &&
                 !AdviceTaskTemplates.Get(task).Instructions.Contains("evaluate_explosive_trap", StringComparison.Ordinal), "Trap policy changed an unrelated task.");
     }
 

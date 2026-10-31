@@ -284,7 +284,7 @@ public sealed class SnapshotCoach
     private async Task<ActionValidationResult> ValidateActionsAsync(IReadOnlyList<AdviceAction> actions, CancellationToken token)
     {
         if (IsDeckPlanning)
-            return new(AdviceValidationStatus.Unsupported, false, Risks: ["赛前计划仅提供套牌背景策略，不验证或提供实时动作。"]);
+            return UnsupportedActions("赛前计划仅提供套牌背景策略，不验证或提供实时动作。");
         if (actions.Count > 0 && actions.All(a => a.Kind == "choose"))
         {
             if (actions.Any(a => a.SourceEntityId is null || a.TargetEntityId is not null))
@@ -292,19 +292,28 @@ public sealed class SnapshotCoach
             var selected = actions.Select(a => a.SourceEntityId!.Value).ToArray();
             var choiceResult = _rules.ValidateChoice(_snapshot, selected, _snapshot.Choice?.Id, token);
             return new(Enum.Parse<AdviceValidationStatus>(choiceResult.Verification.ToString()), choiceResult.IsLegal,
-                false, choiceResult.Errors.Concat(choiceResult.Assumptions).ToArray());
+                false, choiceResult.Errors.Concat(choiceResult.Assumptions).ToArray())
+            { Assumptions = Array.AsReadOnly(choiceResult.Assumptions.ToArray()) };
         }
         if (actions.Any(a => a.Kind is not ("play" or "attack" or "hero_power" or "end_turn")))
-            return new(AdviceValidationStatus.Unsupported, false, Risks: ["当前不能混合选择和其他动作进行后续模拟。"]);
+            return UnsupportedActions("当前不能混合选择和其他动作进行后续模拟。");
         if (_build is null || await _catalog.GetManifestAsync(_build, cancellationToken: token) is null)
-            return new(AdviceValidationStatus.Unsupported, false, Risks: ["缺少对应版本卡库，无法验证动作。"]);
+            return UnsupportedActions("缺少对应版本卡库，无法验证动作。");
         var planned = actions.Select(a => new PlannedAction(a.Kind switch
         { "play" => ActionKind.PlayCard, "attack" => ActionKind.Attack, "hero_power" => ActionKind.HeroPower, _ => ActionKind.EndTurn }, a.SourceEntityId ?? 0, a.TargetEntityId)).ToArray();
         var cards = await RuleCardsAsync(token);
         var result = await Task.Run(() => _rules.EvaluateLine(_snapshot, planned, cards, token), token);
         return new(Enum.Parse<AdviceValidationStatus>(result.Verification.ToString()), result.IsLegal == true,
-            result.IsLethal, result.Errors.Concat(result.Assumptions).Concat(result.UnsupportedMechanics).Distinct().ToArray());
+            result.IsLethal, result.Errors.Concat(result.Assumptions).Concat(result.UnsupportedMechanics).Distinct().ToArray())
+        {
+            Assumptions = Array.AsReadOnly(result.Assumptions.ToArray()),
+            UnsupportedMechanics = Array.AsReadOnly(result.UnsupportedMechanics.ToArray())
+        };
     }
+
+    private static ActionValidationResult UnsupportedActions(string reason) =>
+        new(AdviceValidationStatus.Unsupported, false, Risks: [reason])
+        { UnsupportedMechanics = Array.AsReadOnly(new[] { reason }) };
 
     private LineEvaluation Project(LineEvaluation evaluation)
     {

@@ -30,6 +30,15 @@ public sealed record AdviceRecordDraft(string MatchId, long StateVersion, long E
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? RequestIds { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? ConversationArchiveIds { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTimeOffset? KnowledgeAsOf { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? LimitationsVersion { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? Assumptions { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? Unknowns { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? UnsupportedMechanics { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? HostRisks { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? HostAssumptions { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? HostUnknowns { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? HostUnsupportedMechanics { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool HostLimitationsTruncated { get; init; }
 }
 
 public sealed record ArchivedAdviceRecord(string Id, DateTimeOffset RecordedAt, AdviceRecordDraft Advice);
@@ -234,6 +243,7 @@ public sealed class AdviceArchiveStore
             draft.Model.Any(char.IsControl) || draft.Model.Contains("://", StringComparison.Ordinal)))
             throw new ArgumentException("归档模型标识无效。");
         if (draft.AnalysisRunId is not null) CoachLocalDatabase.Identifier(draft.AnalysisRunId);
+        ValidateLimitationsVersion(draft);
         var requestIds = ProvenanceIds(draft.RequestIds, 5);
         var conversationIds = ProvenanceIds(draft.ConversationArchiveIds, 4);
         if (draft.StateVersion < 0 || draft.EventSequence < 0 || draft.Reasons is null || draft.Risks is null ||
@@ -262,6 +272,11 @@ public sealed class AdviceArchiveStore
                 throw new ArgumentException("工具依据需要有效名称与脱敏摘要，可选哈希应为SHA256。");
             return value with { Summary = Text(value.Summary, 1000, sensitive), ResultHash = value.ResultHash?.ToUpperInvariant() };
         }).ToArray();
+        var hostTruncated = draft.HostLimitationsTruncated;
+        var hostRisks = PrepareLimitationTexts(draft.HostRisks, 64, sensitive, ref hostTruncated);
+        var hostAssumptions = PrepareLimitationTexts(draft.HostAssumptions, 64, sensitive, ref hostTruncated);
+        var hostUnknowns = PrepareLimitationTexts(draft.HostUnknowns, 64, sensitive, ref hostTruncated);
+        var hostUnsupported = PrepareLimitationTexts(draft.HostUnsupportedMechanics, 64, sensitive, ref hostTruncated);
         return draft with
         {
             Summary = Text(draft.Summary, 2000, sensitive), Task = Text(draft.Task, 80, sensitive, allowEmpty: true),
@@ -270,11 +285,18 @@ public sealed class AdviceArchiveStore
             Alternative = draft.Alternative is null ? null : Text(draft.Alternative, 2000, sensitive, allowEmpty: true),
             Risks = Array.AsReadOnly(draft.Risks.Select(s => Text(s, 2000, sensitive)).ToArray()),
             Actions = Array.AsReadOnly(actions), Evidence = Array.AsReadOnly(evidence),
-            RequestIds = requestIds, ConversationArchiveIds = conversationIds, KnowledgeAsOf = draft.KnowledgeAsOf?.ToUniversalTime()
+            RequestIds = requestIds, ConversationArchiveIds = conversationIds, KnowledgeAsOf = draft.KnowledgeAsOf?.ToUniversalTime(),
+            Assumptions = PrepareLimitationTexts(draft.Assumptions, 12, sensitive), Unknowns = PrepareLimitationTexts(draft.Unknowns, 12, sensitive),
+            UnsupportedMechanics = PrepareLimitationTexts(draft.UnsupportedMechanics, 12, sensitive), HostRisks = hostRisks,
+            HostAssumptions = hostAssumptions, HostUnknowns = hostUnknowns, HostUnsupportedMechanics = hostUnsupported,
+            HostLimitationsTruncated = hostTruncated
         };
     }
 
     private static string Text(string value, int maximum, string[] secrets, bool allowEmpty = false)
+        => Text(value, maximum, secrets, out _, allowEmpty);
+
+    private static string Text(string value, int maximum, string[] secrets, out bool truncated, bool allowEmpty = false)
     {
         if (value is null || value.Length > maximum || (!allowEmpty && string.IsNullOrWhiteSpace(value)) || value.Contains('\0'))
             throw new ArgumentException("建议归档文本为空、过长或包含无效字符。");
@@ -296,6 +318,7 @@ public sealed class AdviceArchiveStore
         // Redaction may expand very short tokens. Bound the returned value, not only its original input,
         // so a prepared record remains valid when SaveAsync prepares it again after queueing.
         var length = Math.Min(value.Length, maximum);
+        truncated = length < value.Length;
         if (length < value.Length && length > 0 && char.IsHighSurrogate(value[length - 1])) length--;
         return value[..length];
     }
@@ -309,15 +332,59 @@ public sealed class AdviceArchiveStore
         }
         catch (JsonException) { return false; }
     }
-    private static AdviceRecordDraft Read(string json) => JsonSerializer.Deserialize<AdviceRecordDraft>(json)
-        ?? throw new InvalidDataException("归档建议记录无效。");
+    private static AdviceRecordDraft Read(string json)
+    {
+        var value = JsonSerializer.Deserialize<AdviceRecordDraft>(json) ?? throw new InvalidDataException("归档建议记录无效。");
+        try
+        {
+            ValidateLimitationsVersion(value);
+            foreach (var (texts, maximum) in LimitationLists(value))
+                _ = PrepareLimitationTexts(texts, maximum, []);
+        }
+        catch (ArgumentException error) { throw new InvalidDataException("归档建议的结构化限制无效。", error); }
+        return value;
+    }
     private static AdviceRecordDraft Freeze(AdviceRecordDraft value) => value with
     {
         Reasons = Array.AsReadOnly(value.Reasons.ToArray()), Risks = Array.AsReadOnly(value.Risks.ToArray()),
         Actions = Array.AsReadOnly(value.Actions.ToArray()), Evidence = Array.AsReadOnly(value.Evidence.ToArray()),
         RequestIds = value.RequestIds is null ? null : Array.AsReadOnly(value.RequestIds.ToArray()),
-        ConversationArchiveIds = value.ConversationArchiveIds is null ? null : Array.AsReadOnly(value.ConversationArchiveIds.ToArray())
+        ConversationArchiveIds = value.ConversationArchiveIds is null ? null : Array.AsReadOnly(value.ConversationArchiveIds.ToArray()),
+        Assumptions = FreezeLimitationTexts(value.Assumptions), Unknowns = FreezeLimitationTexts(value.Unknowns),
+        UnsupportedMechanics = FreezeLimitationTexts(value.UnsupportedMechanics), HostRisks = FreezeLimitationTexts(value.HostRisks),
+        HostAssumptions = FreezeLimitationTexts(value.HostAssumptions), HostUnknowns = FreezeLimitationTexts(value.HostUnknowns),
+        HostUnsupportedMechanics = FreezeLimitationTexts(value.HostUnsupportedMechanics)
     };
+    private static void ValidateLimitationsVersion(AdviceRecordDraft value)
+    {
+        if (value.LimitationsVersion is not (null or 1) || value.LimitationsVersion is null &&
+            (value.HostLimitationsTruncated || LimitationLists(value).Any(pair => pair.Texts is not null)))
+            throw new ArgumentException("结构化限制需要受支持的版本，新增类别或截断标记必须声明版本1。");
+    }
+    private static IEnumerable<(IReadOnlyList<string>? Texts, int Maximum)> LimitationLists(AdviceRecordDraft value)
+    {
+        yield return (value.Assumptions, 12); yield return (value.Unknowns, 12); yield return (value.UnsupportedMechanics, 12);
+        yield return (value.HostRisks, 64); yield return (value.HostAssumptions, 64); yield return (value.HostUnknowns, 64); yield return (value.HostUnsupportedMechanics, 64);
+    }
+    private static IReadOnlyList<string>? PrepareLimitationTexts(IReadOnlyList<string>? values, int maximum, string[] sensitive)
+    {
+        var ignored = false;
+        return PrepareLimitationTexts(values, maximum, sensitive, ref ignored);
+    }
+    private static IReadOnlyList<string>? PrepareLimitationTexts(IReadOnlyList<string>? values, int maximum, string[] sensitive, ref bool truncated)
+    {
+        if (values is null) return null;
+        if (values.Count > maximum) throw new ArgumentException("结构化限制类别的条目数量超出上限。");
+        var result = new List<string>();
+        foreach (var value in values)
+        {
+            result.Add(Text(value, 2000, sensitive, out var textTruncated));
+            truncated |= textTruncated;
+        }
+        return Array.AsReadOnly(result.ToArray());
+    }
+    private static IReadOnlyList<string>? FreezeLimitationTexts(IReadOnlyList<string>? values)
+        => values is null ? null : Array.AsReadOnly(values.ToArray());
     private static IReadOnlyList<string>? ProvenanceIds(IReadOnlyList<string>? values, int maximum)
     {
         if (values is null || values.Count == 0) return null;

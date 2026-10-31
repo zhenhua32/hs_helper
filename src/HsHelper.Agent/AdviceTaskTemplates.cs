@@ -7,7 +7,7 @@ public sealed record AdviceTaskTemplate(AdviceTaskKind Kind, string Version, str
 /// <summary>Explicit task policies share the same evidence and local-rule boundaries.</summary>
 public static class AdviceTaskTemplates
 {
-    public const string Version = "hunter-v4";
+    public const string Version = "hunter-v5";
     private const string TerrorInstructions = "evaluate_line中end_turn的TerrorEndTurnPreviews列出神秘恐魔回合末有限相关分支。每个分支的见证战斗顺序、英雄生命、吸血与随从存活须一起比较，不能将不同分支的有利数值拼成一个局面；见证顺序不表示实际发生或等概率。IsEnumerationComplete只覆盖本次模型范围，截断或未展开触发不证明其他结果不存在；不把分支、前缀或保留的普通攻击次数/就绪字段当作权威后继状态，不继续跨回合动作或据此宣称已验证斩杀。";
     private const string WeaponInstructions = "当前武器以entity.current_weapon或计算结果WeaponDurability为准，只有已知的现代HEALTH-DAMAGE才是可用剩余耐久；缺DAMAGE不补零，印刷durability和旧DURABILITY不能覆盖当前值。最后一次攻击会损毁武器并移除其攻击贡献，不能继续使用旧武器攻击或风怒。简单装备也须使用当前费用、攻击和最大耐久；手牌武器的战吼、过载或使用效果未覆盖时，不能声称已经合法装备。WeaponResolutionBoundaryReached表示损毁亡语、替换或风怒来源仍待真实结算，不把条件中间状态作为后续动作或斩杀依据。";
     private const string EntityEffectInstructions = "实体存在拼装标记时，按entity.effect或get_entity_effect读取该实体文字；cards/get_cards是固定版本基础定义，不能覆盖拼装文字。同CardId的不同实体也可能效果不同。候选的触发/效果半段不是供体整牌，不代表新增手牌；主目标未绑定时不合成完整效果。文字重建不表示自定义脚本已被规则模拟，缺失供体或未知文字不得回退原牌效，更不能据此宣称动作或斩杀已验证。";
@@ -27,7 +27,7 @@ public static class AdviceTaskTemplates
     };
 
     public static AdviceTaskTemplate Get(AdviceTaskKind task) => new(task,
-        task is AdviceTaskKind.Choice or AdviceTaskKind.Turn ? "hunter-v14/" + task.ToString().ToLowerInvariant() : Version + "/" + task.ToString().ToLowerInvariant(), task switch
+        task is AdviceTaskKind.Choice or AdviceTaskKind.Turn ? "hunter-v15/" + task.ToString().ToLowerInvariant() : Version + "/" + task.ToString().ToLowerInvariant(), task switch
     {
         AdviceTaskKind.Mulligan => "当前任务：开局留牌。逐张解释已确认我方起手牌的保留或替换理由，结合先后手、已知对手职业和导入套牌计划。先后手、职业或牌效未知时明确说明；不把未知牌或未来抽牌当作事实。留牌未结束时不提供出牌顺序或确定概率。",
         AdviceTaskKind.Turn => "当前任务：回合建议。先指出目标、当前资源和取舍，再给出简短方案。动态费用、攻击、生命和状态以本次tags为准，不用印刷值覆盖。候选动作调用evaluate_line核验；evaluate_draw仅假设本体成功使用后预览直接抽牌、满手损失和疲劳范围，不能证明出牌合法。DrawBoundaryReached之后实体投影只到抽牌前，不生成新手牌或继续安排动作；训犬师抽牌后的灌注须等待新局面。结束回合用end_turn，来源必须是我方PLAYER实体且不带目标，不能在结束后继续己方动作。回合末结果不代表对手起手。未完整覆盖时只给条件性策略，不宣布确定斩杀或胜率。",
