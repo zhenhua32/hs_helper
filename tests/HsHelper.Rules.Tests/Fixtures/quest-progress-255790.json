@@ -1,0 +1,169 @@
+{
+  "build": "255790",
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "officialSource": "https://hearthstone.blizzard.com/en-us/cards/120648-storm-the-gates",
+  "cards": [
+    {
+      "artist": "James Ryman",
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 120648,
+      "flavor": "劫日快乐，失落之城！",
+      "howToEarn": "打开<i>安戈洛龟途</i>卡牌包后可解锁。",
+      "howToEarnGolden": "打开<i>安戈洛龟途</i>金色包后可解锁。",
+      "id": "TLC_EVENT_400",
+      "mechanics": [
+        "SIDE_QUEST"
+      ],
+      "name": "围攻城门",
+      "rarity": "EPIC",
+      "set": "EVENT",
+      "text": "<b>支线任务：</b>使用亡灵或野兽牌，总计3张。<b>奖励：</b>制造一个自定义的僵尸兽，其法力值消耗减少（3）点。",
+      "type": "SPELL"
+    },
+    {
+      "artist": "Patrik Bjorkstrom",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 114020,
+      "flavor": "所谓物以类聚，那么幽爪熊该和谁一起冬眠？",
+      "health": 2,
+      "id": "EDR_227",
+      "mechanics": [
+        "DEATHRATTLE",
+        "RUSH"
+      ],
+      "name": "幽爪熊",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。<b>亡语：</b><b>灌注</b>你的英雄技能。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ursula Dorada",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 115648,
+      "flavor": "护花是为了择花。“她爱我……她不爱我……”",
+      "health": 3,
+      "id": "FIR_921",
+      "isMiniSet": true,
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "花木护侍",
+      "race": "DRAENEI",
+      "races": [
+        "DRAENEI"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b>如果你已<b>灌注</b>过你的英雄技能两次，抽两张牌。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Konstantin Turovec",
+      "attack": 4,
+      "cardClass": "DEMONHUNTER",
+      "collectible": true,
+      "cost": 7,
+      "countAsCopyOfDbfId": 98469,
+      "dbfId": 129169,
+      "flavor": "游戏内禁止养恐魔。",
+      "health": 10,
+      "howToEarn": "与恶魔猎手职业一同解锁。",
+      "howToEarnGolden": "使用恶魔猎手赢得250场对战后解锁。",
+      "id": "CORE_TTN_866",
+      "mechanics": [
+        "LIFESTEAL",
+        "TRIGGER_VISUAL"
+      ],
+      "name": "神秘恐魔",
+      "race": "DEMON",
+      "races": [
+        "DEMON",
+        "BEAST"
+      ],
+      "rarity": "EPIC",
+      "set": "CORE",
+      "text": "<b>吸血</b>。在你的回合结束时，&迫使所有敌方随从攻击本随从。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Eva Widermann",
+      "attack": 1,
+      "cardClass": "ROGUE",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 54261,
+      "flavor": "最强的捕鼠能手，上猫窝与下猫窝之王，红色光斑的征服者，全知全能的喵特谢普苏特。",
+      "health": 2,
+      "id": "ULD_186",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "法老御猫",
+      "race": "BEAST",
+      "races": [
+        "UNDEAD",
+        "BEAST"
+      ],
+      "rarity": "COMMON",
+      "referencedTags": [
+        "REBORN"
+      ],
+      "set": "ULDUM",
+      "text": "<b>战吼：\n</b>随机将一张<b>复生</b>随从牌置入你的手牌。",
+      "type": "MINION"
+    },
+    {
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "cost": 1,
+      "dbfId": 53683,
+      "durability": 0,
+      "health": 1,
+      "id": "DAL_087tw",
+      "name": "融合怪",
+      "race": "ALL",
+      "races": [
+        "ALL"
+      ],
+      "set": "DALARAN",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "Luca Zontini",
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 69546,
+      "flavor": "法师们用奥术强化箭矢，然后出售给猎人；后来猎人们自己学会了足够的魔法之后便能够自给自足。不少法师因此失业，给暴风城的经济带来不小的冲击。",
+      "howToEarn": "与猎人职业一同解锁。",
+      "howToEarnGolden": "使用猎人赢得100场对战后解锁。",
+      "id": "CORE_DS1_185",
+      "name": "奥术射击",
+      "rarity": "RARE",
+      "set": "CORE",
+      "spellSchool": "ARCANE",
+      "text": "造成$2点伤害。",
+      "type": "SPELL"
+    }
+  ]
+}

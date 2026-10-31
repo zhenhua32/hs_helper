@@ -24,6 +24,7 @@ public sealed partial class LineEvaluator
         "build255790：基础稳固射击、硬币、奥术射击、杀戮命令、猎人印记、精灵弓箭手、安装爆炸陷阱、戈德林伤害翻倍",
         "build255790：苦花骑士、振翅守卫与幽爪熊灌注；单一野兽的巨狼祝福及多候选互斥分支；无法确认当前参数时保留未知",
         "build255790：宝石鹦鹉原生生成的直接数量与满手损失；生成及随机命中后等待新局面，不推测牌身份或选择结果",
+        "build255790：围攻城门安装及已观察进度延续，奖励选择前停止；梦缚迅猛龙入场与来源/目标绑定的使用后触发次数，随机额外效果待观察",
         "build255790：熔岩猎犬入场、突袭及击杀最后敌方随从后对唯一敌方英雄的分配伤害；多个候选仍保留随机限制",
         "build255790：阿迦玛甘入场与下一张牌的对手生命支付，当前费用上限10；未知剩余效力不由本体推断",
         "build255790：神秘恐魔入场及己方回合结束；唯一敌方随从展开强制战斗，多目标/多触发顺序与未实证计数字段保留条件",
@@ -63,6 +64,9 @@ public sealed partial class LineEvaluator
                 if (state.DrawBoundaryReached) { state.Unsupported("AWAIT_DRAW_SNAPSHOT", "抽牌直接后果已预览，但新手牌实体、牌库顺序及后续触发尚未观察；请等待新局面后继续动作。"); break; }
                 if (state.GenerationBoundaryReached) { state.Unsupported("AWAIT_GENERATION_SNAPSHOT", "随机生成数量已预览，新牌身份、实体与后续触发尚未观察；请等待新局面后继续动作。"); break; }
                 if (state.WolfBlessingBoundaryReached) { state.Unsupported("AWAIT_WOLF_BLESSING_SNAPSHOT", "巨狼祝福的实际随机命中尚未观察；请等待新局面后继续动作，不能指定任一分支为真实结果。"); break; }
+                if (state.QuestRewardBoundaryReached) { state.Unsupported("AWAIT_QUEST_REWARD_SNAPSHOT", "任务计数或僵尸兽奖励选择尚待确认，不能跨越该边界继续动作。"); break; }
+                if (state.RaptorBoundaryReached) { state.Unsupported("AWAIT_RAPTOR_SNAPSHOT", "梦缚迅猛龙的随机额外效果尚未观察，不能假定关键词后继续动作。"); break; }
+                if (state.StopForExistingQuestReward()) break;
                 if (state.TurnEnded) { state.Invalid("己方回合已经结束，不能在未观察下一决策点前继续安排动作。"); break; }
                 if (state.EnemyHero!.Health <= 0 || state.OwnHero!.Health <= 0)
                 { state.Invalid("英雄已达到零生命，不能继续执行后续动作。"); break; }
@@ -74,7 +78,11 @@ public sealed partial class LineEvaluator
                     switch (action.Kind)
                     {
                         case ActionKind.Attack: Attack(state, action); break;
-                        case ActionKind.PlayCard: Play(state, action); break;
+                        case ActionKind.PlayCard:
+                            var playFrame = state.CapturePlayTriggers(action);
+                            Play(state, action);
+                            if (!state.Stopped) state.ResolvePlayTriggers(playFrame);
+                            break;
                         case ActionKind.HeroPower: UseHeroPower(state, action); break;
                         case ActionKind.EndTurn: EndTurn(state, action); break;
                     }
@@ -236,6 +244,10 @@ public sealed partial class LineEvaluator
         if (state.Has(source, "CANT_PLAY")) { state.Invalid("该手牌当前不能使用。"); return; }
         var profile = state.Profile(source);
         if (profile is null) { state.Unsupported("UNKNOWN_CARD_EFFECT", "当前卡库缺少这张手牌的效果。"); return; }
+        if (!state.ObservedCardType(source, profile.Type))
+        { state.Unsupported("CONFLICTING_PLAY_CARD_TYPE", "当前卡牌类别为空、非法或与固定身份冲突，未支付或使用。"); return; }
+        if (!state.ObservedPlayIdentity(source))
+        { state.Unsupported("CONFLICTING_PLAY_IDENTITY", "使用来源的区域、归属或实体标记存在冲突，未支付或使用。"); return; }
         if (!state.CanAffordCard(source)) return;
         var id = source.CardId!;
         if (TryPlayMythicalTerror(state, action, source, profile)) return;
@@ -261,6 +273,12 @@ public sealed partial class LineEvaluator
             return;
         }
         if (profile.Type != "SPELL") { state.Unsupported("CARD_TYPE", "当前尚未模拟该类型牌的使用。"); return; }
+        if (id == "TLC_EVENT_400")
+        {
+            if (!state.RequireAuditedBuild()) return;
+            if (action.TargetEntityId is not null) { state.Invalid("围攻城门不需要指定目标。"); return; }
+            state.InstallSidequest(source); return;
+        }
         if (id == "GAME_005")
         {
             if (action.TargetEntityId is not null) { state.Invalid("硬币不需要目标。"); return; }
@@ -275,8 +293,7 @@ public sealed partial class LineEvaluator
         if (ExplosiveTrap.Contains(id))
         {
             if (action.TargetEntityId is not null) { state.Invalid("爆炸陷阱不需要目标。"); return; }
-            var ownSecrets = state.Entities.Values.Where(e => e.Alive && e.Controller == state.Local && e.Zone == "SECRET" && state.Profile(e)?.Mechanics.Contains("SECRET") == true).ToArray();
-            if (ownSecrets.Length >= 5 || ownSecrets.Any(e => e.CardId == id)) { state.Invalid("奥秘已达上限或存在同名奥秘。"); return; }
+            if (!state.CanInstallInSecretZone(source)) return;
             if (!state.Pay(source)) return;
             if (state.OpponentDefeatedByPayment) return;
             source.Zone = "SECRET"; state.Coverage.Add("explosive-trap-install-only"); return;
@@ -558,7 +575,7 @@ public sealed partial class LineEvaluator
                 if (entity.Zone == "SECRET" && entity.Controller == Local)
                 {
                     if (_snapshot.ClientBuild == "255790" && entity.CardId is { } secret && ExplosiveTrap.Contains(secret)) continue;
-                    if (_snapshot.ClientBuild == "255790" && entity.CardId == "TLC_EVENT_400" && action.Kind != ActionKind.PlayCard) continue;
+                    if (IsNativeSidequest(entity)) continue;
                     Conditional("假设我方尚未覆盖的奥秘或任务不在本序列触发，奖励与触发效果未展开。", "FRIENDLY_SECRET_OR_QUEST"); continue;
                 }
                 if (entity.Zone != "PLAY" || entity.Type is "GAME" or "PLAYER" or "HERO_POWER") continue;
@@ -570,7 +587,7 @@ public sealed partial class LineEvaluator
                     Conditional("假设未覆盖的持续光环不改变费用、伤害或目标。", "UNKNOWN_AURA");
                 if (_snapshot.ClientBuild == "255790" && entity.CardId == "CORE_TTN_866")
                 { Coverage.Add(action.Kind == ActionKind.EndTurn ? "CORE_TTN_866-end-turn-trigger-inspected" : "CORE_TTN_866-end-turn-trigger-not-entered"); continue; }
-                if (_snapshot.ClientBuild == "255790" && entity.CardId == "EDR_849" && action.Kind != ActionKind.PlayCard) continue;
+                if (_snapshot.ClientBuild == "255790" && entity.CardId == "EDR_849") continue;
                 if (_snapshot.ClientBuild == "255790" && entity.CardId == "FIR_953") continue;
                 if (profile.Mechanics.Contains("TRIGGER_VISUAL")) Conditional("场上触发效果尚未完整模拟，结果带条件。", "UNKNOWN_TRIGGER");
                 if (_snapshot.ClientBuild == "255790" && entity.CardId is { } id && (BattlecryOnlyBodies.Contains(id) || ElvenArcher.Contains(id)))
@@ -612,6 +629,8 @@ public sealed partial class LineEvaluator
                   DrawBoundaryReached = DrawBoundaryReached, DrawPreviews = Array.AsReadOnly(_drawPreviews.ToArray()),
                   GenerationBoundaryReached = GenerationBoundaryReached, GenerationPreviews = Array.AsReadOnly(_generationPreviews.ToArray()),
                   WolfBlessingBoundaryReached = WolfBlessingBoundaryReached, WolfBlessingPreviews = Array.AsReadOnly(_wolfBlessingPreviews.ToArray()),
+                  QuestRewardBoundaryReached = QuestRewardBoundaryReached, QuestProgressPreviews = Array.AsReadOnly(_questProgressPreviews.ToArray()),
+                  RaptorBoundaryReached = RaptorBoundaryReached, RaptorPreviews = Array.AsReadOnly(_raptorPreviews.ToArray()),
                     NextCardCostsOpponentHealth = _nextCardCostsOpponentHealth,
                     OpponentDefeatedByPayment = OpponentDefeatedByPayment,
                     OpponentHealthPayments = Array.AsReadOnly(_opponentHealthPayments.ToArray()),

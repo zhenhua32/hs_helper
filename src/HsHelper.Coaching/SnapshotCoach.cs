@@ -173,6 +173,28 @@ public sealed class SnapshotCoach
             return Node(GenerationResolutionRules.Evaluate(_snapshot, args["source_entity_id"]!.GetValue<int>(), rulesCards));
         if (name == "evaluate_wolf_blessing")
             return Node(WolfBlessingResolutionRules.Evaluate(_snapshot, args["source_entity_id"]!.GetValue<int>(), rulesCards));
+        if (name == "evaluate_play_triggers")
+        {
+            var sourceId = args["source_entity_id"]!.GetValue<int>();
+            if (ChoiceVisibility.ConfirmedLocalPlayer(_snapshot) is not { } local ||
+                local is not (1 or 2) || _snapshot.Entities.Any(pair => pair.Key != pair.Value.Id) ||
+                _snapshot.Phase != GamePhase.Main || _snapshot.ActivePlayerId != local || !_snapshot.Quality.HasGameStart ||
+                !_snapshot.Quality.IsComplete || !_snapshot.Quality.IsStable ||
+                _snapshot.Quality.OpenBlockCount != 0 || !_snapshot.Entities.TryGetValue(sourceId, out var source) ||
+                source.Id != sourceId || source.Kind != EntityKind.Card || string.IsNullOrWhiteSpace(source.CardId) || source.Zone != "HAND" ||
+                !OwnController(source, local) || source.Tags.TryGetValue("49", out var rawZone) && rawZone is not ("HAND" or "3"))
+                return new JsonObject { ["error"] = "需要稳定完整局面中已确认的我方手牌实体，不能预览对手、隐藏或残留来源。" };
+            var frozenSource = source with { Tags = source.Tags.ToFrozenDictionary(StringComparer.Ordinal) };
+            var quests = _snapshot.Entities.Values.Where(entity => entity.Kind == EntityKind.Card &&
+                entity.CardId == "TLC_EVENT_400" && entity.Zone == "SECRET" && OwnController(entity, local) &&
+                (!entity.Tags.TryGetValue("49", out var zone) || zone is "SECRET" or "7"))
+                .OrderBy(entity => entity.Id).Select(entity => QuestProgressRules.Evaluate(_snapshot, entity.Id, rulesCards, frozenSource)).ToArray();
+            return Node(new { _snapshot.MatchId, _snapshot.StateVersion, _snapshot.EventSequence,
+                SourceEntityId = source.Id, SourceCardId = source.CardId, QuestProgress = quests,
+                Raptor = DreamboundRaptorRules.Evaluate(_snapshot, source.Id, rulesCards), IsLegal = (bool?)null,
+                CanEvaluateFollowupActions = false, HasAuthoritativeNextState = false,
+                Assumptions = new[] { "仅假设所选手牌成功使用且前序效果已结算；实际支付、结算边界和动作顺序另用evaluate_line核验。" } });
+        }
         if (name == "evaluate_choice")
             return await Task.Run(() => Node(_rules.EvaluateChoice(_snapshot,
                 args["selected_entity_ids"]!.AsArray().Select(id => id!.GetValue<int>()).ToArray(), rulesCards,
@@ -270,6 +292,8 @@ public sealed class SnapshotCoach
     }
 
     private static JsonNode Node<T>(T value) => JsonSerializer.SerializeToNode(value, Json)!;
+    private static bool OwnController(EntitySnapshot entity, int local) => entity.ControllerId == local &&
+        (!entity.Tags.TryGetValue("50", out var raw) || int.TryParse(raw, out var owner) && owner == local);
     private static JsonObject Schema(string json) => JsonNode.Parse(json)!.AsObject();
     private static bool Empty(JsonObject args) => args.Count == 0;
     private static bool ValidCardIds(JsonObject args) => args.Count == 1 && args["card_ids"] is JsonArray { Count: <= 30 } ids &&
@@ -296,6 +320,8 @@ public sealed class SnapshotCoach
         new AgentToolDefinition("evaluate_generation", "预览已覆盖手牌成功使用后的原生随机生成数量与满手损失；不选择随机牌身份，不移出牌库，也不创建可执行的新手牌实体。合法出牌另用evaluate_line核验。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("evaluate_wolf_blessing", "比较巨狼祝福随机命中各野兽手牌的直接攻击/减费分支；不指定实际命中，不替换当前局面，不证明技能使用合法或后续斩杀。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
+            args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
+        new AgentToolDefinition("evaluate_play_triggers", "预览当前我方手牌成功使用后，主机自动绑定的围攻城门进度与梦缚迅猛龙直接触发次数。不接受指定任务进度、触发来源、目标或随机效果。达到任务奖励或随机边界后等待新局面；不创建奖励候选、成品或权威后续局面，合法出牌另用evaluate_line核验。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("get_recent_events", "查询固定决策点及以前的匿名事件摘要。", Schema("""{"type":"object","properties":{},"required":[],"additionalProperties":false}"""), Empty),
         new AgentToolDefinition("validate_choice", "只验证当前我方选择的候选范围和数量，不模拟选择后效果，也不能证明斩杀。", Schema("""{"type":"object","properties":{"choice_id":{"type":"integer","minimum":1},"selected_entity_ids":{"type":"array","maxItems":30,"items":{"type":"integer","minimum":1}}},"required":["choice_id","selected_entity_ids"],"additionalProperties":false}"""),

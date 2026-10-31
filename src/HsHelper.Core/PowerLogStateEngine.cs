@@ -926,6 +926,7 @@ public sealed partial class PowerLogStateEngine
         "435" => "TRANSFORMED_FROM_CARD", "448" => "UNTOUCHABLE", "777" => "HERO_POWER_DISABLED",
         "791" => "RUSH", "1518" => "DORMANT", "1565" => "COPIED_FROM_ENTITY_ID", "1646" => "HERO_POWER_ENTITY",
         "4572" => "CRAFTABLE_FIRST_HALF_DBID", "4573" => "CRAFTABLE_SECOND_HALF_DBID",
+        "534" => "QUEST_PROGRESS", "535" => "QUEST_PROGRESS_TOTAL", "1192" => "SIDE_QUEST",
         _ => tag
     };
 

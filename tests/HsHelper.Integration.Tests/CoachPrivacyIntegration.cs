@@ -79,6 +79,7 @@ internal static class CoachPrivacyIntegration
             ("evaluate_choice", new() { ["choice_id"] = 1, ["selected_entity_ids"] = new JsonArray(100) }),
             ("evaluate_generation", new() { ["source_entity_id"] = 100 }),
             ("evaluate_wolf_blessing", new() { ["source_entity_id"] = 100 }),
+            ("evaluate_play_triggers", new() { ["source_entity_id"] = 100 }),
             ("get_recent_events", new())
         };
         foreach (var (name, args) in forbiddenTools) await Throws<ArgumentException>(() => planning.ExecuteAsync(name, args, default));

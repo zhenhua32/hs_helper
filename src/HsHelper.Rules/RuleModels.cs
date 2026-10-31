@@ -40,6 +40,10 @@ public sealed record SimulatedState(int AvailableMana, IReadOnlyList<SimulatedEn
     public IReadOnlyList<GenerationResolutionOutcome> GenerationPreviews { get; init; } = [];
     public bool WolfBlessingBoundaryReached { get; init; }
     public IReadOnlyList<WolfBlessingResolutionOutcome> WolfBlessingPreviews { get; init; } = [];
+    public bool QuestRewardBoundaryReached { get; init; }
+    public IReadOnlyList<QuestProgressOutcome> QuestProgressPreviews { get; init; } = [];
+    public bool RaptorBoundaryReached { get; init; }
+    public IReadOnlyList<DreamboundRaptorOutcome> RaptorPreviews { get; init; } = [];
 }
 public sealed record LineEvaluation(string MatchId, long StateVersion, LineVerification Verification,
     bool? IsLegal, bool IsLethal, bool PotentialLethal, int AppliedActions,

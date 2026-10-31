@@ -28,8 +28,11 @@ public static class LocalToolsHiddenSmoke
         using (var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(workspace!.FullName,
             "tests", "HsHelper.Rules.Tests", "Fixtures", "beast-hunter-255790.json"))))
             foreach (var definition in fixture.RootElement.GetProperty("cards").EnumerateArray()
-                .Where(card => card.GetProperty("id").GetString() is "CORE_DS1_184" or "FIR_921" or "CORE_UNG_912" or "EDR_850p" or "EDR_227" or "EDR_480"))
+                .Where(card => card.GetProperty("id").GetString() is "CORE_DS1_184" or "FIR_921" or "CORE_UNG_912" or "EDR_850p" or "EDR_227" or "EDR_480" or "EDR_849"))
                 cardDefinitions.Add(JsonNode.Parse(definition.GetRawText()));
+        using (var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(workspace!.FullName,
+            "tests", "HsHelper.Rules.Tests", "Fixtures", "craft-choice-255790.json"))))
+            foreach (var definition in fixture.RootElement.GetProperty("cards").EnumerateArray()) cardDefinitions.Add(JsonNode.Parse(definition.GetRawText()));
         var effectDonor = 0;
         using (var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(workspace!.FullName,
             "tests", "HsHelper.Cards.Tests", "Fixtures", "assembled-card-text-255790.json"))))
@@ -194,6 +197,7 @@ public static class LocalToolsHiddenSmoke
             window.UpdateBinding(frame, "999999");
             Check(!window.IsBindingValid && !Control<Button>(window, "LocalOddsButton").IsEnabled, "Mismatched card build was accepted by the local tool host.");
             Passive(window);
+            PlayTriggerToolChecks.RunOnDispatcher(catalog, frame);
         }
         finally { window.Close(); }
     }

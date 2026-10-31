@@ -29,6 +29,7 @@ public sealed class LocalToolsWindow : Window
     private readonly Button _previewDraw = new() { Content = "预览所选手牌抽牌" };
     private readonly Button _previewGeneration = new() { Content = "预览随机生成数量" };
     private readonly Button _previewWolfBlessing = new() { Content = "比较巨狼祝福分支" };
+    private readonly Button _previewPlayTriggers = new() { Content = "预览使用后触发" };
     private readonly Button _inspectEffect = new() { Content = "查看所选牌当前效果" };
     private readonly TextBox _depth = new() { Text = "4", Width = 45 };
     private readonly TextBox _nodes = new() { Text = "1500", Width = 65 };
@@ -90,6 +91,11 @@ public sealed class LocalToolsWindow : Window
         {
             if (_source.SelectedItem is EntityOption source)
                 _ = RunToolAsync("evaluate_wolf_blessing", new() { ["source_entity_id"] = source.Id });
+        };
+        _previewPlayTriggers.Click += (_, _) =>
+        {
+            if (_source.SelectedItem is EntityOption source)
+                _ = RunToolAsync("evaluate_play_triggers", new() { ["source_entity_id"] = source.Id });
         };
         _inspectEffect.Click += (_, _) =>
         {
@@ -325,6 +331,11 @@ public sealed class LocalToolsWindow : Window
             _snapshot.Entities.TryGetValue(generation.Id, out var generator) && generator.Zone == "HAND" && generator.CardId == "CORE_UNG_912";
         _previewWolfBlessing.IsEnabled = ready && _snapshot.Phase == GamePhase.Main && _source.SelectedItem is EntityOption wolf &&
             _snapshot.Entities.TryGetValue(wolf.Id, out var power) && power.Zone == "PLAY" && power.CardId == "EDR_850p";
+        _previewPlayTriggers.IsEnabled = ready && _snapshot.Phase == GamePhase.Main && _snapshot.Quality.HasGameStart && _snapshot.Quality.IsStable &&
+            _snapshot.Quality.IsComplete && _snapshot.Quality.OpenBlockCount == 0 && (_kind.SelectedItem as KindOption)?.Kind == "play" &&
+            ChoiceVisibility.ConfirmedLocalPlayer(_snapshot) is (1 or 2) and var local && _snapshot.ActivePlayerId == local && _source.SelectedItem is EntityOption played &&
+            _snapshot.Entities.TryGetValue(played.Id, out var playedSource) && playedSource.Zone == "HAND" &&
+            playedSource.ControllerId == local && !string.IsNullOrWhiteSpace(playedSource.CardId);
         _inspectEffect.IsEnabled = ready && _source.SelectedItem is EntityOption selectedEffect &&
             SnapshotCardEffects.VisibleCards(_snapshot, includePublicGraveyard: true).Any(entity => entity.Id == selectedEffect.Id);
         _add.IsEnabled = ready && _source.Items.Count > 0; _remove.IsEnabled = ready && _line.Count > 0;
@@ -350,7 +361,7 @@ public sealed class LocalToolsWindow : Window
         body.Children.Add(new TextBlock { Text = "候选顺序：编辑动作只影响本地计算", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
         body.Children.Add(Row(_kind, _source, Label("目标"), _target, _add));
         body.Children.Add(_actions); body.Children.Add(Row(_remove, _evaluate, _inspectEffect));
-        body.Children.Add(Row(_previewDraw, _previewGeneration, _previewWolfBlessing));
+        body.Children.Add(Row(_previewDraw, _previewGeneration, _previewWolfBlessing, _previewPlayTriggers));
         body.Children.Add(Row(Label("搜索深度"), _depth, Label("节点上限"), _nodes, _lethal));
         body.Children.Add(new TextBlock { Text = "我方当前选择", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
         body.Children.Add(_choiceLabel); body.Children.Add(_choices); body.Children.Add(Row(_validateChoice, _evaluateChoice, _cancel));
@@ -364,6 +375,7 @@ public sealed class LocalToolsWindow : Window
         Register("LocalPreviewDrawButton", _previewDraw);
         Register("LocalPreviewGenerationButton", _previewGeneration);
         Register("LocalPreviewWolfBlessingButton", _previewWolfBlessing);
+        Register("LocalPreviewPlayTriggersButton", _previewPlayTriggers);
         Register("LocalInspectEffectButton", _inspectEffect);
         Register("LocalCancelButton", _cancel); Register("LocalResultBox", _result);
         return new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -425,6 +437,19 @@ public static class LocalToolResultFormatter
         if (tool == "evaluate_wolf_blessing")
         {
             AppendWolfBlessing(lines, result, entityName); return string.Join("\n", lines);
+        }
+        if (tool == "evaluate_play_triggers")
+        {
+            lines.Add("使用后触发预览（假设所选手牌成功使用；不证明出牌合法或完整结算）");
+            if (result["Assumptions"] is JsonArray assumptions) foreach (var assumption in assumptions) lines.Add("· " + assumption);
+            if (result["QuestProgress"] is JsonArray quests)
+            {
+                if (quests.Count == 0) lines.Add("当前没有已确认的我方围攻城门任务。");
+                foreach (var quest in quests.OfType<JsonObject>()) AppendQuestProgress(lines, quest);
+            }
+            if (result["Raptor"] is JsonObject raptor) AppendRaptor(lines, raptor, entityName);
+            lines.Add("本次预览不改变当前局面；候选顺序仍须验证，奖励与随机结果不能自行指定。");
+            return string.Join("\n", lines);
         }
         if (tool == "evaluate_choice")
         {
@@ -532,6 +557,14 @@ public static class LocalToolResultFormatter
             if (state["WolfBlessingBoundaryReached"]?.ToString() == "true") lines.Add("巨狼祝福的实际命中待确认；未修改任一候选，后续动作须等待新局面。");
             if (state["WolfBlessingPreviews"] is JsonArray wolfPreviews)
                 foreach (var wolf in wolfPreviews.OfType<JsonObject>()) AppendWolfBlessing(lines, wolf, entityName);
+            if (state["QuestProgressPreviews"] is JsonArray questPreviews)
+                foreach (var quest in questPreviews.OfType<JsonObject>()) AppendQuestProgress(lines, quest);
+            if (state["QuestRewardBoundaryReached"]?.ToString() == "true")
+                lines.Add("任务奖励尚未结算；等待真实奖励选择的新局面，不能生成候选或成品，也不能继续后续动作。");
+            if (state["RaptorPreviews"] is JsonArray raptorPreviews)
+                foreach (var raptor in raptorPreviews.OfType<JsonObject>()) AppendRaptor(lines, raptor, entityName);
+            if (state["RaptorBoundaryReached"]?.ToString() == "true")
+                lines.Add("梦缚迅猛龙的随机额外效果尚未观察；后续动作须等待新局面。");
             lines.Add("模拟后可用法力：" + state["AvailableMana"]);
             if (state["TurnEnded"]?.GetValue<bool>() == true)
                 lines.Add("本地模拟已结束我方回合；仅计算本次回合末边界，不推断对手起手或后续回合。");
@@ -610,6 +643,49 @@ public static class LocalToolResultFormatter
                 lines.Add($"· 若命中{entityName(branch["TargetEntityId"]!.GetValue<int>())}：攻击 {branch["CurrentAttack"]?.ToString() ?? "未知"} → {branch["ResultingAttack"]?.ToString() ?? "未知"}；费用 {branch["CurrentCost"]?.ToString() ?? "未知"} → {branch["ResultingCost"]?.ToString() ?? "未知"}。");
         if (wolf["Unknowns"] is JsonArray values) foreach (var value in values) lines.Add("· " + value);
         lines.Add("各分支互斥，不能指定实际命中或合并结果；当前手牌不变，后续动作须等待新局面。");
+    }
+
+    private static void AppendQuestProgress(List<string> lines, JsonNode quest)
+    {
+        if (quest["IsConditionalPreview"]?.ToString() == "true") lines.Add("前序效果尚待确认，本段只列条件预览。");
+        lines.Add($"围攻城门 #{quest["QuestEntityId"]}：当前进度 {quest["CurrentProgress"]?.ToString() ?? "未知"} / {quest["Total"]?.ToString() ?? "未知"}。");
+        lines.Add("所选手牌是否符合野兽或亡灵条件：" + (quest["PlayedCardQualifies"]?.ToString() switch { "true" => "符合", "false" => "不符合", _ => "未知" }) +
+            $"；本次增量 {quest["Increment"]?.ToString() ?? "未知"}；直接后果进度 {quest["ResultingProgress"]?.ToString() ?? "未知"}。");
+        lines.Add("进度可直接投影：" + (quest["CanProjectProgress"]?.ToString() == "true" ? "是（仅本次已覆盖变化）" : "尚未确认"));
+        if (quest["RequiresRewardChoice"]?.ToString() == "true")
+            lines.Add("达到或可能达到任务完成条件，等待真实奖励选择；不生成僵尸兽组件、成品或提前授予减费。");
+        if (quest["Unknowns"] is JsonArray values) foreach (var value in values) lines.Add("· " + value);
+    }
+
+    private static void AppendRaptor(List<string> lines, JsonNode raptor, Func<int, string> entityName)
+    {
+        static string Range(JsonNode? range)
+        {
+            if (range is null) return "未知";
+            var minimum = range["Minimum"]?.ToString() ?? "未知";
+            var maximum = range["Maximum"]?.ToString();
+            return maximum == minimum ? minimum : maximum is null ? minimum + "～上界未知" : minimum + "～" + maximum;
+        }
+        lines.Add("梦缚迅猛龙额外效果触发次数：" + Range(raptor["TriggerCount"]) + "；次数核算：" +
+            (raptor["ResolvesTriggerCount"]?.ToString() == "true" ? "已覆盖列出的直接触发" : "仍有未知"));
+        if (raptor["Triggers"] is JsonArray triggers)
+            foreach (var trigger in triggers.OfType<JsonObject>())
+                lines.Add($"· 来源 {entityName(trigger["SourceEntityId"]!.GetValue<int>())} → {entityName(trigger["TargetEntityId"]!.GetValue<int>())}：{Range(trigger["Count"])} 次；{Eligibility(trigger["Eligibility"]?.ToString())}。");
+        if (raptor["IsBonusPoolComplete"]?.ToString() != "true") lines.Add("随机词条候选池未确认，不能从空列表推断没有可用效果。");
+        foreach (var key in new[] { "Unknowns", "Assumptions" })
+            if (raptor[key] is JsonArray values) foreach (var value in values) lines.Add("· " + value);
+        if (raptor["RequiresObservation"]?.ToString() == "true")
+            lines.Add("实际随机额外效果等待新局面；不能选定词条、拼接分支或继续后续动作。");
+        static string Eligibility(string? value) => value switch
+        {
+            "EligibleNativeAfterPlay" => "本次原生触发条件已满足",
+            "InactiveOrNoLiveTarget" => "来源未生效或目标已离场",
+            "AwaitingAfterPlayState" => "等待使用后局面",
+            "UnconfirmedAfterPlayIdentity" => "使用后的身份或归属尚未确认",
+            "InactiveNewSource" => "新来源未生效",
+            "SelfRegistrationUnconfirmed" => "自身触发时点尚未确认",
+            _ => "触发资格尚未确认"
+        };
     }
 
     private static string ActionName(string? kind) => kind switch { "Attack" => "攻击", "PlayCard" => "使用手牌", "HeroPower" => "英雄技能", "EndTurn" => "结束回合", _ => "动作" };

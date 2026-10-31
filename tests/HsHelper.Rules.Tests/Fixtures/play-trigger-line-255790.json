@@ -1,0 +1,43 @@
+{
+  "build": "255790",
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "notes": "Exact public source objects for native battlecry sequencing and a non-tribal spell. No real game logs.",
+  "cards": [
+    {
+      "artist": "Steve Prescott",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 69565,
+      "faction": "HORDE",
+      "flavor": "媚眼如丝，轻盈如燕，致命如箭。",
+      "health": 1,
+      "howToEarn": "完成教学后解锁。",
+      "howToEarnGolden": "总计赢得500场对战后解锁。",
+      "id": "CORE_CS2_189",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "精灵弓箭手",
+      "rarity": "COMMON",
+      "set": "CORE",
+      "targetingArrowText": "造成1点伤害。",
+      "text": "<b>战吼：</b>造成1点伤害。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ben Thompson",
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 1746,
+      "flavor": "不管你是花掉它还是留在手里，总有一枚幸运币留给后手的你。",
+      "id": "GAME_005",
+      "name": "幸运币",
+      "set": "CORE",
+      "text": "在本回合中，获得一个\n法力水晶。",
+      "type": "SPELL"
+    }
+  ]
+}

@@ -28,6 +28,7 @@ static string ToolEvidenceSummary(CoachToolObservation observation)
         "evaluate_draw" => $"抽牌直接范围；来源 {Field("SourceCardId")}；不生成新手牌实体或证明后续动作。",
         "evaluate_generation" => $"随机生成数量范围；来源 {Field("SourceCardId")}；不选择随机身份或创建新实体。",
         "evaluate_wolf_blessing" => "巨狼祝福各候选直接增益分支；不指定实际命中或证明后续动作。",
+        "evaluate_play_triggers" => "使用后任务进度与迅猛龙触发预览；奖励选择和随机效果等待新局面，不指定进度或随机结果。",
         "get_entity_effect" => "已查询固定局面的可见实体文字；自定义文字重建不代表牌效脚本已经模拟。",
         "get_matchup_plan" => "已查询固定历史时点之前的用户计划/笔记版本。",
         "get_personal_stats" => $"此前已结束个人样本 {result?["stats"]?["Games"]?.ToString() ?? "未知"} 局，排除当前局。",

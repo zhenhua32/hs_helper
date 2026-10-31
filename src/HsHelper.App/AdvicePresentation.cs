@@ -72,6 +72,7 @@ public partial class MainWindow
                 "evaluate_draw" => $"抽牌直接范围；来源 {Field("SourceCardId")}；不生成新手牌实体，不证明后续动作或斩杀。",
                 "evaluate_generation" => $"随机生成数量范围；来源 {Field("SourceCardId")}；不选择随机身份或创建新实体。",
                 "evaluate_wolf_blessing" => "巨狼祝福随机候选的直接增益分支；不指定实际命中或证明后续动作。",
+                "evaluate_play_triggers" => "使用后任务进度与迅猛龙触发预览；奖励选择和随机效果等待新局面，不指定进度或随机结果。",
                 "get_entity_effect" => "已查询固定局面可见实体文字；拼装半段不等于完整成品，也不作为原生动作或斩杀证明。",
                 "get_matchup_plan" => "查询当时已有的用户计划/笔记版本：" + string.Join("、", (json?["entries"] as JsonArray ?? []).Select(e => $"{e?["EntryId"]} v{e?["Version"]}")),
                 "get_personal_stats" => $"此前已结束个人样本 {json?["stats"]?["Games"]?.ToString() ?? "未知"} 局，排除当前局。",

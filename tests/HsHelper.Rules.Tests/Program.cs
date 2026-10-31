@@ -664,6 +664,9 @@ foreach (var (name, run) in GenerationResolutionChecks.Cases()) Run(name, run);
 foreach (var (name, run) in HunterGenerationLineChecks.Cases(cards)) Run(name, run);
 foreach (var (name, run) in WolfBlessingResolutionChecks.Cases()) Run(name, run);
 foreach (var (name, run) in HunterWolfLineChecks.Cases(cards)) Run(name, run);
+foreach (var (name, run) in QuestProgressChecks.Cases()) Run(name, run);
+foreach (var (name, run) in DreamboundRaptorChecks.Cases()) Run(name, run);
+foreach (var (name, run) in HunterPlayTriggerLineChecks.Cases(cards)) Run(name, run);
 
 if (args.Length == 1)
 {
@@ -703,7 +706,9 @@ static CardRecord Card(string id, string type = "MINION", int cost = 2, int atta
 }
 static EntitySnapshot Entity(int id, string? card, int controller, string zone, string type, (string Key, int Value)[] values)
 {
-    var tags = new Dictionary<string, string>(StringComparer.Ordinal) { ["CONTROLLER"] = controller.ToString(), ["ZONE"] = zone, ["CARDTYPE"] = type };
+    var tags = new Dictionary<string, string>(StringComparer.Ordinal) { ["CONTROLLER"] = controller.ToString(), ["ZONE"] = zone };
+    // An omitted observation differs from an explicitly malformed empty CARDTYPE.
+    if (!string.IsNullOrEmpty(type)) tags["CARDTYPE"] = type;
     foreach (var value in values) tags[value.Key] = value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
     return new(id, card, EntityKind.Card, tags.ToFrozenDictionary(StringComparer.Ordinal));
 }
