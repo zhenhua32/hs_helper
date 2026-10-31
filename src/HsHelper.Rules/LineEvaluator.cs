@@ -581,9 +581,11 @@ public sealed partial class LineEvaluator
         public void Remove(Entity entity)
         {
             var resolvedNative = TryResolveBeastHunterDeath(entity);
-            if ((Has(entity, "DEATHRATTLE") && !resolvedNative) || Has(entity, "REBORN"))
+            var unresolvedDeath = (Has(entity, "DEATHRATTLE") && !resolvedNative) || Has(entity, "REBORN");
+            if (unresolvedDeath)
                 Conditional("本次死亡后的亡语或复生尚未展开；后续结果假设这些效果不改变所列动作。", "DEATHRATTLE_OR_REBORN");
             entity.Alive = false; entity.Zone = "GRAVEYARD";
+            if (!unresolvedDeath) CompleteObservedStaticGiftsAfterDeath(entity);
             if (entity.Type == "WEAPON") _removedWeaponIds.Add(entity.Id);
             if (entity.Type == "WEAPON" && (Has(entity, "DEATHRATTLE") || Has(entity, "REBORN"))) MarkWeaponBoundary();
         }
@@ -615,7 +617,7 @@ public sealed partial class LineEvaluator
                 if (new[] { "EXTRA_MINION_DEATHRATTLES_BASE", "EXTRA_DEATHRATTLES_BASE", "EXTRA_DEATHRATTLES_ADDITIONAL", "EXTRA_BATTLECRIES_BASE", "EXTRA_MINION_BATTLECRIES_BASE", "EXTRA_BATTLECRIES_ADDITIONAL", "CANT_TRIGGER_DEATHRATTLE" }.Any(tag => entity.Int(tag) is > 0))
                     Conditional("存在重复或禁用战吼/亡语的规则修正，此处未完整展开触发次数。", "BATTLECRY_OR_DEATHRATTLE_MODIFIER");
             }
-            foreach (var entity in Entities.Values.Where(e => e.Alive))
+            foreach (var entity in Entities.Values.Where(e => e.Alive || IsStaticDarkGiftCandidate(e) && e.Zone != "GRAVEYARD"))
             {
                 if (IsStaticDarkGiftCandidate(entity) && entity.Zone != "GRAVEYARD")
                 {

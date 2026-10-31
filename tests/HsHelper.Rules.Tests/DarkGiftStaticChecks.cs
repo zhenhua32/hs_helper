@@ -21,7 +21,7 @@ internal static class DarkGiftStaticChecks
         yield return ("gift fixed record raw mechanics and text changes cannot borrow an exact ID", GiftMetadataConflicts);
         yield return ("native target record and raw metadata changes cannot unlock ID-selected effects", TargetMetadataConflicts);
         yield return ("missing malformed and contradictory target observations remain unverified", TargetObservationConflicts);
-        yield return ("gift suppression duplicate sources nearby IDs and additional triggers remain bounded", SuppressionAndUnknowns);
+        yield return ("audited duplicate static gifts share current values while ongoing gifts remain bounded", SuppressionAndUnknowns);
         yield return ("static gift coverage cannot cross Raptor observation or other interaction boundaries", OtherBoundaries);
         yield return ("all current audited hunter bodies require fixed data and JSON order is immaterial", NativeTargetsAndCanonicalData);
         yield return ("ordinary simple-profile minions retain their existing rule path with coherent target metadata", SimpleTarget);
@@ -136,8 +136,10 @@ internal static class DarkGiftStaticChecks
     private static void SuppressionAndUnknowns()
     {
         var duplicate = Replace(Frame(), Frame().Entities[50] with { Id = 51 });
-        NotCovered(duplicate);
-        foreach (var id in new[] { "EDR_100t5e", "EDR_100t8e", "EDR_100t8e1" })
+        var repeated = Eval(duplicate);
+        Check(repeated.Verification == LineVerification.Verified && repeated.IsLethal && Find(repeated, 30).Attack == 5 && repeated.Result.AvailableMana == 4,
+            "Identical audited static sources were rejected or reapplied their effect.");
+        foreach (var id in new[] { "EDR_100t4e", "EDR_100t5e", "EDR_100t7e", "EDR_100t7e1", "EDR_100t9e" })
         {
             var frame = Replace(Frame(), Frame().Entities[50] with { CardId = id });
             var result = Eval(frame);

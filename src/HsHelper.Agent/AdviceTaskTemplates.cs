@@ -17,7 +17,7 @@ public static class AdviceTaskTemplates
     private const string ExplosiveTrapInstructions = "evaluate_explosive_trap仅接收我方已安装陷阱source_entity_id和敌方公开来袭者attacker_entity_id，攻击对象固定为我方英雄，不能指定伤害、受伤目标或未来回合。只假设当前来袭发生并列直接触发后果，不执行对手动作、不推测对方奥秘。当前我方回合不触发不代表未来仍不触发；来袭者直接存活或AttackStoppedByDirectDamage为false也不证明完整攻击会继续或已经结算，未知亡语、触发和攻击合法性保持未知。不能将该条件预览当作权威新局面、后续己方动作或已验证斩杀。";
     private const string PlayTriggerInstructions = "evaluate_play_triggers只接收当前我方手牌实体，主机核对原生发现、拼装和回溯入口，并自动绑定围攻城门任务和梦缚迅猛龙来源。发现入口以成功离手为条件，使用后触发以前置效果已结算为条件，各段不能拼成已发生的局面。DiscoveryBoundaryReached后等待真实选择或新观测，不制造候选、入手实体、最终费用或完整拼装成品；战吼被抑制不证明独立回溯已移除。牌库或边栏范围未知不等于空池，可靠空池也不证明其他结算已完成。evaluate_choice的SideboardEvidence记录实际已选、来源分组及当前候选，不是当前完整边栏池；InitialReference若有IsSessionBound及DeckVersionId，仅表示本局记录时固定的起始牌码参考，不证明此来源实体的完整池或复制、偷取后的继承关系；历史有缺口时次数仅为已观察下限，不能用初始三张减去已选、复制或偷取来源推定精确剩余。任务进度从当前观察值推进，缺失或冲突保持未知；不能自行给定进度、触发来源或随机额外效果。QuestRewardBoundaryReached后等待真实奖励选择，不制造候选或成品；RaptorBoundaryReached后等待随机效果的新局面，不选定词条、不将范围当确定次数或继续后续动作。该直接预览不证明支付、战吼或完整结算合法，也不能证明斩杀，仍须evaluate_line核验候选顺序。";
 
-    private const string ObservedDarkGiftInstructions = "已观察到的黑暗之赐静态附魔只在build255790中按严格定义、附着归属及目标当前属性核验：EDR_100t6e的冲锋、EDR_100te的吸血可交evaluate_line验证原生出牌与战斗链。不能从选择按钮推定新入手实体或尚未观察的关键词，不能再次赋予关键词、叠加属性或重复支付；这不证明其它赠福、随机结果、亡语、复制或触发顺序已覆盖，仍以本次工具限制和主机最终验证为准。";
+    private const string ObservedDarkGiftInstructions = "已观察黑暗之赐静态附魔只在build255790按精确定义、附着、归属和当前属性审核：EDR_100te、EDR_100t6e、EDR_100t1e、EDR_100t2e、EDR_100t3e、EDR_100t8e1、EDR_100t13e，以及已结算的EDR_100t8e、EDR_100t5e2、EDR_100t5e5可交evaluate_line验证已支持出牌与战斗链。同目标全部来源都已审核为静态时使用当前聚合值，不重新分配来源、施加增益或减费，不能再次赋予关键词；已破圣盾不补回，风怒仍受实际攻击次数限制，扰魔不能由仅禁法术或技能的标签替代。1/1、2/2和已打乱属性记录只核当前已知值，不证明复制来源、生成时序或随机结果。不能从选择按钮推定新入手实体或尚未观察的关键词，不能重复支付；亡语抽牌、使用时复制、双战吼、特殊复生和三次盾等未覆盖来源仍保留边界，以本次工具和主机最终验证为准。";
 
     public static AdviceTaskKind Resolve(string? task) => task?.Trim().ToLowerInvariant() switch
     {
@@ -29,7 +29,7 @@ public static class AdviceTaskTemplates
     };
 
     public static AdviceTaskTemplate Get(AdviceTaskKind task) => new(task,
-        task is AdviceTaskKind.Choice or AdviceTaskKind.Turn ? "hunter-v17/" + task.ToString().ToLowerInvariant() : Version + "/" + task.ToString().ToLowerInvariant(), task switch
+        task is AdviceTaskKind.Choice or AdviceTaskKind.Turn ? "hunter-v18/" + task.ToString().ToLowerInvariant() : Version + "/" + task.ToString().ToLowerInvariant(), task switch
     {
         AdviceTaskKind.Mulligan => "当前任务：开局留牌。逐张解释已确认我方起手牌的保留或替换理由，结合先后手、已知对手职业和导入套牌计划。先后手、职业或牌效未知时明确说明；不把未知牌或未来抽牌当作事实。留牌未结束时不提供出牌顺序或确定概率。",
         AdviceTaskKind.Turn => "当前任务：回合建议。先指出目标、当前资源和取舍，再给出简短方案。动态费用、攻击、生命和状态以本次tags为准，不用印刷值覆盖。候选动作调用evaluate_line核验；evaluate_draw仅假设本体成功使用后预览直接抽牌、满手损失和疲劳范围，不能证明出牌合法。DrawBoundaryReached之后实体投影只到抽牌前，不生成新手牌或继续安排动作；训犬师抽牌后的灌注须等待新局面。结束回合用end_turn，来源必须是我方PLAYER实体且不带目标，不能在结束后继续己方动作。回合末结果不代表对手起手。未完整覆盖时只给条件性策略，不宣布确定斩杀或胜率。",

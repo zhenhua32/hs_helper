@@ -4,8 +4,594 @@
   "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
   "cardDefsSource": "https://api.hearthstonejson.com/v1/255790/CardDefs.base.xml",
   "cardDefsSha256": "EE72B26D5B90B595EE5DE63E05979BF80195896BA32CF943C6F5FFC8BFBB72A8",
-  "scope": "Exact public fixed metadata. Only EDR_100t6e and EDR_100te current observed static effects are audited. No choice mapping or reapplication; other gift records are negative controls.",
+  "scope": "Exact fixed metadata for ten current observed static enchantments, with ongoing/wrong-type controls. No grant, stat/cost reapplication, shuffle, copy creation, choice linkage or timeline recovery.",
   "cardDefsEvidence": [
+    {
+      "CardId": "EDR_100t10",
+      "Dbf": "115658",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "Nightmare Scales",
+          "Chinese": "梦魇之鳞"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "Has a <b>Divine Shield</b> that takes 3 hits to break.",
+          "Chinese": "拥有一道承受3次伤害才会破灭的<b>圣盾</b>。"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "5",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "684",
+          "Name": "HIDE_COST",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "3567",
+          "Name": "IS_NIGHTMARE_BONUS",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100t13e",
+      "Dbf": "120226",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "Harpy's Talons",
+          "Chinese": "鹰身人之爪"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "<b>Divine Shield</b>, <b>Windfury</b>",
+          "Chinese": "<b>圣盾</b>，<b>风怒</b>"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "12",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "201",
+          "Name": "FACTION",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "330",
+          "Name": "ENCHANTMENT_BIRTH_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "331",
+          "Name": "ENCHANTMENT_IDLE_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "2921",
+          "Name": "TAG_SCRIPT_DATA_NUM_6",
+          "Value": "120225",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "3567",
+          "Name": "IS_NIGHTMARE_BONUS",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100t1e",
+      "Dbf": "113804",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "Well Rested",
+          "Chinese": "休憩饱足"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "+2/+2 and <b>Elusive</b>.",
+          "Chinese": "+2/+2和<b>扰魔</b>。"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "201",
+          "Name": "FACTION",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "330",
+          "Name": "ENCHANTMENT_BIRTH_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "331",
+          "Name": "ENCHANTMENT_IDLE_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "2921",
+          "Name": "TAG_SCRIPT_DATA_NUM_6",
+          "Value": "113797",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "3567",
+          "Name": "IS_NIGHTMARE_BONUS",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100t2e",
+      "Dbf": "113805",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "Short Claws",
+          "Chinese": "短小利爪"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "Costs (2) less,\nbut has -2 Attack.",
+          "Chinese": "法力值消耗减少（2）点，但拥有-2攻击力。"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "201",
+          "Name": "FACTION",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "330",
+          "Name": "ENCHANTMENT_BIRTH_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "331",
+          "Name": "ENCHANTMENT_IDLE_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "2921",
+          "Name": "TAG_SCRIPT_DATA_NUM_6",
+          "Value": "113798",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "3567",
+          "Name": "IS_NIGHTMARE_BONUS",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100t3e",
+      "Dbf": "113806",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "Bundled Up",
+          "Chinese": "衣甲厚实"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "+4 Health and <b>Taunt</b>.",
+          "Chinese": "+4生命值和<b>嘲讽</b>。"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "201",
+          "Name": "FACTION",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "330",
+          "Name": "ENCHANTMENT_BIRTH_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "331",
+          "Name": "ENCHANTMENT_IDLE_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "2921",
+          "Name": "TAG_SCRIPT_DATA_NUM_6",
+          "Value": "113799",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "3567",
+          "Name": "IS_NIGHTMARE_BONUS",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100t4e",
+      "Dbf": "113807",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "Inner Demons",
+          "Chinese": "心中的恶魔"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "<b>Deathrattle:</b> Draw 2 cards.",
+          "Chinese": "<b>亡语：</b>抽两张牌。"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "201",
+          "Name": "FACTION",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "330",
+          "Name": "ENCHANTMENT_BIRTH_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "331",
+          "Name": "ENCHANTMENT_IDLE_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "3567",
+          "Name": "IS_NIGHTMARE_BONUS",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100t5e",
+      "Dbf": "113808",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "Living Nightmare",
+          "Chinese": "活体梦魇"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "When you play this minion, summon a 2/2 copy of it.",
+          "Chinese": "当你使用本牌时，召唤一个它的2/2的复制。"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "201",
+          "Name": "FACTION",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "330",
+          "Name": "ENCHANTMENT_BIRTH_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "331",
+          "Name": "ENCHANTMENT_IDLE_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "2921",
+          "Name": "TAG_SCRIPT_DATA_NUM_6",
+          "Value": "113801",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "3567",
+          "Name": "IS_NIGHTMARE_BONUS",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100t5e2",
+      "Dbf": "117173",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "Tiny Nightmare",
+          "Chinese": "小小梦魇"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "1/1.",
+          "Chinese": "1/1。"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "12",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100t5e5",
+      "Dbf": "120020",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "Living Nightmare",
+          "Chinese": "活体梦魇"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "2/2.",
+          "Chinese": "2/2。"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "12",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
     {
       "CardId": "EDR_100t6e",
       "Dbf": "113809",
@@ -13,62 +599,431 @@
         {
           "EnumId": "185",
           "Name": "CARDNAME",
-          "Value": "",
-          "English": "Sneaky Sleepwalking"
+          "Value": null,
+          "English": "Sneaky Sleepwalking",
+          "Chinese": "隐匿梦行"
         },
         {
           "EnumId": "184",
           "Name": "CARDTEXT",
-          "Value": "",
-          "English": "<b>Charge</b>"
+          "Value": null,
+          "English": "<b>Charge</b>",
+          "Chinese": "<b>冲锋</b>"
         },
         {
           "EnumId": "183",
           "Name": "CARD_SET",
           "Value": "1946",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "199",
           "Name": "CLASS",
           "Value": "3",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "201",
           "Name": "FACTION",
           "Value": "3",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "202",
           "Name": "CARDTYPE",
           "Value": "6",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "330",
           "Name": "ENCHANTMENT_BIRTH_VISUAL",
           "Value": "1",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "331",
           "Name": "ENCHANTMENT_IDLE_VISUAL",
           "Value": "1",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "2921",
           "Name": "TAG_SCRIPT_DATA_NUM_6",
           "Value": "113802",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "3567",
           "Name": "IS_NIGHTMARE_BONUS",
           "Value": "1",
-          "English": null
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100t7e",
+      "Dbf": "113883",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "Rude Awakening",
+          "Chinese": "粗暴唤醒"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "[x]This minion's\n<b>Battlecries</b> trigger twice.",
+          "Chinese": "本随从的<b>战吼</b>会触发两次。"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "201",
+          "Name": "FACTION",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "330",
+          "Name": "ENCHANTMENT_BIRTH_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "331",
+          "Name": "ENCHANTMENT_IDLE_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "1179",
+          "Name": "1",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "2921",
+          "Name": "TAG_SCRIPT_DATA_NUM_6",
+          "Value": "113882",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "3567",
+          "Name": "IS_NIGHTMARE_BONUS",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "4571",
+          "Name": "1",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100t7e1",
+      "Dbf": "113892",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "DoubleBattlecryTwist",
+          "Chinese": "扭曲双重战吼"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "Selected minion triggers its battlecry twice.",
+          "Chinese": "所选的随从会触发两次其战吼。"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "8",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "960",
+          "Name": "1",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100t8e",
+      "Dbf": "113885",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "Turtled Up",
+          "Chinese": "混乱强化"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "+3/+3 and shuffled stats.",
+          "Chinese": "+3/+3并打乱属性值。"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "201",
+          "Name": "FACTION",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "330",
+          "Name": "ENCHANTMENT_BIRTH_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "331",
+          "Name": "ENCHANTMENT_IDLE_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100t8e1",
+      "Dbf": "115355",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "Sweet Dreams",
+          "Chinese": "甜美梦境"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "+4/+5.",
+          "Chinese": "+4/+5。"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "201",
+          "Name": "FACTION",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "330",
+          "Name": "ENCHANTMENT_BIRTH_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "331",
+          "Name": "ENCHANTMENT_IDLE_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "2921",
+          "Name": "TAG_SCRIPT_DATA_NUM_6",
+          "Value": "113884",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "3567",
+          "Name": "IS_NIGHTMARE_BONUS",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        }
+      ]
+    },
+    {
+      "CardId": "EDR_100t9e",
+      "Dbf": "113887",
+      "Tags": [
+        {
+          "EnumId": "185",
+          "Name": "CARDNAME",
+          "Value": null,
+          "English": "Persisting Horror",
+          "Chinese": "回荡恐怖"
+        },
+        {
+          "EnumId": "184",
+          "Name": "CARDTEXT",
+          "Value": null,
+          "English": "<b>Reborn</b>. Is <b>Reborn</b>\nwith full Health and enchantments.",
+          "Chinese": "<b>复生</b>。<b>复生</b>时会具有所有生命值和附加效果。"
+        },
+        {
+          "EnumId": "183",
+          "Name": "CARD_SET",
+          "Value": "1946",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "199",
+          "Name": "CLASS",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "201",
+          "Name": "FACTION",
+          "Value": "3",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "202",
+          "Name": "CARDTYPE",
+          "Value": "6",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "330",
+          "Name": "ENCHANTMENT_BIRTH_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "331",
+          "Name": "ENCHANTMENT_IDLE_VISUAL",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "2921",
+          "Name": "TAG_SCRIPT_DATA_NUM_6",
+          "Value": "113886",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "3567",
+          "Name": "IS_NIGHTMARE_BONUS",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
+        },
+        {
+          "EnumId": "4137",
+          "Name": "1",
+          "Value": "1",
+          "English": null,
+          "Chinese": null
         }
       ]
     },
@@ -79,67 +1034,154 @@
         {
           "EnumId": "185",
           "Name": "CARDNAME",
-          "Value": "",
-          "English": "Waking Terror"
+          "Value": null,
+          "English": "Waking Terror",
+          "Chinese": "起床怒气"
         },
         {
           "EnumId": "184",
           "Name": "CARDTEXT",
-          "Value": "",
-          "English": "+3 Attack and <b>Lifesteal</b>."
+          "Value": null,
+          "English": "+3 Attack and <b>Lifesteal</b>.",
+          "Chinese": "+3攻击力和<b>吸血</b>。"
         },
         {
           "EnumId": "183",
           "Name": "CARD_SET",
           "Value": "1946",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "199",
           "Name": "CLASS",
           "Value": "3",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "201",
           "Name": "FACTION",
           "Value": "3",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "202",
           "Name": "CARDTYPE",
           "Value": "6",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "330",
           "Name": "ENCHANTMENT_BIRTH_VISUAL",
           "Value": "1",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "331",
           "Name": "ENCHANTMENT_IDLE_VISUAL",
           "Value": "1",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "2921",
           "Name": "TAG_SCRIPT_DATA_NUM_6",
           "Value": "113796",
-          "English": null
+          "English": null,
+          "Chinese": null
         },
         {
           "EnumId": "3567",
           "Name": "IS_NIGHTMARE_BONUS",
           "Value": "1",
-          "English": null
+          "English": null,
+          "Chinese": null
         }
       ]
     }
   ],
   "cards": [
+    {
+      "artist": "Steve Prescott",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 389,
+      "faction": "HORDE",
+      "flavor": "媚眼如丝，轻盈如燕，致命如箭。",
+      "health": 1,
+      "id": "CS2_189",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "精灵弓箭手",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "targetingArrowText": "造成1点伤害。",
+      "text": "<b>战吼：</b>造成1点伤害。",
+      "type": "MINION"
+    },
+    {
+      "cardClass": "HUNTER",
+      "cost": 0,
+      "dbfId": 115658,
+      "hideCost": true,
+      "id": "EDR_100t10",
+      "name": "梦魇之鳞",
+      "set": "EMERALD_DREAM",
+      "text": "拥有一道承受3次伤害才会破灭的<b>圣盾</b>。",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "dbfId": 120226,
+      "id": "EDR_100t13e",
+      "name": "鹰身人之爪",
+      "set": "EMERALD_DREAM",
+      "text": "<b>圣盾</b>，<b>风怒</b>",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113804,
+      "id": "EDR_100t1e",
+      "name": "休憩饱足",
+      "set": "EMERALD_DREAM",
+      "text": "+2/+2和<b>扰魔</b>。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113805,
+      "id": "EDR_100t2e",
+      "name": "短小利爪",
+      "set": "EMERALD_DREAM",
+      "text": "法力值消耗减少（2）点，但拥有-2攻击力。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113806,
+      "id": "EDR_100t3e",
+      "name": "衣甲厚实",
+      "set": "EMERALD_DREAM",
+      "text": "+4生命值和<b>嘲讽</b>。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113807,
+      "id": "EDR_100t4e",
+      "name": "心中的恶魔",
+      "set": "EMERALD_DREAM",
+      "text": "<b>亡语：</b>抽两张牌。",
+      "type": "ENCHANTMENT"
+    },
     {
       "cardClass": "HUNTER",
       "dbfId": 113808,
@@ -150,12 +1192,48 @@
       "type": "ENCHANTMENT"
     },
     {
+      "cardClass": "NEUTRAL",
+      "dbfId": 117173,
+      "id": "EDR_100t5e2",
+      "name": "小小梦魇",
+      "set": "EMERALD_DREAM",
+      "text": "1/1。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "dbfId": 120020,
+      "id": "EDR_100t5e5",
+      "name": "活体梦魇",
+      "set": "EMERALD_DREAM",
+      "text": "2/2。",
+      "type": "ENCHANTMENT"
+    },
+    {
       "cardClass": "HUNTER",
       "dbfId": 113809,
       "id": "EDR_100t6e",
       "name": "隐匿梦行",
       "set": "EMERALD_DREAM",
       "text": "<b>冲锋</b>",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113883,
+      "id": "EDR_100t7e",
+      "name": "粗暴唤醒",
+      "set": "EMERALD_DREAM",
+      "text": "本随从的<b>战吼</b>会触发两次。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "SHAMAN",
+      "dbfId": 113892,
+      "id": "EDR_100t7e1",
+      "name": "扭曲双重战吼",
+      "set": "EMERALD_DREAM",
+      "text": "所选的随从会触发两次其战吼。",
       "type": "ENCHANTMENT"
     },
     {
@@ -174,6 +1252,15 @@
       "name": "甜美梦境",
       "set": "EMERALD_DREAM",
       "text": "+4/+5。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113887,
+      "id": "EDR_100t9e",
+      "name": "回荡恐怖",
+      "set": "EMERALD_DREAM",
+      "text": "<b>复生</b>。<b>复生</b>时会具有所有生命值和附加效果。",
       "type": "ENCHANTMENT"
     },
     {
@@ -237,27 +1324,6 @@
       "rarity": "FREE",
       "set": "HERO_SKINS",
       "type": "HERO"
-    },
-    {
-      "artist": "Steve Prescott",
-      "attack": 1,
-      "cardClass": "NEUTRAL",
-      "collectible": true,
-      "cost": 1,
-      "dbfId": 389,
-      "faction": "HORDE",
-      "flavor": "媚眼如丝，轻盈如燕，致命如箭。",
-      "health": 1,
-      "id": "CS2_189",
-      "mechanics": [
-        "BATTLECRY"
-      ],
-      "name": "精灵弓箭手",
-      "rarity": "FREE",
-      "set": "LEGACY",
-      "targetingArrowText": "造成1点伤害。",
-      "text": "<b>战吼：</b>造成1点伤害。",
-      "type": "MINION"
     }
   ]
 }

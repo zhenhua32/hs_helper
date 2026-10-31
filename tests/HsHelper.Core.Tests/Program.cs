@@ -45,7 +45,7 @@ var cases = new (string Name, Action Run)[]
     ("public play gaps remain incomplete and cannot correlate across lost events", PublicPlayGaps),
     ("public play records reset across matches and reject rewinds", PublicPlayMatches),
     ("public play snapshots freeze source lists and survive JSON serialization", PublicPlaySerialization),
-}.Concat(ChoiceHistoryRegression.Cases()).Concat(TurnHistoryRegression.Cases()).Concat(AssembledTagRegression.Cases()).Concat(QuestTagRegression.Cases()).Concat(SecretSlotPrivacyChecks.Cases()).Concat(WeaponDurabilityChecks.Cases()).Concat(ProjectedChoiceEntityChecks.Cases()).ToArray();
+}.Concat(ChoiceHistoryRegression.Cases()).Concat(TurnHistoryRegression.Cases()).Concat(AssembledTagRegression.Cases()).Concat(QuestTagRegression.Cases()).Concat(SecretSlotPrivacyChecks.Cases()).Concat(WeaponDurabilityChecks.Cases()).Concat(ProjectedChoiceEntityChecks.Cases()).Concat(ElusiveTagChecks.Cases()).ToArray();
 var failures = 0;
 foreach (var test in cases)
 {

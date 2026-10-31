@@ -72,7 +72,7 @@ internal static class HunterRandomEffectIntegration
         var advice = await new AdviceService(http).AnalyzeAsync(new(new Uri("https://random-fixture.invalid/v1/chat/completions"), "random-fixture"),
             "random-fixture-unused-key", context, modelCoach.ExecuteAsync, () => true, capabilities: modelCoach.Capabilities());
         Check(model.Calls == 2 && advice.Actions.Count == 0 && !advice.VerifiedLethal && advice.Risks.Length > 0 &&
-            context.TemplateVersion == "hunter-v17/turn" && observations.Single() is { Name: "evaluate_wolf_blessing", Success: true, ResultHash.Length: 64 },
+            context.TemplateVersion == "hunter-v18/turn" && observations.Single() is { Name: "evaluate_wolf_blessing", Success: true, ResultHash.Length: 64 },
             "A model's selected Wolf discount and following play survived host action validation.");
         pass("a fake model cannot turn a displayed Wolf branch into an executable followup or verified lethal");
     }
