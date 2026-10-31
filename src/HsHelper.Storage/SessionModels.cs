@@ -44,5 +44,8 @@ public sealed record CleanupResult(int SessionsDeleted, int EventsDeleted, int S
 public sealed record HistoricalContext(string SessionId, string CardBuild, string? DeckVersionId,
     DeckVersion? Deck, GameSnapshot Snapshot, IReadOnlyList<SessionEvent> RecentEvents);
 
+/// <summary>An exact saved decision and events known by its sequence/state version; legacy same-sequence events remain unattributed.</summary>
+public sealed record HistoricalDecisionContext(DecisionPoint Point, HistoricalContext Context, bool HasUnattributedEvents);
+
 internal sealed record PendingObservation(GameSnapshot Snapshot, long SourceLineNumber,
     DateTimeOffset ObservedAt, IReadOnlyList<SessionEvent> Events, bool SaveSnapshot);

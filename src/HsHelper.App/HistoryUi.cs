@@ -218,14 +218,18 @@ public partial class MainWindow
         try
         {
             RefreshKnowledgeControls();
+            RefreshDeckExportControls();
             CancelKnowledgeListRead();
+            CancelKnowledgeNavigation();
             var historyRead = _historyListCancellation; _historyListCancellation = null;
             if (_historyPaging.IsLoading) HistoryPageText.Text = "记录读取已取消，可刷新重试。";
             _historyPaging.Reset(_historyPaging.Scope ?? new());
             try { historyRead?.Cancel(); } finally { historyRead?.Dispose(); }
             RefreshHistoryPageButtons();
+            var pendingDeckExport = WaitForDeckExportAsync();
             // Even a fully synchronous save must leave this Closing callback before calling Close again.
             await System.Windows.Threading.Dispatcher.Yield(DispatcherPriority.Background);
+            await pendingDeckExport;
             await StopRecordingAsync();
             _allowClose = true;
             Close();
@@ -234,6 +238,7 @@ public partial class MainWindow
         {
             _allowClose = false; _closing = false;
             RefreshKnowledgeControls();
+            RefreshDeckExportControls();
             RefreshHistoryPageButtons();
             StatusText.Text = "记录尚未安全保存，请重试关闭：" + error.Message;
         }
@@ -326,6 +331,7 @@ public partial class MainWindow
     private async void SessionSelected(object sender, SelectionChangedEventArgs e) => await Run(async () =>
     {
         if (SessionsGrid.SelectedItem is not SessionItem item) return;
+        CancelKnowledgeNavigation();
         var revision = ++_historyRevision;
         _historyLoading = true;
         _historyContext = null; InvalidateAdvice();
@@ -343,6 +349,7 @@ public partial class MainWindow
     private async void DecisionSelected(object sender, SelectionChangedEventArgs e) => await Run(async () =>
     {
         if (DecisionsList.SelectedItem is not DecisionItem item) return;
+        CancelKnowledgeNavigation();
         var revision = ++_historyRevision;
         _historyLoading = true;
         _historyContext = null; InvalidateAdvice();
@@ -351,30 +358,54 @@ public partial class MainWindow
         try
         {
             var selectedId = item.Value.Id;
-            var context = await _store.GetHistoricalContextAtAsync(item.Value.SessionId, item.Value.EventSequence);
-            if (revision != _historyRevision) return;
-            var exact = await _store.GetDecisionSnapshotAsync(selectedId);
-            if (revision != _historyRevision || context is null || exact is null || (DecisionsList.SelectedItem as DecisionItem)?.Value.Id != selectedId) return;
-            var names = await _catalog.GetByIdsAsync(exact.Entities.Values.Select(x => x.CardId).OfType<string>().Distinct().Take(500), context.CardBuild);
+            var data = await ReadHistoricalDecisionAsync(item.Value, CancellationToken.None);
             if (revision != _historyRevision || (DecisionsList.SelectedItem as DecisionItem)?.Value.Id != selectedId) return;
-            _historyContext = context with { Snapshot = exact };
-            _historyObservedAt = item.Value.RecordedAt;
-            SessionBuildBox.Text = context.CardBuild == "unknown" ? "" : context.CardBuild;
-            EventsGrid.ItemsSource = context.RecentEvents;
-            var lookup = names.ToDictionary(c => c.Id, c => c.Name);
-            string Name(EntitySnapshot entity) => entity.CardId is { } card ? lookup.GetValueOrDefault(card, card) : "身份未知";
-            HistorySnapshotText.Text = $"回合 {exact.Turn} · {exact.Phase} · 行动方 {exact.ActivePlayerId}\n" +
-                $"我方视角 {exact.LocalPlayerId} · 完整 {exact.Quality.IsComplete} · 稳定 {exact.Quality.IsStable}\n" +
-                "手牌：\n" + string.Join("\n", exact.Hand.Select(c => $"({c.Cost?.ToString() ?? "?"}) {Name(c)}")) +
-                "\n\n场面：\n" + string.Join("\n", exact.Board.Select(c => $"玩家{c.ControllerId} · {Name(c)} {c.Attack?.ToString() ?? "?"}/{c.RemainingHealth?.ToString() ?? "?"}")) +
-                "\n\n" + string.Join("；", exact.Quality.Warnings);
-            RenderSnapshot();
-            HistoryStatusText.Text = $"正在查看历史 #{exact.EventSequence}，AI 只能读取该序号及以前的信息。";
+            PublishHistoricalDecision(data);
         }
-        finally { if (revision == _historyRevision) _historyLoading = false; }
+        finally { if (revision == _historyRevision) { _historyLoading = false; RefreshAccessState(); } }
     });
+    private sealed record HistoricalDecisionRead(DecisionPoint Point, HistoricalContext Context,
+        IReadOnlyDictionary<string, string> Names, IReadOnlyList<string> Gaps);
+    private async Task<HistoricalDecisionRead> ReadHistoricalDecisionAsync(DecisionPoint point, CancellationToken token)
+    {
+        if (await _store.GetSessionAsync(point.SessionId, token) is null) throw new InvalidOperationException("原对局记录已清理或不存在；笔记仍保留。");
+        var selected = await _store.GetHistoricalDecisionAsync(point.Id, cancellationToken: token)
+            ?? throw new InvalidOperationException("所选精确快照或原对局绑定已不存在，不能用较早快照代替。");
+        if (selected.Point != point) throw new InvalidOperationException("决策点记录已变更，请重新读取关联版本。");
+        var context = selected.Context;
+        var exact = context.Snapshot;
+        if (exact.MatchId != point.SessionId || exact.EventSequence != point.EventSequence || exact.StateVersion != point.StateVersion)
+            throw new InvalidOperationException("保存快照的对局、事件或状态版本与决策点不一致，无法打开。");
+        var manifest = context.CardBuild == "unknown" ? null : await _catalog.GetManifestAsync(context.CardBuild, cancellationToken: token);
+        var names = manifest is null ? new Dictionary<string, string>() :
+            (await _catalog.GetByIdsAsync(exact.Entities.Values.Select(entity => entity.CardId).OfType<string>().Distinct().Take(500), context.CardBuild, cancellationToken: token))
+            .ToDictionary(card => card.Id, card => card.Name);
+        var gaps = new List<string>();
+        if (selected.HasUnattributedEvents) gaps.Add("旧事件列表未记录同序号状态版本，无法归属的同序号事件已省略");
+        if (context.DeckVersionId is null) gaps.Add("原对局未绑定套牌，未借用当前套牌");
+        else if (context.Deck is null) gaps.Add($"原套牌版本 {context.DeckVersionId} 缺失");
+        if (manifest is null) gaps.Add($"对应卡库 build {context.CardBuild} 缺失，名称及规则资料保持未知");
+        if (exact.ClientBuild is { } observed && observed != context.CardBuild) gaps.Add($"快照 build {observed} 与原对局 build {context.CardBuild} 不一致，不能核验牌效");
+        return new(point, context with { Snapshot = exact }, names, gaps.AsReadOnly());
+    }
+    private void PublishHistoricalDecision(HistoricalDecisionRead data)
+    {
+        var exact = data.Context.Snapshot;
+        _historyContext = data.Context; _historyObservedAt = data.Point.RecordedAt;
+        SessionBuildBox.Text = data.Context.CardBuild == "unknown" ? "" : data.Context.CardBuild;
+        EventsGrid.ItemsSource = data.Context.RecentEvents;
+        string Name(EntitySnapshot entity) => entity.CardId is { } card ? data.Names.GetValueOrDefault(card, card) : "身份未知";
+        HistorySnapshotText.Text = $"对局 {data.Point.SessionId} · #{exact.EventSequence} · v{exact.StateVersion} · 录制于 {data.Point.RecordedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss.fffffff}\n" +
+            $"回合 {exact.Turn} · {exact.Phase} · 行动方 {exact.ActivePlayerId}\n我方视角 {exact.LocalPlayerId} · 完整 {exact.Quality.IsComplete} · 稳定 {exact.Quality.IsStable}\n手牌：\n" +
+            string.Join("\n", exact.Hand.Select(entity => $"({entity.Cost?.ToString() ?? "?"}) {Name(entity)}")) + "\n\n场面：\n" +
+            string.Join("\n", exact.Board.Select(entity => $"玩家{entity.ControllerId} · {Name(entity)} {entity.Attack?.ToString() ?? "?"}/{entity.RemainingHealth?.ToString() ?? "?"}")) +
+            "\n\n" + string.Join("；", exact.Quality.Warnings.Concat(data.Gaps));
+        RenderSnapshot();
+        HistoryStatusText.Text = $"正在查看原对局 {data.Point.SessionId} · 历史 #{exact.EventSequence} · v{exact.StateVersion}，知识截止为录制时刻 {data.Point.RecordedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss.fffffff}。" + string.Join("；", data.Gaps);
+    }
     private void ReturnLiveClicked(object sender, RoutedEventArgs e)
     {
+        CancelKnowledgeNavigation();
         _historyRevision++; _historyLoading = false; _historyContext = null; InvalidateAdvice();
         SessionBuildBox.Text = _engine.Snapshot().ClientBuild ?? "";
         RenderSnapshot();

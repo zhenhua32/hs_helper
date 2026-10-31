@@ -36,7 +36,7 @@ public sealed class SessionStore
         await command.ExecuteNonQueryAsync(cancellationToken);
         command.CommandText = "SELECT version FROM hs_storage_schema";
         var version = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
-        if (version is < 1 or > 2)
+        if (version is < 1 or > 3)
             throw new InvalidDataException("当前应用不支持此历史数据库版本，请使用兼容版本。");
         command.CommandText = """
             CREATE TABLE IF NOT EXISTS saved_deck_versions(
@@ -54,7 +54,7 @@ public sealed class SessionStore
             CREATE TABLE IF NOT EXISTS session_events(
               session_id TEXT NOT NULL, event_seq INTEGER NOT NULL, event_index INTEGER NOT NULL,
               source_line INTEGER NOT NULL, kind TEXT NOT NULL, entity_id INTEGER, card_id TEXT,
-              from_zone TEXT, to_zone TEXT, summary TEXT NOT NULL, data_json TEXT NOT NULL,
+              from_zone TEXT, to_zone TEXT, summary TEXT NOT NULL, data_json TEXT NOT NULL, observed_state_version INTEGER,
               PRIMARY KEY(session_id,event_seq,event_index),
               FOREIGN KEY(session_id) REFERENCES game_sessions(id) ON DELETE CASCADE);
             CREATE TABLE IF NOT EXISTS session_snapshots(
@@ -79,7 +79,16 @@ public sealed class SessionStore
             command.CommandText = "ALTER TABLE game_sessions ADD COLUMN game_type TEXT";
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
-        command.CommandText = "UPDATE hs_storage_schema SET version=2";
+        command.CommandText = "PRAGMA table_info(session_events)";
+        var hasObservedStateVersion = false;
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+            while (await reader.ReadAsync(cancellationToken)) hasObservedStateVersion |= reader.GetString(1) == "observed_state_version";
+        if (!hasObservedStateVersion)
+        {
+            command.CommandText = "ALTER TABLE session_events ADD COLUMN observed_state_version INTEGER";
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        command.CommandText = "UPDATE hs_storage_schema SET version=3";
         await command.ExecuteNonQueryAsync(cancellationToken);
         transaction.Commit();
     }
@@ -207,6 +216,71 @@ public sealed class SessionStore
         Add(command, "$id", decisionId);
         var data = await command.ExecuteScalarAsync(cancellationToken);
         return data is null or DBNull ? null : SnapshotCodec.Deserialize(Unpack(data));
+    }
+
+    /// <summary>Reads one real saved decision without including later state versions of the same event sequence.</summary>
+    public async Task<HistoricalDecisionContext?> GetHistoricalDecisionAsync(long decisionId, int recentEventLimit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        if (decisionId <= 0) throw new ArgumentOutOfRangeException(nameof(decisionId));
+        if (recentEventLimit is < 1 or > 10000) throw new ArgumentOutOfRangeException(nameof(recentEventLimit));
+        cancellationToken.ThrowIfCancellationRequested();
+        await using var connection = await OpenAsync(cancellationToken);
+        using var transaction = connection.BeginTransaction(deferred: true);
+        await using var command = connection.CreateCommand(); command.Transaction = transaction;
+        command.CommandText = """
+            SELECT s.id,s.session_id,s.event_seq,s.state_version,s.turn,s.phase,s.active_player_id,
+              s.is_stable,s.is_complete,s.is_decision,s.recorded_at,s.snapshot_json,g.card_build,g.deck_version_id
+            FROM session_snapshots s JOIN game_sessions g ON g.id=s.session_id WHERE s.id=$id
+            """;
+        Add(command, "$id", decisionId);
+        DecisionPoint point; GameSnapshot snapshot; string cardBuild; string? deckId;
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            if (!await reader.ReadAsync(cancellationToken)) return null;
+            point = new(reader.GetInt64(0), reader.GetString(1), reader.GetInt64(2), reader.GetInt64(3), NullableInt(reader, 4),
+                Enum.Parse<GamePhase>(reader.GetString(5)), NullableInt(reader, 6), reader.GetBoolean(7), reader.GetBoolean(8),
+                reader.GetBoolean(9), DateTimeOffset.Parse(reader.GetString(10), CultureInfo.InvariantCulture));
+            snapshot = SnapshotCodec.Deserialize(Unpack(reader.GetValue(11)));
+            cardBuild = reader.GetString(12); deckId = NullableString(reader, 13);
+        }
+        if (snapshot.MatchId != point.SessionId || snapshot.EventSequence != point.EventSequence || snapshot.StateVersion != point.StateVersion)
+            throw new InvalidDataException("保存的决策点与精确快照的对局、事件或状态版本不一致。");
+        DeckVersion? deck = null;
+        if (deckId is not null)
+        {
+            command.Parameters.Clear(); command.CommandText = "SELECT id,name,code,card_build,created_at,previous_version_id,definition_json FROM saved_deck_versions WHERE id=$deck";
+            Add(command, "$deck", deckId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                var stored = ReadDeck(reader); var definition = stored.Definition;
+                deck = stored with { Definition = definition with
+                {
+                    Heroes = Array.AsReadOnly(definition.Heroes.ToArray()), Cards = Array.AsReadOnly(definition.Cards.ToArray()),
+                    Sideboards = Array.AsReadOnly(definition.Sideboards.Select(board => board with { Cards = Array.AsReadOnly(board.Cards.ToArray()) }).ToArray())
+                } };
+            }
+        }
+        command.Parameters.Clear();
+        command.CommandText = """
+            SELECT EXISTS(SELECT 1 FROM session_events WHERE session_id=$session AND event_seq=$sequence AND observed_state_version IS NULL)
+            """;
+        Add(command, "$session", point.SessionId); Add(command, "$sequence", point.EventSequence);
+        var hasUnattributed = Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) != 0;
+        command.CommandText = """
+            SELECT event_seq,event_index,source_line,kind,entity_id,card_id,from_zone,to_zone,summary,data_json
+            FROM session_events WHERE session_id=$session AND
+              (event_seq<$sequence OR (event_seq=$sequence AND observed_state_version<=$stateVersion))
+            ORDER BY event_seq DESC,event_index DESC LIMIT $limit
+            """;
+        Add(command, "$stateVersion", point.StateVersion); Add(command, "$limit", recentEventLimit);
+        var events = new List<SessionEvent>();
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+            while (await reader.ReadAsync(cancellationToken)) events.Add(new(reader.GetInt64(0), reader.GetInt32(1), reader.GetInt64(2), reader.GetString(3),
+                NullableInt(reader, 4), NullableString(reader, 5), NullableString(reader, 6), NullableString(reader, 7), reader.GetString(8), reader.GetString(9)));
+        events.Reverse(); cancellationToken.ThrowIfCancellationRequested();
+        return new(point, new(point.SessionId, cardBuild, deckId, deck, snapshot, events.AsReadOnly()), hasUnattributed);
     }
 
     /// <summary>Only fixed binding data, an as-of snapshot and past events enter this context; final results are excluded.</summary>
@@ -359,7 +433,7 @@ public sealed class SessionStore
             if (initialized.Add(snapshot.MatchId))
                 await EnsureSessionAsync(connection, transaction, binding, bindingHash, snapshot, observation.ObservedAt, token);
             foreach (var entry in observation.Events)
-                await InsertEventAsync(connection, transaction, snapshot.MatchId, entry, token);
+                await InsertEventAsync(connection, transaction, snapshot.MatchId, entry, snapshot.StateVersion, token);
             if (observation.SaveSnapshot)
                 await InsertSnapshotAsync(connection, transaction, observation, token);
         }
@@ -427,14 +501,19 @@ public sealed class SessionStore
     }
 
     private static async Task InsertEventAsync(SqliteConnection connection, SqliteTransaction transaction, string sessionId,
-        SessionEvent entry, CancellationToken token)
+        SessionEvent entry, long observedStateVersion, CancellationToken token)
     {
         await using var command = connection.CreateCommand(); command.Transaction = transaction;
-        command.CommandText = "INSERT INTO session_events VALUES($id,$seq,$index,$line,$kind,$entity,$card,$from,$to,$summary,$data) ON CONFLICT(session_id,event_seq,event_index) DO NOTHING";
+        command.CommandText = """
+            INSERT INTO session_events(session_id,event_seq,event_index,source_line,kind,entity_id,card_id,from_zone,to_zone,summary,data_json,observed_state_version)
+            VALUES($id,$seq,$index,$line,$kind,$entity,$card,$from,$to,$summary,$data,$observedVersion)
+            ON CONFLICT(session_id,event_seq,event_index) DO NOTHING
+            """;
         Add(command, "$id", sessionId); Add(command, "$seq", entry.EventSequence); Add(command, "$index", entry.EventIndex);
         Add(command, "$line", entry.SourceLineNumber); Add(command, "$kind", entry.Kind); Add(command, "$entity", entry.EntityId);
         Add(command, "$card", entry.CardId); Add(command, "$from", entry.FromZone); Add(command, "$to", entry.ToZone);
         Add(command, "$summary", entry.Summary); Add(command, "$data", entry.DataJson);
+        Add(command, "$observedVersion", observedStateVersion);
         if (await command.ExecuteNonQueryAsync(token) != 0) return;
         command.CommandText = "SELECT kind,data_json FROM session_events WHERE session_id=$id AND event_seq=$seq AND event_index=$index";
         await using var reader = await command.ExecuteReaderAsync(token);

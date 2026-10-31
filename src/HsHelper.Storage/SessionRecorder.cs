@@ -36,6 +36,8 @@ public sealed class SessionRecorder
             var previous = _previous?.MatchId == snapshot.MatchId ? _previous : null;
             if (previous is not null && snapshot.EventSequence < previous.EventSequence)
                 throw new InvalidOperationException("同一局的事件序号不能倒退，请为重新导入创建新的记录器。");
+            if (previous is not null && snapshot.StateVersion < previous.StateVersion)
+                throw new InvalidOperationException("同一局的状态版本不能倒退，请为重新导入创建新的记录器。");
             if (previous is not null && snapshot.EventSequence == previous.EventSequence && snapshot.StateVersion == previous.StateVersion)
                 return;
             if (previous is null && _previous is not null)

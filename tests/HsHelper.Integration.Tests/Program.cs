@@ -240,6 +240,7 @@ await HistoryPagingIntegration.RunAsync(temp, Pass);
 await TerrorEndTurnIntegration.RunAsync(temp, Pass);
 await CoachLibraryRetrievalIntegration.RunAsync(temp, Pass);
 await ArchiveBrowsingIntegration.RunAsync(temp, Pass);
+await DecisionReplayIntegration.RunAsync(temp, Pass);
 
 if (args.Length == 2)
 {

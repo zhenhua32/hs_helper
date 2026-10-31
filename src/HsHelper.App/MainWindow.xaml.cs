@@ -372,14 +372,6 @@ public partial class MainWindow : Window
         InvalidateAdvice();
         await DescribeDeckAsync(_deck);
     });
-    private async void SaveDeckClicked(object sender, RoutedEventArgs e) => await Run(async () =>
-    {
-        var deck = DeckCode.Decode(DeckBox.Text);
-        var dialog = new SaveFileDialog { Filter = "套牌JSON|*.json", FileName = "hunter-deck.json" };
-        if (dialog.ShowDialog() == true) await File.WriteAllTextAsync(dialog.FileName,
-            JsonSerializer.Serialize(new { Version = Guid.NewGuid(), SavedAt = DateTimeOffset.UtcNow, CardBuild = _manifest?.Build, Deck = deck, Code = DeckCode.Encode(deck) }, new JsonSerializerOptions { WriteIndented = true }));
-    });
-
     private async void AnalyzeClicked(object sender, RoutedEventArgs e) => await Run(AnalyzeCurrentAsync);
     private Task AnalyzeCurrentAsync() => TrackAnalysisAsync(AnalyzeCoreAsync);
     private async Task TrackAnalysisAsync(Func<Task> analyze)

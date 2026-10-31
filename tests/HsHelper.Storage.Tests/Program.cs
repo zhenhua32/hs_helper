@@ -40,6 +40,7 @@ checks.AddRange(TurnHistoryStorageChecks.Cases(database));
 checks.AddRange(SessionPagingChecks.Cases(database));
 checks.AddRange(KnowledgePagingChecks.Cases(database));
 checks.AddRange(ArchivePagingChecks.Cases(database));
+checks.AddRange(DecisionEventBoundaryChecks.Cases(database));
 var completed = 0;
 foreach (var check in checks)
 {
@@ -268,7 +269,7 @@ async Task SchemaMigration()
         await connection.OpenAsync();
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT version FROM hs_storage_schema";
-        Check(Convert.ToInt32(await command.ExecuteScalarAsync()) == 2, "migration version was not advanced");
+        Check(Convert.ToInt32(await command.ExecuteScalarAsync()) == 3, "migration version was not advanced");
         command.CommandText = "UPDATE hs_storage_schema SET version=99";
         await command.ExecuteNonQueryAsync();
     }

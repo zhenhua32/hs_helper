@@ -152,6 +152,7 @@ public partial class MainWindow
         KnowledgePrevPageButton.IsEnabled = ready && !_knowledgePaging.IsLoading && _knowledgePaging.PageNumber > 1;
         KnowledgeNextPageButton.IsEnabled = ready && !_knowledgePaging.IsLoading && _knowledgePaging.HasMore && _knowledgePaging.PageNumber < int.MaxValue;
         DiscardKnowledgeChangesButton.IsEnabled = ready && KnowledgeHasChanges;
+        RefreshKnowledgeNavigationControls();
     }
     private void RefreshKnowledgeDraftStatus()
     {
@@ -175,6 +176,7 @@ public partial class MainWindow
     private void KnowledgeEditorChanged(object sender, RoutedEventArgs e)
     {
         if (_updatingKnowledgeEditor || KnowledgeContentBox is null || PlanFirstBox is null) return;
+        CancelKnowledgeNavigation("编辑内容已变更，关联局面读取已取消；请保存或明确放弃后再打开。");
         _knowledgeRevision++; RefreshKnowledgeDraftStatus(); RefreshKnowledgeControls();
     }
     private async void KnowledgeFilterChanged(object sender, RoutedEventArgs e)
@@ -208,6 +210,7 @@ public partial class MainWindow
     private bool ClearKnowledgeEditor(bool discardChanges = false)
     {
         if (!discardChanges && KnowledgeHasChanges) { WarnKnowledgeDraft(); return false; }
+        CancelKnowledgeNavigation();
         _knowledgeRevision++;
         _editingKnowledge = null; _newNoteAnchor = null;
         _knowledgeEditorDeckId = (PlanDeckBox.SelectedItem as DeckItem)?.Value.Id;
@@ -238,6 +241,7 @@ public partial class MainWindow
     }
     private void DisplayKnowledgeEntry(CoachKnowledgeVersion value)
     {
+        CancelKnowledgeNavigation();
         _editingKnowledge = value; _knowledgeEditorDeckId = value.DeckVersionId;
         _knowledgeRevision++;
         _newNoteAnchor = null;
@@ -270,7 +274,7 @@ public partial class MainWindow
             string.IsNullOrWhiteSpace(PlanOpponentBox.Text) ? null : PlanOpponentBox.Text.Trim().ToUpperInvariant(),
             PlanFirstBox.SelectedIndex switch { 1 => true, 2 => false, _ => null }, editing?.MatchId ?? anchor?.MatchId)
         { EventSequence = editing?.EventSequence ?? anchor?.EventSequence };
-        CancelKnowledgeListRead(); _knowledgeSaving = true; RefreshKnowledgeControls();
+        CancelKnowledgeNavigation(); CancelKnowledgeListRead(); _knowledgeSaving = true; RefreshKnowledgeControls();
         try
         {
             var saved = await _knowledge.SaveAsync(draft, editing?.EntryId, editing?.Version);
@@ -288,7 +292,7 @@ public partial class MainWindow
         if (_knowledgeSaving || _closing || _editingKnowledge is not { } entry) return;
         if (KnowledgeHasChanges) { WarnKnowledgeDraft(); return; }
         var revision = _knowledgeRevision;
-        CancelKnowledgeListRead(); _knowledgeSaving = true; RefreshKnowledgeControls();
+        CancelKnowledgeNavigation(); CancelKnowledgeListRead(); _knowledgeSaving = true; RefreshKnowledgeControls();
         try
         {
             await _knowledge.DeleteAsync(entry.EntryId, entry.Version);
@@ -304,7 +308,7 @@ public partial class MainWindow
         if (_knowledgeSaving) { StatusText.Text = "计划或笔记正在保存，请稍后标记。"; return; }
         if (KnowledgeHasChanges) { WarnKnowledgeDraft(); return; }
         var state = DisplaySnapshot;
-        var deckId = _historyContext?.DeckVersionId ?? _sourceDeckVersion?.Id;
+        var deckId = _historyContext is { } historical ? historical.DeckVersionId : _sourceDeckVersion?.Id;
         if (deckId is null || !state.Quality.HasGameStart) { StatusText.Text = "请先选择已绑定套牌的实际局面。"; return; }
         _changingKnowledgeScope = true;
         try { PlanDeckBox.SelectedItem = PlanDeckBox.Items.OfType<DeckItem>().FirstOrDefault(d => d.Value.Id == deckId); }
