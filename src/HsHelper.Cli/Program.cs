@@ -112,7 +112,8 @@ static async Task<int> MainAsync(string[] args)
                 if (!snapshot.Quality.IsComplete || !snapshot.Quality.IsStable || !snapshot.Quality.HasLocalPerspective || snapshot.IsSpectating ||
                     snapshot.LocalPlayerId is not (1 or 2) || snapshot.Entities.Values.Any(entity =>
                         entity.Tags.Keys.Any(identityTags.Contains) || (entity.Kind == EntityKind.Card &&
-                         !(entity.Zone is "PLAY" or "GRAVEYARD" || (entity.ControllerId == snapshot.LocalPlayerId && entity.Zone is "HAND" or "SECRET")) &&
+                         !(entity.Zone is "PLAY" or "GRAVEYARD" || (entity.ControllerId == snapshot.LocalPlayerId && entity.Zone is "HAND" or "SECRET") ||
+                             ChoiceVisibility.IsProjectedCurrentOptionEntity(snapshot, entity)) &&
                          (entity.CardId is not null || entity.Tags.Any(tag => tag.Key is not ("ZONE" or "CONTROLLER" or "ZONE_POSITION" or "ENTITY_ID") &&
                              !PublicSecretClassification(entity, tag))))))
                     throw new InvalidDataException("需要稳定、完整且已过滤隐藏身份与账号信息的玩家视角局面。");
@@ -192,7 +193,8 @@ static async Task<int> MainAsync(string[] args)
                         { ResultHash = observation.ResultHash, Model = observation.Model, AnalysisRunId = observation.AnalysisRunId,
                             RequestId = observation.RequestId, ToolCallId = observation.ToolCallId, EventSequence = observation.EventSequence });
                     evidence.Enqueue(new(observation.Name, ToolEvidenceSummary(observation), observation.ResultHash));
-                }, taskKind: context.TaskKind);
+                }, taskKind: context.TaskKind, startingDeck: historical is null ? null :
+                    StartingDeckContext.FromSavedDeck(snapshot, build, historical.Context.Deck, historical.Context.DeckVersionId));
                 var usages = new ConcurrentQueue<ModelUsage>();
                 void Remember(ModelUsage usage)
                 {

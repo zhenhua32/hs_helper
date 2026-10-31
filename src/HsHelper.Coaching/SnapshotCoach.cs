@@ -34,13 +34,15 @@ public sealed class SnapshotCoach
     private readonly Action<CoachToolObservation>? _toolCompleted;
     private readonly CoachLibraryContext? _library;
     private readonly AdviceTaskKind? _taskKind;
+    private readonly StartingDeckBinding? _startingDeck;
     private readonly LineEvaluator _rules = new();
     private readonly AsyncLocal<AgentToolInvocation?> _toolSource = new();
     private bool IsDeckPlanning => _taskKind == AdviceTaskKind.DeckPlan || _snapshot.Phase == GamePhase.Unknown;
 
     public SnapshotCoach(GameSnapshot snapshot, JsonObject context, CardCatalog catalog, string? cardBuild,
         Action<string, long, bool>? toolObserved = null, CoachLibraryContext? library = null,
-        Action<CoachToolObservation>? toolCompleted = null, AdviceTaskKind? taskKind = null)
+        Action<CoachToolObservation>? toolCompleted = null, AdviceTaskKind? taskKind = null,
+        StartingDeckBinding? startingDeck = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot); ArgumentNullException.ThrowIfNull(context); ArgumentNullException.ThrowIfNull(catalog);
         _snapshot = snapshot;
@@ -53,6 +55,8 @@ public sealed class SnapshotCoach
         _library = library;
         _toolCompleted = toolCompleted;
         _taskKind = taskKind;
+        var startingReference = StartingDeckBinding.FreezeForSnapshot(snapshot, _build, startingDeck);
+        _startingDeck = library is null || startingReference?.DeckVersionId == library.Binding.DeckVersionId ? startingReference : null;
         if (library is not null && (library.Binding.MatchId != snapshot.MatchId ||
             library.Binding.StateVersion != snapshot.StateVersion || library.Binding.CardBuild != cardBuild ||
             (library.Binding.EventSequence is { } sequence && sequence != snapshot.EventSequence)))
@@ -234,7 +238,7 @@ public sealed class SnapshotCoach
         if (name == "evaluate_choice")
             return await Task.Run(() => Node(_rules.EvaluateChoice(_snapshot,
                 args["selected_entity_ids"]!.AsArray().Select(id => id!.GetValue<int>()).ToArray(), rulesCards,
-                args["choice_id"]!.GetValue<int>(), token)), token);
+                args["choice_id"]!.GetValue<int>(), token, startingDeck: _startingDeck)), token);
         if (name == "evaluate_line")
         {
             var actions = ParseActions(args["actions"]!.AsArray());
@@ -276,6 +280,11 @@ public sealed class SnapshotCoach
                 ? tracking.KnownRemaining.Keys : [])
             .Concat(LineEvaluator.RequiredRelatedCardIds).Distinct().ToArray();
         var cards = (await _catalog.GetByIdsAsync(ids, _build!, cancellationToken: token)).ToDictionary(c => c.Id);
+        if (ChoiceVisibility.ConfirmedLocalPlayer(_snapshot).HasValue && _startingDeck is not null)
+            foreach (var batch in _startingDeck.Definition.Sideboards.SelectMany(board => board.Cards)
+                .Select(card => card.DbfId).Distinct().Chunk(500))
+                foreach (var card in await _catalog.GetByDbfIdsAsync(batch, _build!, cancellationToken: token))
+                    cards.TryAdd(card.Id, card);
         var related = cards.Values.SelectMany(c => c.Entourage).Distinct().Where(id => !cards.ContainsKey(id)).Take(200).ToArray();
         foreach (var card in await _catalog.GetByIdsAsync(related, _build!, cancellationToken: token)) cards.TryAdd(card.Id, card);
         return cards;

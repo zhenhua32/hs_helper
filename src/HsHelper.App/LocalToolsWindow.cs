@@ -6,6 +6,7 @@ using HsHelper.Agent;
 using HsHelper.Cards;
 using HsHelper.Coaching;
 using HsHelper.Core;
+using HsHelper.Rules;
 
 namespace HsHelper.App;
 
@@ -48,6 +49,7 @@ public sealed class LocalToolsWindow : Window
     private GameSnapshot _snapshot;
     private string? _fixedBuild;
     private bool _historical;
+    private StartingDeckBinding? _startingDeck;
     private SnapshotCoach? _coach;
     private BattleViewState? _view;
     private IReadOnlyDictionary<string, CardRecord> _cards = new Dictionary<string, CardRecord>();
@@ -64,7 +66,8 @@ public sealed class LocalToolsWindow : Window
     public Task BindingReady { get; private set; } = Task.CompletedTask;
     public string ResultText => _result.Text;
 
-    public LocalToolsWindow(GameSnapshot snapshot, string? fixedBuild, CardCatalog catalog, bool isHistorical = false)
+    public LocalToolsWindow(GameSnapshot snapshot, string? fixedBuild, CardCatalog catalog, bool isHistorical = false,
+        StartingDeckBinding? startingDeck = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot); ArgumentNullException.ThrowIfNull(catalog);
         _snapshot = snapshot; _catalog = catalog;
@@ -153,7 +156,7 @@ public sealed class LocalToolsWindow : Window
         };
         _cancel.Click += (_, _) => CancelCalculation();
         Closed += (_, _) => { _closed = true; Invalidate("计算窗口已关闭。"); };
-        UpdateBinding(snapshot, fixedBuild, isHistorical);
+        UpdateBinding(snapshot, fixedBuild, isHistorical, startingDeck);
     }
 
     /// <summary>The host must call when the live frame, perspective, pinned deck or card build changes.</summary>
@@ -164,17 +167,21 @@ public sealed class LocalToolsWindow : Window
         _bindingCancellation?.Cancel(); _bindingCancellation?.Dispose(); _bindingCancellation = null;
         _calculation?.Cancel(); _calculation?.Dispose(); _calculation = null;
         _coach = null;
+        _startingDeck = null;
+        _cards = new Dictionary<string, CardRecord>();
         _binding.Text = reason;
         _result.Text = reason + "\n请由主窗口重新打开当前局面，或更新此窗口的局面绑定。";
         RefreshEnabled();
     }
 
-    public void UpdateBinding(GameSnapshot snapshot, string? fixedBuild, bool isHistorical = false)
+    public void UpdateBinding(GameSnapshot snapshot, string? fixedBuild, bool isHistorical = false,
+        StartingDeckBinding? startingDeck = null)
     {
         Dispatcher.VerifyAccess(); ArgumentNullException.ThrowIfNull(snapshot);
         if (_closed) throw new ObjectDisposedException(nameof(LocalToolsWindow));
         Invalidate();
         _snapshot = snapshot; _fixedBuild = fixedBuild; _historical = isHistorical;
+        _startingDeck = StartingDeckBinding.FreezeForSnapshot(snapshot, fixedBuild, startingDeck);
         _cards = new Dictionary<string, CardRecord>(); _line.Clear(); RefreshLine();
         _source.ItemsSource = Array.Empty<EntityOption>(); _target.ItemsSource = Array.Empty<EntityOption>();
         _trapSource.ItemsSource = Array.Empty<EntityOption>(); _trapAttacker.ItemsSource = Array.Empty<EntityOption>();
@@ -182,7 +189,7 @@ public sealed class LocalToolsWindow : Window
         try
         {
             _coach = new SnapshotCoach(snapshot, CompactAdviceContextBuilder.Build(snapshot, fixedBuild), _catalog, fixedBuild,
-                taskKind: AdviceTaskKind.Turn);
+                taskKind: AdviceTaskKind.Turn, startingDeck: _startingDeck);
             IsBindingValid = true;
         }
         catch (ArgumentException error) { _binding.Text = error.Message; _result.Text = "局面绑定无效，无法开始计算。"; }
@@ -196,13 +203,19 @@ public sealed class LocalToolsWindow : Window
     private async Task LoadNamesAsync(long revision, CancellationToken token)
     {
         var snapshot = _snapshot;
+        var startingDeck = _startingDeck;
         try
         {
             if (_fixedBuild is { Length: > 0 } build && build != "unknown")
             {
                 var visible = BattleViewBuilder.VisibleCardIds(snapshot, build).Concat(OwnInstalledTraps(snapshot).Select(entity => entity.CardId!)).Distinct(StringComparer.Ordinal);
                 var cards = await _catalog.GetByIdsAsync(visible, build, cancellationToken: token);
-                var completeCards = await SnapshotCardEffects.LoadDonorsAsync(snapshot, build, _catalog, cards, token);
+                var referenceCards = new List<CardRecord>();
+                if (startingDeck is not null)
+                    foreach (var batch in startingDeck.Definition.Sideboards.SelectMany(board => board.Cards.Select(card => card.DbfId)).Distinct().Chunk(500))
+                        referenceCards.AddRange(await _catalog.GetByDbfIdsAsync(batch, build, cancellationToken: token));
+                var completeCards = await SnapshotCardEffects.LoadDonorsAsync(snapshot, build, _catalog,
+                    cards.Concat(referenceCards).DistinctBy(card => card.Id), token);
                 if (!Current(revision)) return;
                 _cards = completeCards;
                 RenderBinding();
@@ -318,7 +331,8 @@ public sealed class LocalToolsWindow : Window
             var result = await coach.ExecuteAsync(tool, args, cancellation.Token);
             if (Current(revision) && ReferenceEquals(_calculation, cancellation))
                 _result.Text = (_historical ? "【历史局面结果，不用于当前游戏操作】\n" : "") +
-                    LocalToolResultFormatter.Format(tool, result, id => EntityName(id));
+                    LocalToolResultFormatter.Format(tool, result, id => EntityName(id),
+                        id => _cards.TryGetValue(id, out var card) ? card.Name : id);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         { if (Current(revision)) _result.Text = "计算已取消。"; }
@@ -475,9 +489,11 @@ public sealed class LocalToolsWindow : Window
 /// <summary>Chinese explanations retain the difference between a proof, a conditional estimate and missing coverage.</summary>
 public static class LocalToolResultFormatter
 {
-    public static string Format(string tool, JsonNode result, Func<int, string>? entityName = null)
+    public static string Format(string tool, JsonNode result, Func<int, string>? entityName = null,
+        Func<string, string>? cardName = null)
     {
         entityName ??= id => "实体 #" + id;
+        cardName ??= id => id;
         if (result["error"] is { } error) return "无法验证：" + error;
         var lines = new List<string>();
         if (tool == "calculate_draw_odds")
@@ -598,7 +614,7 @@ public static class LocalToolResultFormatter
                 }
             if (result["DirectDeckChange"] is JsonObject change)
                 lines.Add($"牌库直接移出 {change["RemovedCopies"]} 张：{change["TotalCardsBefore"]?.ToString() ?? "未知"} → {change["TotalCardsAfter"]?.ToString() ?? "未知"}；不包含其他触发或后续发现。");
-            if (result["SideboardEvidence"] is JsonObject sideboard) AppendSideboardEvidence(lines, sideboard);
+            if (result["SideboardEvidence"] is JsonObject sideboard) AppendSideboardEvidence(lines, sideboard, cardName);
             if (result["Map"] is JsonObject map) AppendMap(lines, map, entityName);
             if (result["Crafting"] is JsonObject crafting)
             {
@@ -802,7 +818,7 @@ public static class LocalToolResultFormatter
         lines.Add("各分支互斥，不能指定实际命中或合并结果；当前手牌不变，后续动作须等待新局面。");
     }
 
-    private static void AppendSideboardEvidence(List<string> lines, JsonNode evidence)
+    private static void AppendSideboardEvidence(List<string> lines, JsonNode evidence, Func<string, string> cardName)
     {
         lines.Add("下水道之王边栏选择证据（已观察记录，不是当前完整池）");
         if (evidence["ResolvesEvidence"]?.ToString() != "true") lines.Add("当前来源或证据绑定尚未确认，不能据此补出候选或剩余牌。");
@@ -828,7 +844,17 @@ public static class LocalToolResultFormatter
             else lines.Add("当前没有绑定到该来源的已确认候选，不从历史或起始牌码补出。");
         }
         if (evidence["InitialReference"] is JsonObject reference)
+        {
             lines.Add("起始牌码参考数量：" + (reference["IsValid"]?.ToString() == "true" ? reference["TotalCards"]?.ToString() ?? "未知" : "未知") + "；只作初始参考，不代表当前余量。");
+            if (reference["IsSessionBound"]?.ToString() == "true")
+                lines.Add($"原对局套牌版本：{reference["DeckVersionId"]} · 卡库 {reference["CardBuild"]}。");
+            else lines.Add("起始参考未确认原对局套牌绑定。");
+            if (reference["Cards"] is JsonArray initialCards)
+                foreach (var card in initialCards.OfType<JsonObject>())
+                    lines.Add($"· 初始参考 {card["InitialCopies"]} 张：" +
+                        (card["CardId"]?.GetValue<string>() is { } id ? cardName(id) : "身份未知") + $"（DBF {card["DbfId"]}）。");
+        }
+        else lines.Add("原对局起始牌码未确认；不借用当前套牌或编辑草稿。");
         if (evidence["Unknowns"] is JsonArray unknowns) foreach (var unknown in unknowns) lines.Add("· " + unknown);
         lines.Add("完整剩余边栏池未知；不合并复制或偷取来源为精确共享池，也不从初始三张扣出虚构余量。");
     }

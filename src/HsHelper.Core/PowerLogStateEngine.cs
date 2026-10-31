@@ -70,9 +70,6 @@ public sealed partial class PowerLogStateEngine
     private static readonly Regex DormantPattern = Pattern(@"^CACHED_TAG_FOR_DORMANT_CHANGE\s+Entity=(.+?)\s+tag=(\S+)\s+value=(.+)$");
     private static readonly HashSet<string> HiddenSafeTags = ["ZONE", "CONTROLLER", "ZONE_POSITION", "ENTITY_ID"];
     private static readonly HashSet<string> PublicSecretSlotTags = ["SECRET", "QUEST", "SIDE_QUEST"];
-    private static readonly HashSet<string> ChoiceObservedTags = ["ZONE", "CONTROLLER", "ZONE_POSITION", "ENTITY_ID", "CARDTYPE", "COST", "ATK", "HEALTH", "DAMAGE", "ARMOR", "DURABILITY",
-        "TAUNT", "DIVINE_SHIELD", "CHARGE", "RUSH", "LIFESTEAL", "POISONOUS", "STEALTH", "WINDFURY", "MEGA_WINDFURY", "ELUSIVE", "REBORN", "SILENCED", "FROZEN", "EXHAUSTED", "NUM_TURNS_IN_PLAY", "CARDRACE", "TAG_SCRIPT_DATA_NUM_1", "TAG_SCRIPT_DATA_NUM_2",
-        "CRAFTABLE_FIRST_HALF_DBID", "CRAFTABLE_SECOND_HALF_DBID"];
     private const int MaximumChoiceHistoryEntries = 32;
     private const int MaximumRememberedChoices = 64;
     private const int MaximumChoiceOptions = 64;
@@ -465,7 +462,7 @@ public sealed partial class PowerLogStateEngine
             (IntTag(entity, "CONTROLLER") is not { } controller || controller == _localPlayerId) &&
             entity.CardId is not null && entity.CardId == option.CardId)
         {
-            var optionTags = entity.Tags.Where(pair => ChoiceObservedTags.Contains(pair.Key)).ToDictionary(StringComparer.Ordinal);
+            var optionTags = entity.Tags.Where(pair => ChoiceVisibility.IsObservedOptionTag(pair.Key)).ToDictionary(StringComparer.Ordinal);
             optionTags["CONTROLLER"] = _localPlayerId!.Value.ToString(CultureInfo.InvariantCulture);
             return new(entity.Id, option.CardId, entity.Kind, optionTags.ToFrozenDictionary(StringComparer.Ordinal));
         }
@@ -744,7 +741,7 @@ public sealed partial class PowerLogStateEngine
         if (IntTag(entity, "CONTROLLER") is { } controller && controller != choice.PlayerId ||
             entity.CardId is { } cardId && cardId != option.CardId)
         { choice.HistoryInvalid = true; ChoiceHistoryProblem(choice, "候选描述与当时实体属性范围冲突，未混合不同身份的属性。"); return; }
-        var tags = entity.Tags.Where(pair => ChoiceObservedTags.Contains(pair.Key)).ToDictionary(StringComparer.Ordinal);
+        var tags = entity.Tags.Where(pair => ChoiceVisibility.IsObservedOptionTag(pair.Key)).ToDictionary(StringComparer.Ordinal);
         if (option.ControllerId is { } owner) tags["CONTROLLER"] = owner.ToString(CultureInfo.InvariantCulture);
         choice.OptionEntities[option.EntityId] = new(option.EntityId, option.CardId, entity.Kind, tags.ToFrozenDictionary(StringComparer.Ordinal));
     }

@@ -22,6 +22,9 @@ public sealed record SideboardInitialCardReference(int DbfId, string? CardId, in
 public sealed record SideboardStartingReference(int OwnerDbfId, bool IsValid, int? TotalCards,
     IReadOnlyList<SideboardInitialCardReference> Cards, IReadOnlyList<string> Unknowns)
 {
+    public string? DeckVersionId { get; init; }
+    public string? CardBuild { get; init; }
+    public bool IsSessionBound { get; init; }
     public bool IsStartingReferenceOnly => true;
     public bool IsCurrentPool => false;
 }
@@ -51,7 +54,7 @@ public static class SideboardChoiceEvidenceRules
     private const int OwnerDbf = 125998;
 
     public static SideboardChoiceEvidenceOutcome Evaluate(GameSnapshot snapshot, int sourceEntityId,
-        IReadOnlyDictionary<string, CardRecord> cards, DeckDefinition? initialDeck = null)
+        IReadOnlyDictionary<string, CardRecord> cards, DeckDefinition? initialDeck = null, StartingDeckBinding? startingDeck = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot); ArgumentNullException.ThrowIfNull(cards);
         var unknowns = new List<string>(); var coverage = new List<string>();
@@ -103,7 +106,19 @@ public static class SideboardChoiceEvidenceRules
             }
             else unknowns.Add("当前候选缺少一致的提供时来源、事件序号或身份绑定，未当作当前边栏候选。");
         }
-        if (initialDeck is not null) initial = StartingReference(initialDeck, cards);
+        if (startingDeck is not null)
+        {
+            var bound = StartingDeckBinding.FreezeForSnapshot(snapshot, snapshot.ClientBuild, startingDeck);
+            if (bound is null || initialDeck is not null && !StartingDeckBinding.SameDefinition(initialDeck, bound.Definition))
+                unknowns.Add("起始牌码参考的范围、来源或内容存在冲突，未返回其标识和卡牌，也未回退为未绑定参考。");
+            else
+            {
+                initial = StartingReference(bound.Definition, cards, true) with
+                { DeckVersionId = bound.DeckVersionId, CardBuild = bound.CardBuild, IsSessionBound = true };
+                coverage.Add("original-session-starting-deck-reference-not-current-pool");
+            }
+        }
+        else if (initialDeck is not null) initial = StartingReference(initialDeck, cards);
         unknowns.Add("已选次数只表示冻结来源为下水道之王的实际选择，不证明成功入手、剩余边栏或重复战吼的完整候选池。");
         unknowns.Add("不同来源实体的选择分别保留；复制、偷取及其它代为重复战吼的池继承未确认，不把新来源当全新三张，也不合并成精确剩余池。");
         if (currentOffer is not null) unknowns.Add("当前候选仅是本次实际提供的选项；不用于补齐过去选择，也不代表边栏完整余量或重复卡数量。");
@@ -162,7 +177,7 @@ public static class SideboardChoiceEvidenceRules
         Array.AsReadOnly(selections.GroupBy(selection => selection.CardId, StringComparer.Ordinal).OrderBy(group => group.Key, StringComparer.Ordinal)
             .Select(group => new SideboardSelectedCount(group.Key, group.Count(), lowerBound)).ToArray());
 
-    private static SideboardStartingReference StartingReference(DeckDefinition deck, IReadOnlyDictionary<string, CardRecord> cards)
+    private static SideboardStartingReference StartingReference(DeckDefinition deck, IReadOnlyDictionary<string, CardRecord> cards, bool sessionBound = false)
     {
         var unknowns = new List<string>();
         if (deck.Cards is null || deck.Sideboards is null || deck.Cards.Any(card => card is null) || deck.Sideboards.Any(board => board is null) ||
@@ -181,7 +196,9 @@ public static class SideboardChoiceEvidenceRules
             if (id is null) unknowns.Add("部分起始参考 DBF 没有唯一固定卡牌身份，保留 DBF 与份数，不由候选或历史回填。");
             return new SideboardInitialCardReference(card.DbfId, id, card.Count);
         }).ToArray();
-        unknowns.Add("仅为调用方提供的起始牌码参考，未核验其对局/套牌版本绑定；不声明当前边栏或剩余数量。");
+        unknowns.Add(sessionBound
+            ? "仅为本局记录的原始牌码参考，不证明当前完整池、选择消耗或复制、偷取后的池继承，也不声明剩余数量。"
+            : "仅为调用方提供的起始牌码参考，未核验其对局/套牌版本绑定；不声明当前边栏或剩余数量。");
         return new(OwnerDbf, true, 3, Array.AsReadOnly(result), Array.AsReadOnly(unknowns.Distinct(StringComparer.Ordinal).ToArray()));
         SideboardStartingReference Invalid(string reason) => new(OwnerDbf, false, null, Array.AsReadOnly(Array.Empty<SideboardInitialCardReference>()), Array.AsReadOnly(new[] { reason }));
     }

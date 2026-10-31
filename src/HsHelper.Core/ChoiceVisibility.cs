@@ -3,6 +3,27 @@ namespace HsHelper.Core;
 /// <summary>One privacy boundary for current offered identities in UI, local tools and model contexts.</summary>
 public static class ChoiceVisibility
 {
+    private static readonly HashSet<string> ChoiceObservedTags = ["ZONE", "CONTROLLER", "ZONE_POSITION", "ENTITY_ID", "CARDTYPE", "COST", "ATK", "HEALTH", "DAMAGE", "ARMOR", "DURABILITY",
+        "TAUNT", "DIVINE_SHIELD", "CHARGE", "RUSH", "LIFESTEAL", "POISONOUS", "STEALTH", "WINDFURY", "MEGA_WINDFURY", "ELUSIVE", "REBORN", "SILENCED", "FROZEN", "EXHAUSTED", "NUM_TURNS_IN_PLAY", "CARDRACE", "TAG_SCRIPT_DATA_NUM_1", "TAG_SCRIPT_DATA_NUM_2",
+        "CRAFTABLE_FIRST_HALF_DBID", "CRAFTABLE_SECOND_HALF_DBID"];
+
+    internal static bool IsObservedOptionTag(string tag) => ChoiceObservedTags.Contains(tag);
+
+    /// <summary>Recognizes only an actual current own option entity carrying the shared anonymous projection.</summary>
+    public static bool IsProjectedCurrentOptionEntity(GameSnapshot snapshot, EntitySnapshot entity)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (entity is null || entity.Kind != EntityKind.Card || string.IsNullOrWhiteSpace(entity.CardId) ||
+            !snapshot.Entities.TryGetValue(entity.Id, out var actual) || !ReferenceEquals(actual, entity) ||
+            ConfirmedOwn(snapshot) is not { } choice || choice.PlayerId is not (1 or 2) ||
+            entity.ControllerId != choice.PlayerId || choice.SourceEntityId is not > 0 ||
+            !snapshot.Entities.TryGetValue(choice.SourceEntityId.Value, out var source) || source.Id != choice.SourceEntityId.Value ||
+            entity.Tags.Keys.Any(tag => !IsObservedOptionTag(tag))) return false;
+        var option = choice.Options.SingleOrDefault(candidate => candidate.EntityId == entity.Id);
+        return option is not null && option.ControllerId == choice.PlayerId &&
+            !string.IsNullOrWhiteSpace(option.CardId) && option.CardId == entity.CardId;
+    }
+
     public static int? ConfirmedLocalPlayer(GameSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);

@@ -1,6 +1,8 @@
 using System.IO;
 using System.Windows;
 using HsHelper.Core;
+using HsHelper.Coaching;
+using HsHelper.Rules;
 using HsHelper.Storage;
 
 namespace HsHelper.App;
@@ -15,6 +17,19 @@ public partial class MainWindow
     private SnapshotViewKind? _lastAccessKind;
     private long _battleRenderRevision;
     private LocalToolsWindow? _localTools;
+
+    private StartingDeckBinding? StartingDeckForSnapshot(GameSnapshot snapshot, string? build)
+    {
+        if (_historyContext is { } history)
+        {
+            if (history.SessionId != snapshot.MatchId || history.Snapshot.MatchId != snapshot.MatchId ||
+                history.Snapshot.StateVersion != snapshot.StateVersion || history.Snapshot.EventSequence != snapshot.EventSequence ||
+                history.Snapshot.LocalPlayerId != snapshot.LocalPlayerId || history.CardBuild != build) return null;
+            return StartingDeckContext.FromSavedDeck(snapshot, build, history.Deck, history.DeckVersionId);
+        }
+        return _sourceBindingEstablished
+            ? StartingDeckContext.FromSavedDeck(snapshot, build, _sourceDeckVersion, _sourceDeckVersion?.Id) : null;
+    }
 
     private SnapshotAccess CurrentAccess => SnapshotAccessPolicy.Evaluate(DisplaySnapshot, DateTimeOffset.UtcNow,
         _historyContext is not null, _viewIsFileReplay, _timer.IsEnabled, _loadingSource || _historyLoading,
@@ -38,6 +53,8 @@ public partial class MainWindow
         var revision = ++_battleRenderRevision;
         var snapshot = DisplaySnapshot;
         var build = _historyContext?.CardBuild ?? snapshot.ClientBuild ?? SessionBuildBox.Text.Trim();
+        var history = _historyContext;
+        var sourceDeck = _sourceDeckVersion;
         var cards = string.IsNullOrWhiteSpace(build) || build == "unknown" ? [] :
             await _catalog.GetByIdsAsync(BattleViewBuilder.VisibleCardIds(snapshot, build), build);
         var donorDbfIds = BattleViewBuilder.VisibleEffectDbfIds(snapshot, build);
@@ -46,6 +63,7 @@ public partial class MainWindow
         if (revision != _battleRenderRevision || DisplaySnapshot.MatchId != snapshot.MatchId ||
             DisplaySnapshot.StateVersion != snapshot.StateVersion || DisplaySnapshot.EventSequence != snapshot.EventSequence ||
             DisplaySnapshot.LocalPlayerId != snapshot.LocalPlayerId ||
+            !ReferenceEquals(history, _historyContext) || !ReferenceEquals(sourceDeck, _sourceDeckVersion) ||
             (_historyContext?.CardBuild ?? DisplaySnapshot.ClientBuild ?? SessionBuildBox.Text.Trim()) != build) return;
         var view = BattleViewBuilder.Build(snapshot, cards.ToDictionary(c => c.Id), build);
         BattleViewRoot.DataContext = view;
@@ -54,18 +72,25 @@ public partial class MainWindow
 
     private void LocalToolsClicked(object sender, RoutedEventArgs e)
     {
+        var tools = BindLocalToolsWindow();
+        if (tools is not null) { tools.Owner = this; tools.Show(); }
+    }
+
+    private LocalToolsWindow? BindLocalToolsWindow()
+    {
         var snapshot = DisplaySnapshot;
-        if (snapshot.Entities.Count == 0) { StatusText.Text = "请先读取或选择一个局面。"; return; }
+        if (snapshot.Entities.Count == 0) { StatusText.Text = "请先读取或选择一个局面。"; return null; }
         var build = _historyContext?.CardBuild ?? snapshot.ClientBuild ?? SessionBuildBox.Text.Trim();
         var historical = CurrentAccess.Kind != SnapshotViewKind.Live;
+        var startingDeck = StartingDeckForSnapshot(snapshot, build);
         if (_localTools is null)
         {
-            _localTools = new LocalToolsWindow(snapshot, build, _catalog, historical) { Owner = this };
+            _localTools = new LocalToolsWindow(snapshot, build, _catalog, historical, startingDeck);
             _localTools.Closed += (_, _) => _localTools = null;
         }
-        else _localTools.UpdateBinding(snapshot, build, historical);
+        else _localTools.UpdateBinding(snapshot, build, historical, startingDeck);
         if (_loadingSource || _historyLoading) _localTools.Invalidate("日志或历史局面正在读取，请稍后重新绑定。");
-        _localTools.Show();
+        return _localTools;
     }
 
     private async void ReviewLastClicked(object sender, RoutedEventArgs e) => await Run(async () =>

@@ -41,7 +41,7 @@ public sealed partial class LineEvaluator
     /// </summary>
     public ChoiceResolutionEvaluation EvaluateChoice(GameSnapshot snapshot, IReadOnlyList<int> selectedEntityIds,
         IReadOnlyDictionary<string, CardRecord> cards, int? expectedChoiceId = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, StartingDeckBinding? startingDeck = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot); ArgumentNullException.ThrowIfNull(selectedEntityIds);
         ArgumentNullException.ThrowIfNull(cards); cancellationToken.ThrowIfCancellationRequested();
@@ -90,21 +90,21 @@ public sealed partial class LineEvaluator
             choice.SourceCardId != source.CardId)
         {
             if (choice.SourceCardId == "JAIL_831" && choice.SourceEntityId is { } historicalSource)
-                sideboardEvidence = SideboardChoiceEvidenceRules.Evaluate(snapshot, historicalSource, cards);
+                sideboardEvidence = SideboardChoiceEvidenceRules.Evaluate(snapshot, historicalSource, cards, startingDeck: startingDeck);
             unknowns.Add("未确认我方已使用的选择来源，不能把手中、牌库中或对手的卡当作已触发的来源。");
             return Result(LineVerification.Unsupported, true);
         }
         sourceEntityId = source.Id; sourceCardId = source.CardId;
         if (AssembledCardText.RequiresCustomText(source.Tags))
         {
-            if (choice.SourceCardId == "JAIL_831") sideboardEvidence = SideboardChoiceEvidenceRules.Evaluate(snapshot, source.Id, cards);
+            if (choice.SourceCardId == "JAIL_831") sideboardEvidence = SideboardChoiceEvidenceRules.Evaluate(snapshot, source.Id, cards, startingDeck: startingDeck);
             unknowns.Add("选择来源具有拼装文字，不能按原卡ID展开原生牌效。"); return Result(LineVerification.Unsupported, true);
         }
         if (!cards.TryGetValue(source.CardId, out var sourceCard) || sourceCard.Id != source.CardId || string.IsNullOrWhiteSpace(sourceCard.Name))
         { unknowns.Add("固定版本卡库缺少选择来源的资料，不能核对其效果。"); return Result(LineVerification.Unsupported, true); }
         sourceName = sourceCard.Name;
         if (source.CardId == "JAIL_831" && sourceCard.Type == "MINION")
-            sideboardEvidence = SideboardChoiceEvidenceRules.Evaluate(snapshot, source.Id, cards);
+            sideboardEvidence = SideboardChoiceEvidenceRules.Evaluate(snapshot, source.Id, cards, startingDeck: startingDeck);
         var option = choice.Options.Single(option => option.EntityId == selected[0]);
         if (string.IsNullOrWhiteSpace(option.CardId))
         { unknowns.Add("所选候选身份未知，不能虚构入手卡牌。"); return Result(LineVerification.Unsupported, true); }
@@ -193,7 +193,7 @@ public sealed partial class LineEvaluator
         }
         else if (origin == "Sideboard")
         {
-            sideboardEvidence ??= SideboardChoiceEvidenceRules.Evaluate(snapshot, source.Id, cards);
+            sideboardEvidence ??= SideboardChoiceEvidenceRules.Evaluate(snapshot, source.Id, cards, startingDeck: startingDeck);
             coverage.AddRange(sideboardEvidence.RuleCoverage);
             if (!sideboardEvidence.IsCurrentSourceConfirmed)
             {

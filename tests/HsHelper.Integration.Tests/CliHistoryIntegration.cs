@@ -183,6 +183,60 @@ internal static class CliHistoryIntegration
                 "CLI hidden-secret allowlist accepted private identity, raw attributes, non-secret slots or an unconfirmed perspective.");
         }
         pass("real Core masked enemy SECRET classifications reach CLI without private data while forged identity tags zones owners and perspectives stop before HTTP or archive");
+
+        var starting = await StartingDeckIntegration.CreateSavedCaseAsync(Path.Combine(directory, "original-sideboard"));
+        var originalSideboard = await Invoke(cli, starting.Directory, starting.Frame, "ORIGINAL_SESSION_SIDEBOARD",
+            [Reply.Choice(), Reply.Final("ORIGINAL_SIDEBOARD_ANSWER")], task: "choice");
+        RequireSuccess(originalSideboard);
+        StartingDeckIntegration.AssertReference(ToolResult(originalSideboard.Requests[1], "cli-starting-deck"), starting.A);
+        var originalArchive = (await starting.Archive.ListAsync()).Single();
+        var originalTraces = new AnalysisTraceStore(Path.Combine(starting.Directory, "analysis-traces.db"));
+        var originalTools = await originalTraces.ListToolsAsync(starting.Frame.MatchId);
+        var originalRequests = await originalTraces.ListRequestsAsync(starting.Frame.MatchId);
+        Check(originalArchive.Advice.DeckVersionId == starting.A.Id && originalArchive.Advice.KnowledgeAsOf == starting.Point.RecordedAt &&
+            Context(originalSideboard.Requests[0])["DeckVersionId"]?.GetValue<string>() == starting.A.Id &&
+            originalTools is [{ ToolName: "evaluate_choice", ToolCallId: "cli-starting-deck", ResultHash.Length: 64 }] &&
+            originalTools[0].ResultHash == originalArchive.Advice.Evidence.Single().ResultHash &&
+            originalArchive.Advice.RequestIds!.SequenceEqual(originalRequests.Select(request => request.RequestId)) &&
+            originalRequests.All(request => request.DeckVersionId == starting.A.Id && request.AnalysisRunId == originalArchive.Advice.AnalysisRunId),
+            "Actual CLI did not preserve original session A sideboard source and real request/tool hash when later B exists.");
+        var unbound = starting.Frame with { StateVersion = starting.Frame.StateVersion + 1, EventSequence = starting.Frame.EventSequence + 1,
+            DeckTracking = new(starting.Frame.MatchId, starting.Frame.StateVersion + 1, starting.B.Id, "255790", null,
+                FrozenDictionary<string, int>.Empty, 0, false, []) };
+        var background = await Invoke(cli, starting.Directory, unbound, "BACKGROUND_SIDEBOARD_NOT_SESSION_BOUND",
+            [Reply.Choice(), Reply.Final("BACKGROUND_SIDEBOARD_ANSWER")], task: "choice");
+        RequireSuccess(background);
+        Check(Context(background.Requests[0])["DeckVersionId"]?.GetValue<string>() == starting.B.Id &&
+            ToolResult(background.Requests[1], "cli-starting-deck")["SideboardEvidence"]?["InitialReference"] is null,
+            "Unmatched CLI tracking background was promoted to an original-session starting reference.");
+        AssertNoLibrary(background, (await starting.Archive.ListAsync()).Single(record => record.Advice.Summary == "BACKGROUND_SIDEBOARD_ANSWER"));
+        var unrelatedEntities = starting.Frame.Entities.ToDictionary();
+        unrelatedEntities[500] = new(500, "PRIVATE_CLI_CHOICE_PROBE", EntityKind.Card,
+            new Dictionary<string, string> { ["CONTROLLER"] = "1", ["ZONE"] = "SETASIDE", ["CARDTYPE"] = "MINION" }.ToFrozenDictionary());
+        var extraTagEntities = starting.Frame.Entities.ToDictionary();
+        extraTagEntities[81] = Tag(extraTagEntities[81], "PRIVATE_CHOICE_TAG", "PRIVATE_CLI_CHOICE_PROBE");
+        var invalidChoices = new[]
+        {
+            starting.Frame with { Choice = starting.Frame.Choice! with { IsReady = false } },
+            starting.Frame with { Choice = starting.Frame.Choice! with { PlayerId = 2 } },
+            starting.Frame with { Choice = starting.Frame.Choice! with { Options = starting.Frame.Choice.Options.Select(option => option.EntityId == 81 ? option with { CardId = "EDR_489" } : option).ToArray() } },
+            starting.Frame with { Entities = unrelatedEntities.ToFrozenDictionary() },
+            starting.Frame with { Entities = extraTagEntities.ToFrozenDictionary() }
+        };
+        var archiveCount = (await starting.Archive.ListAsync()).Count;
+        var requestCount = (await originalTraces.GetBudgetTotalsAsync(starting.Frame.MatchId)).RequestCount;
+        foreach (var invalidChoice in invalidChoices)
+        {
+            var denied = await Invoke(cli, starting.Directory, invalidChoice, "REJECT_PRIVATE_CHOICE_INPUT", [Reply.Final("MUST_NOT_BE_REQUESTED")], task: "choice");
+            var error = JsonNode.Parse(denied.Stderr);
+            Check(denied.ExitCode != 0 && denied.Requests.Count == 0 && !File.Exists(denied.OutputPath) &&
+                error?["Stage"]?.GetValue<string>() == "preflight" && error["Kind"]?.GetValue<string>() == nameof(InvalidDataException) &&
+                (await starting.Archive.ListAsync()).Count == archiveCount &&
+                (await originalTraces.GetBudgetTotalsAsync(starting.Frame.MatchId)).RequestCount == requestCount &&
+                !denied.Stderr.Contains("PRIVATE_CLI_CHOICE_PROBE", StringComparison.Ordinal),
+                "CLI current-choice exception allowed a wrong scope identity unrelated hidden entity or private extra tag to reach HTTP/output/archive.");
+        }
+        pass("actual CLI original session sideboard A survives later deck B and archives exact evidence while unsaved tracking B stays unbound background");
     }
 
     private static GameSnapshot WithSecret(GameSnapshot frame, EntitySnapshot secret) => frame with
@@ -403,10 +457,13 @@ internal static class CliHistoryIntegration
     private sealed record CliResult(int ExitCode, string Stdout, string Stderr, string OutputPath, IReadOnlyList<JsonObject> Requests,
         DateTimeOffset StartedAt, DateTimeOffset EndedAt);
 
-    private static async Task<CliResult> Invoke(string cli, Fixture fixture, GameSnapshot snapshot, string question, IReadOnlyList<Reply> replies, int timeoutSeconds = 10, string? task = "turn")
+    private static Task<CliResult> Invoke(string cli, Fixture fixture, GameSnapshot snapshot, string question, IReadOnlyList<Reply> replies, int timeoutSeconds = 10, string? task = "turn") =>
+        Invoke(cli, fixture.Directory, snapshot, question, replies, timeoutSeconds, task);
+
+    private static async Task<CliResult> Invoke(string cli, string directory, GameSnapshot snapshot, string question, IReadOnlyList<Reply> replies, int timeoutSeconds = 10, string? task = "turn")
     {
         await using var server = new FakeModel(replies);
-        var prefix = Path.Combine(fixture.Directory, "invocation-" + Guid.NewGuid().ToString("N"));
+        var prefix = Path.Combine(directory, "invocation-" + Guid.NewGuid().ToString("N"));
         var snapshotPath = prefix + ".snapshot.json"; var outputPath = prefix + ".advice.json"; var envPath = prefix + ".env";
         await File.WriteAllTextAsync(snapshotPath, SnapshotCodec.Serialize(snapshot));
         await File.WriteAllTextAsync(envPath, $"api_url={server.Endpoint}\nmodel_name={Model}\napi_key={FakeKey}\nMODEL_MAX_TOOL_ROUNDS=1\nMODEL_TIMEOUT_SECONDS={timeoutSeconds}\n");
@@ -414,9 +471,9 @@ internal static class CliHistoryIntegration
         var host = processPath is not null && Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
             ? processPath : Path.Combine(Path.GetFullPath(Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), "../../..")), OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
         var start = new ProcessStartInfo(host) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
-            RedirectStandardError = true, WorkingDirectory = fixture.Directory };
+            RedirectStandardError = true, WorkingDirectory = directory };
         foreach (var argument in new[] { cli, "advise", "--snapshot", snapshotPath, "--out", outputPath, "--env", envPath,
-            "--data-dir", fixture.Directory, "--question", question }) start.ArgumentList.Add(argument);
+            "--data-dir", directory, "--question", question }) start.ArgumentList.Add(argument);
         if (task is not null) { start.ArgumentList.Add("--task"); start.ArgumentList.Add(task); }
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
         var began = DateTimeOffset.UtcNow;
@@ -444,6 +501,8 @@ internal static class CliHistoryIntegration
             object Call(string callId) => new { id = callId, type = "function", function = new { name = "get_matchup_plan", arguments = "{}" } };
             return Json(new { role = "assistant", tool_calls = prependValid ? new[] { Call(ToolId), Call(id) } : new[] { Call(id) } }, "tool_calls");
         }
+        public static Reply Choice() => Json(new { role = "assistant", tool_calls = new[] { new { id = "cli-starting-deck", type = "function",
+            function = new { name = "evaluate_choice", arguments = "{\"choice_id\":9,\"selected_entity_ids\":[81]}" } } } }, "tool_calls");
         public static Reply Final(string summary) => Json(new { role = "assistant", content = JsonSerializer.Serialize(new
         { summary, reasons = new[] { "synthetic CLI evidence" }, risks = Array.Empty<string>(), assumptions = Array.Empty<string>(),
             unknowns = Array.Empty<string>(), unsupported_mechanics = Array.Empty<string>(), actions = Array.Empty<object>() }) }, "stop");

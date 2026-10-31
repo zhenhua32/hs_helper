@@ -88,7 +88,7 @@ internal static class HunterPlayTriggerIntegration
         var advice = await new AdviceService(http).AnalyzeAsync(new(new Uri("https://play-trigger-fixture.invalid/v1/chat/completions"), "trigger-fixture"),
             "trigger-fixture-unused-key", context, coach.ExecuteAsync, () => true, capabilities: coach.Capabilities());
         Check(model.Calls == 2 && advice.Actions.Count == 0 && !advice.VerifiedLethal && advice.Risks.Length > 0 &&
-            context.TemplateVersion == "hunter-v15/turn" && AdviceTaskTemplates.Get(AdviceTaskKind.Choice).Version == "hunter-v15/choice" &&
+            context.TemplateVersion == "hunter-v16/turn" && AdviceTaskTemplates.Get(AdviceTaskKind.Choice).Version == "hunter-v16/choice" &&
             observations.Last() is { Name: "evaluate_play_triggers", Success: true, ResultHash.Length: 64, RequestId: not null } &&
             observations.Last().EventSequence == frame.EventSequence,
             "Trigger preview allowed an invented following action or lost its request-bound v9 policy.");
@@ -136,7 +136,7 @@ internal static class HunterPlayTriggerIntegration
             Calls++; var text = await request.Content!.ReadAsStringAsync(token); object message;
             if (Calls == 1)
             {
-                Check(text.Contains("hunter-v15/turn", StringComparison.Ordinal) && text.Contains("evaluate_play_triggers", StringComparison.Ordinal) &&
+                Check(text.Contains("hunter-v16/turn", StringComparison.Ordinal) && text.Contains("evaluate_play_triggers", StringComparison.Ordinal) &&
                     text.Contains("不能自行给定进度", StringComparison.Ordinal) && text.Contains("DiscoveryBoundaryReached", StringComparison.Ordinal) &&
                     text.Contains("各段不能拼成已发生的局面", StringComparison.Ordinal), "The model did not receive the v14 trigger tool and boundary policy.");
                 message = new { role = "assistant", tool_calls = new[] { new { id = "trigger-preview", type = "function", function = new { name = "evaluate_play_triggers", arguments = "{\"source_entity_id\":30}" } } } };

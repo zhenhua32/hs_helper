@@ -65,6 +65,7 @@ public partial class MainWindow
     private bool _loadingSource;
     private long _historyRevision;
     private bool _historyLoading;
+    private Func<DecisionPoint, CancellationToken, Task>? _historicalReadCompleted = null;
     private Task? _replayTask;
     private readonly HistoryPagingState _historyPaging = new();
     private CancellationTokenSource? _historyListCancellation;
@@ -389,6 +390,7 @@ public partial class MainWindow
         else if (context.Deck is null) gaps.Add($"原套牌版本 {context.DeckVersionId} 缺失");
         if (manifest is null) gaps.Add($"对应卡库 build {context.CardBuild} 缺失，名称及规则资料保持未知");
         if (exact.ClientBuild is { } observed && observed != context.CardBuild) gaps.Add($"快照 build {observed} 与原对局 build {context.CardBuild} 不一致，不能核验牌效");
+        if (_historicalReadCompleted is { } completed) await completed(point, token);
         return new(point, context with { Snapshot = exact }, names, gaps.AsReadOnly());
     }
     private void PublishHistoricalDecision(HistoricalDecisionRead data)
@@ -425,9 +427,52 @@ public partial class MainWindow
     {
         if (!int.TryParse(RetentionDaysBox.Text, out var days) || days is < 1 or > 3650) throw new ArgumentException("保留天数应在 1 至 3650 之间。");
         if (MessageBox.Show(this, $"删除超过 {days} 天的已结束对局记录？套牌版本将保留。", "清理历史记录", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
-        var result = await _store.DeleteBeforeAsync(DateTimeOffset.UtcNow.AddDays(-days));
-        _historyRevision++; _historyLoading = false; _historyContext = null; InvalidateAdvice();
-        await RefreshHistoryAsync();
+        var result = await CleanupHistoryBeforeAsync(DateTimeOffset.UtcNow.AddDays(-days));
         StatusText.Text = $"已清理 {result.SessionsDeleted} 局及其关联记录。";
     });
+
+    private async Task<CleanupResult> CleanupHistoryBeforeAsync(DateTimeOffset cutoff)
+    {
+        var result = await _store.DeleteBeforeAsync(cutoff);
+        if (result.SessionsDeleted > 0 && !_closing)
+        {
+            // Invalidate pending reads before the next await. A completed, surviving pin is kept.
+            var wasReading = _historyLoading || _knowledgeNavigationLoading;
+            CancelKnowledgeNavigation("历史记录已清理，原关联读取已取消；笔记仍保留。");
+            _historyRevision++; _historyLoading = false;
+            if (wasReading)
+            {
+                InvalidateAdvice();
+                _localTools?.Invalidate("历史记录已清理，旧读取及计算已失效，请重新绑定。");
+                if (_historyContext is null)
+                { _historyObservedAt = null; EventsGrid.ItemsSource = null; HistorySnapshotText.Text = "旧的历史读取已取消，请重新选择保存的局面。"; }
+                RenderSnapshot(); RefreshAccessState();
+            }
+            else if (_analysis is not null) InvalidateAdvice();
+        }
+        await ApplyPostCleanupAsync();
+        if (!_closing) await RefreshHistoryAsync();
+        return result;
+    }
+
+    private async Task ApplyPostCleanupAsync(Func<string, Task<GameSession?>>? sessionLookup = null)
+    {
+        while (!_closing && _historyContext is { } pinned)
+        {
+            var session = await (sessionLookup is null ? _store.GetSessionAsync(pinned.SessionId) : sessionLookup(pinned.SessionId));
+            if (_closing) return;
+            // A selection or navigation may have changed while the database was read.
+            if (!ReferenceEquals(pinned, _historyContext)) continue;
+            if (session is not null) return;
+            CancelKnowledgeNavigation("原对局已清理，笔记仍保留。");
+            _historyRevision++; _historyLoading = false; _historyContext = null; _historyObservedAt = null;
+            DecisionsList.ItemsSource = null; EventsGrid.ItemsSource = null; HistorySnapshotText.Text = "";
+            InvalidateAdvice();
+            _localTools?.Invalidate("原复盘对局已清理，请重新绑定其他局面。");
+            _battleRenderRevision++;
+            SessionBuildBox.Text = DisplaySnapshot.ClientBuild ?? "";
+            RenderSnapshot(); RefreshAccessState();
+            return;
+        }
+    }
 }

@@ -235,6 +235,7 @@ await HunterPlayTriggerIntegration.RunAsync(temp, Pass);
 await NativeDiscoveryIntegration.RunAsync(temp, Pass);
 await MapLifecycleIntegration.RunAsync(temp, Pass);
 await SideboardChoiceEvidenceIntegration.RunAsync(temp, Pass);
+await StartingDeckIntegration.RunAsync(temp, Pass);
 await MagmaSplitIntegration.RunAsync(temp, Pass);
 await ExplosiveTrapIntegration.RunAsync(temp, Pass);
 await WeaponCombatIntegration.RunAsync(temp, Pass);

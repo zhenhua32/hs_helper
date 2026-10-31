@@ -403,6 +403,7 @@ public partial class MainWindow : Window
             ?? throw new InvalidOperationException("历史局面缺少记录时刻，无法限制个人资料查询。")
             : access.IsHistorical ? _lastStateObservedAt ?? requestStartedAt : requestStartedAt;
         var requestedBuild = history?.CardBuild ?? SessionBuildBox.Text.Trim();
+        var startingDeck = StartingDeckForSnapshot(snapshot, requestedBuild);
         var historyRevision = _historyRevision;
         var revision = _revision;
         if (snapshot.ClientBuild is { } observedBuild && observedBuild != requestedBuild)
@@ -463,7 +464,7 @@ public partial class MainWindow : Window
                 EventSequence: snapshot.EventSequence));
             var evidence = new List<AdviceToolEvidence>();
             var coach = new SnapshotCoach(snapshot, json, _catalog, requestedBuild, library: library,
-                toolCompleted: observation => ObserveTool(evidence, snapshot, observation), taskKind: context.TaskKind);
+                toolCompleted: observation => ObserveTool(evidence, snapshot, observation), taskKind: context.TaskKind, startingDeck: startingDeck);
             var advice = await new AdviceService(_http).AnalyzeAsync(modelConfiguration.Settings, modelConfiguration.ApiKey,
                 context, coach.ExecuteAsync, IsCurrent, cancellation.Token,
                 coach.Capabilities(_analysisBudget, usage => RememberUsage(usage, requestedBuild, task, context.TemplateVersion)));
