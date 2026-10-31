@@ -279,14 +279,13 @@ public sealed class SnapshotCoach
                 tracking.MatchId == _snapshot.MatchId && tracking.StateVersion == _snapshot.StateVersion && tracking.CardBuild == _build
                 ? tracking.KnownRemaining.Keys : [])
             .Concat(LineEvaluator.RequiredRelatedCardIds).Distinct().ToArray();
-        var cards = (await _catalog.GetByIdsAsync(ids, _build!, cancellationToken: token)).ToDictionary(c => c.Id);
+        var cards = (await _catalog.GetByIdsBatchedAsync(ids, _build!, cancellationToken: token)).ToDictionary(c => c.Id);
         if (ChoiceVisibility.ConfirmedLocalPlayer(_snapshot).HasValue && _startingDeck is not null)
-            foreach (var batch in _startingDeck.Definition.Sideboards.SelectMany(board => board.Cards)
-                .Select(card => card.DbfId).Distinct().Chunk(500))
-                foreach (var card in await _catalog.GetByDbfIdsAsync(batch, _build!, cancellationToken: token))
-                    cards.TryAdd(card.Id, card);
+            foreach (var card in await _catalog.GetByDbfIdsBatchedAsync(_startingDeck.Definition.Sideboards
+                .SelectMany(board => board.Cards).Select(card => card.DbfId), _build!, cancellationToken: token))
+                cards.TryAdd(card.Id, card);
         var related = cards.Values.SelectMany(c => c.Entourage).Distinct().Where(id => !cards.ContainsKey(id)).Take(200).ToArray();
-        foreach (var card in await _catalog.GetByIdsAsync(related, _build!, cancellationToken: token)) cards.TryAdd(card.Id, card);
+        foreach (var card in await _catalog.GetByIdsBatchedAsync(related, _build!, cancellationToken: token)) cards.TryAdd(card.Id, card);
         return cards;
     }
 

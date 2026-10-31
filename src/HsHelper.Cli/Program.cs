@@ -165,12 +165,12 @@ static async Task<int> MainAsync(string[] args)
                 if (historical is null && snapshot.DeckTracking is { } tracking && tracking.MatchId == snapshot.MatchId && tracking.StateVersion == snapshot.StateVersion && tracking.CardBuild == build)
                     deck = await sessions.GetDeckVersionAsync(tracking.DeckVersion);
                 var deckVersionId = historical is null ? deck?.Id : historical.Context.DeckVersionId;
-                var relevantCards = (await catalog.GetByIdsAsync(snapshot.Entities.Values
+                var relevantCards = (await catalog.GetByIdsBatchedAsync(snapshot.Entities.Values
                     .Where(e => e.Zone == "PLAY" || e.ControllerId == snapshot.LocalPlayerId && e.Zone is "HAND" or "SECRET")
                     .Select(e => e.CardId).OfType<string>()
                     .Concat(snapshot.Choice?.Options.Select(o => o.CardId).OfType<string>() ?? []).Distinct(), build)).ToDictionary(c => c.Id);
                 if (deck is not null)
-                    foreach (var card in await catalog.GetByDbfIdsAsync(deck.Definition.Cards.Select(c => c.DbfId)
+                    foreach (var card in await catalog.GetByDbfIdsBatchedAsync(deck.Definition.Cards.Select(c => c.DbfId)
                         .Concat(deck.Definition.Sideboards.SelectMany(s => s.Cards.Select(c => c.DbfId))).Distinct(), build)) relevantCards[card.Id] = card;
                 foreach (var card in await SnapshotCardEffects.LoadDonorsAsync(snapshot, build, catalog, relevantCards.Values)) relevantCards[card.Key] = card.Value;
                 var taskKind = Option("task") is { } namedTask ? AdviceTaskTemplates.Resolve(namedTask) : snapshot.Phase switch

@@ -245,6 +245,7 @@ try
     });
     await ConstructionChecks.RunAsync(taskRoot, Run);
     await AssembledCardTextChecks.RunAsync(Run);
+    await CardBatchChecks.RunAsync(taskRoot, Run);
     await Run("image cache uses verified source and reuses validated PNG offline", async () =>
     {
         var cache = new CardImageCache(Path.Combine(taskRoot, "images"));

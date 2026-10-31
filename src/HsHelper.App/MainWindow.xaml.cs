@@ -422,7 +422,7 @@ public partial class MainWindow : Window
             if (task == "回合建议") task = snapshot.Phase switch { GamePhase.Mulligan => "留牌建议", GamePhase.Choice => "选择建议", _ => task };
             var related = new Dictionary<string, CardRecord>();
             if (pinnedManifest is not null)
-                foreach (var card in await _catalog.GetByIdsAsync(snapshot.Entities.Values.Select(e => e.CardId).OfType<string>()
+                foreach (var card in await _catalog.GetByIdsBatchedAsync(snapshot.Entities.Values.Select(e => e.CardId).OfType<string>()
                     .Concat(snapshot.Choice?.Options.Select(o => o.CardId).OfType<string>() ?? []).Distinct(), requestedBuild, cancellationToken: cancellation.Token))
                     related[card.Id] = card;
             if (importedDeck is not null)
@@ -431,7 +431,7 @@ public partial class MainWindow : Window
                 {
                     var deckNumbers = importedDeck.Cards.Select(c => c.DbfId)
                         .Concat(importedDeck.Sideboards.SelectMany(s => s.Cards.Select(c => c.DbfId))).Distinct();
-                    var deckCards = await _catalog.GetByDbfIdsAsync(deckNumbers, pinnedManifest.Build,
+                    var deckCards = await _catalog.GetByDbfIdsBatchedAsync(deckNumbers, pinnedManifest.Build,
                         cancellationToken: cancellation.Token);
                     foreach (var card in deckCards) related[card.Id] = card;
                 }

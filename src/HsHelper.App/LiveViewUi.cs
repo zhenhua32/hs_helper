@@ -16,6 +16,7 @@ public partial class MainWindow
     private bool _viewIsFileReplay;
     private SnapshotViewKind? _lastAccessKind;
     private long _battleRenderRevision;
+    private Func<string, GameSnapshot, string?, CancellationToken, Task>? _aggregatedCardReadCompleted = null;
     private LocalToolsWindow? _localTools;
 
     private StartingDeckBinding? StartingDeckForSnapshot(GameSnapshot snapshot, string? build)
@@ -55,19 +56,28 @@ public partial class MainWindow
         var build = _historyContext?.CardBuild ?? snapshot.ClientBuild ?? SessionBuildBox.Text.Trim();
         var history = _historyContext;
         var sourceDeck = _sourceDeckVersion;
-        var cards = string.IsNullOrWhiteSpace(build) || build == "unknown" ? [] :
-            await _catalog.GetByIdsAsync(BattleViewBuilder.VisibleCardIds(snapshot, build), build);
-        var donorDbfIds = BattleViewBuilder.VisibleEffectDbfIds(snapshot, build);
-        if (donorDbfIds.Count > 0)
-            cards = cards.Concat(await _catalog.GetByDbfIdsAsync(donorDbfIds, build)).DistinctBy(card => card.Id).ToArray();
-        if (revision != _battleRenderRevision || DisplaySnapshot.MatchId != snapshot.MatchId ||
-            DisplaySnapshot.StateVersion != snapshot.StateVersion || DisplaySnapshot.EventSequence != snapshot.EventSequence ||
-            DisplaySnapshot.LocalPlayerId != snapshot.LocalPlayerId ||
-            !ReferenceEquals(history, _historyContext) || !ReferenceEquals(sourceDeck, _sourceDeckVersion) ||
-            (_historyContext?.CardBuild ?? DisplaySnapshot.ClientBuild ?? SessionBuildBox.Text.Trim()) != build) return;
-        var view = BattleViewBuilder.Build(snapshot, cards.ToDictionary(c => c.Id), build);
-        BattleViewRoot.DataContext = view;
-        RefreshAccessState();
+        var token = _source.Token;
+        var readCompleted = _aggregatedCardReadCompleted;
+        bool Current() => !_closing && !token.IsCancellationRequested && revision == _battleRenderRevision &&
+            DisplaySnapshot.MatchId == snapshot.MatchId && DisplaySnapshot.StateVersion == snapshot.StateVersion &&
+            DisplaySnapshot.EventSequence == snapshot.EventSequence && DisplaySnapshot.LocalPlayerId == snapshot.LocalPlayerId &&
+            ReferenceEquals(history, _historyContext) && ReferenceEquals(sourceDeck, _sourceDeckVersion) &&
+            (_historyContext?.CardBuild ?? DisplaySnapshot.ClientBuild ?? SessionBuildBox.Text.Trim()) == build;
+        try
+        {
+            var cards = string.IsNullOrWhiteSpace(build) || build == "unknown" ? [] :
+                await _catalog.GetByIdsBatchedAsync(BattleViewBuilder.VisibleCardIds(snapshot, build), build, cancellationToken: token);
+            var donorDbfIds = BattleViewBuilder.VisibleEffectDbfIds(snapshot, build);
+            if (donorDbfIds.Count > 0)
+                cards = cards.Concat(await _catalog.GetByDbfIdsBatchedAsync(donorDbfIds, build, cancellationToken: token)).DistinctBy(card => card.Id).ToArray();
+            if (readCompleted is not null) await readCompleted("battle", snapshot, build, token);
+            if (!Current()) return;
+            var view = BattleViewBuilder.Build(snapshot, cards.ToDictionary(c => c.Id), build);
+            BattleViewRoot.DataContext = view;
+            RefreshAccessState();
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception) when (!Current()) { }
     }
 
     private void LocalToolsClicked(object sender, RoutedEventArgs e)
@@ -93,27 +103,7 @@ public partial class MainWindow
         return _localTools;
     }
 
-    private async void ReviewLastClicked(object sender, RoutedEventArgs e) => await Run(async () =>
-    {
-        if (_loadingSource || _reading) throw new InvalidOperationException("日志正在读取，请稍后再固定局面。");
-        var frame = _liveFrame ?? _engine.Snapshot();
-        if (frame.Entities.Count == 0) throw new InvalidOperationException("尚无可复盘的局面。");
-        var revision = ++_historyRevision;
-        var deck = _sourceDeckVersion;
-        var build = frame.ClientBuild ?? SessionBuildBox.Text.Trim();
-        var context = await _store.GetHistoricalContextAtAsync(frame.MatchId, frame.EventSequence);
-        if (revision != _historyRevision) return;
-        var points = await _store.ListDecisionPointsAsync(frame.MatchId, includeUnstable: true);
-        if (revision != _historyRevision) return;
-        _historyObservedAt = points.FirstOrDefault(p => p.StateVersion == frame.StateVersion && p.EventSequence == frame.EventSequence)?.RecordedAt
-            ?? _lastStateObservedAt ?? DateTimeOffset.UtcNow;
-        _historyContext = context is not null && context.Snapshot.LocalPlayerId == frame.LocalPlayerId
-            ? context with { Snapshot = frame }
-            : new HistoricalContext(frame.MatchId, string.IsNullOrWhiteSpace(build) ? "unknown" : build, deck?.Id, deck, frame, []);
-        InvalidateAdvice(); RenderSnapshot();
-        TaskBox.SelectedIndex = 2; MainTabs.SelectedIndex = MainTabs.Items.Count - 1;
-        StatusText.Text = "已固定最后观察局面供复盘；不会把它当作当前游戏步骤。";
-    });
+    private async void ReviewLastClicked(object sender, RoutedEventArgs e) => await Run(ReviewLastObservedAsync);
 
     private async void RebuildClicked(object sender, RoutedEventArgs e) => await Run(async () =>
     {

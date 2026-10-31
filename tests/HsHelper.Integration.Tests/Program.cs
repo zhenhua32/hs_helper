@@ -228,6 +228,8 @@ await ChoiceEffectIntegration.RunAsync(temp, Pass);
 await AdviceLimitationsIntegration.RunAsync(temp, Pass);
 await CliHistoryIntegration.RunAsync(temp, Pass);
 await CliHistoryIntegration.RunModelCapabilitiesAsync(temp, Pass);
+await CliHistoryIntegration.RunLargeCardsAsync(temp, Pass);
+await LargeCardCoachingIntegration.RunAsync(temp, Pass);
 await MultiStageChoiceIntegration.RunAsync(temp, Pass);
 await HunterHistoryIntegration.RunAsync(temp, Pass);
 await AssembledEffectIntegration.RunAsync(temp, Pass);

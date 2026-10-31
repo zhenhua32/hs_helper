@@ -209,11 +209,9 @@ public sealed class LocalToolsWindow : Window
             if (_fixedBuild is { Length: > 0 } build && build != "unknown")
             {
                 var visible = BattleViewBuilder.VisibleCardIds(snapshot, build).Concat(OwnInstalledTraps(snapshot).Select(entity => entity.CardId!)).Distinct(StringComparer.Ordinal);
-                var cards = await _catalog.GetByIdsAsync(visible, build, cancellationToken: token);
-                var referenceCards = new List<CardRecord>();
-                if (startingDeck is not null)
-                    foreach (var batch in startingDeck.Definition.Sideboards.SelectMany(board => board.Cards.Select(card => card.DbfId)).Distinct().Chunk(500))
-                        referenceCards.AddRange(await _catalog.GetByDbfIdsAsync(batch, build, cancellationToken: token));
+                var cards = await _catalog.GetByIdsBatchedAsync(visible, build, cancellationToken: token);
+                var referenceCards = startingDeck is null ? [] : await _catalog.GetByDbfIdsBatchedAsync(
+                    startingDeck.Definition.Sideboards.SelectMany(board => board.Cards.Select(card => card.DbfId)), build, cancellationToken: token);
                 var completeCards = await SnapshotCardEffects.LoadDonorsAsync(snapshot, build, _catalog,
                     cards.Concat(referenceCards).DistinctBy(card => card.Id), token);
                 if (!Current(revision)) return;

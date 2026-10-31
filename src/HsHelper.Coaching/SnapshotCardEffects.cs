@@ -29,7 +29,7 @@ public static class SnapshotCardEffects
     {
         var result = definitions.DistinctBy(card => card.Id).ToDictionary(card => card.Id, StringComparer.Ordinal);
         var ids = VisibleDonorDbfIds(snapshot, build);
-        foreach (var card in await catalog.GetByDbfIdsAsync(ids.Take(500), build, cancellationToken: cancellationToken)) result.TryAdd(card.Id, card);
+        foreach (var card in await catalog.GetByDbfIdsBatchedAsync(ids, build, cancellationToken: cancellationToken)) result.TryAdd(card.Id, card);
         return result;
     }
 

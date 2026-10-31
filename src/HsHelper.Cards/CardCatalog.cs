@@ -272,6 +272,13 @@ public sealed partial class CardCatalog
         build ??= (await GetActiveManifestAsync(locale, cancellationToken))?.Build;
         if (build is null) return Array.Empty<CardRecord>();
         var poolRules = await GetPoolRulesAsync(build, 2, cancellationToken: cancellationToken);
+        return await GetByPinnedKeysAsync(column, ids, build, locale, poolRules, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<CardRecord>> GetByPinnedKeysAsync(string column, object[] ids, string build,
+        string locale, CardPoolRules? poolRules, CancellationToken cancellationToken)
+    {
+        if (ids.Length > 500) throw new ArgumentOutOfRangeException(nameof(ids));
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         var names = ids.Select((_, i) => $"$id{i}").ToArray();

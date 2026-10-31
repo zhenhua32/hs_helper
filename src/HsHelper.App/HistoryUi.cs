@@ -365,10 +365,11 @@ public partial class MainWindow
         {
             var selectedId = item.Value.Id;
             var data = await ReadHistoricalDecisionAsync(item.Value, CancellationToken.None);
-            if (revision != _historyRevision || (DecisionsList.SelectedItem as DecisionItem)?.Value.Id != selectedId) return;
+            if (_closing || revision != _historyRevision || (DecisionsList.SelectedItem as DecisionItem)?.Value.Id != selectedId) return;
             PublishHistoricalDecision(data);
         }
-        finally { if (revision == _historyRevision) { _historyLoading = false; RefreshAccessState(); } }
+        catch (Exception) when (_closing || revision != _historyRevision || (DecisionsList.SelectedItem as DecisionItem)?.Value.Id != item.Value.Id) { }
+        finally { if (revision == _historyRevision) { _historyLoading = false; if (!_closing) RefreshAccessState(); } }
     });
     private sealed record HistoricalDecisionRead(DecisionPoint Point, HistoricalContext Context,
         IReadOnlyDictionary<string, string> Names, IReadOnlyList<string> Gaps);
@@ -384,7 +385,7 @@ public partial class MainWindow
             throw new InvalidOperationException("保存快照的对局、事件或状态版本与决策点不一致，无法打开。");
         var manifest = context.CardBuild == "unknown" ? null : await _catalog.GetManifestAsync(context.CardBuild, cancellationToken: token);
         var names = manifest is null ? new Dictionary<string, string>() :
-            (await _catalog.GetByIdsAsync(exact.Entities.Values.Select(entity => entity.CardId).OfType<string>().Distinct().Take(500), context.CardBuild, cancellationToken: token))
+            (await _catalog.GetByIdsBatchedAsync(exact.Entities.Values.Select(entity => entity.CardId).OfType<string>().Distinct(), context.CardBuild, cancellationToken: token))
             .ToDictionary(card => card.Id, card => card.Name);
         var gaps = new List<string>();
         if (selected.HasUnattributedEvents) gaps.Add("旧事件列表未记录同序号状态版本，无法归属的同序号事件已省略");
@@ -401,14 +402,19 @@ public partial class MainWindow
         _historyContext = data.Context; _historyObservedAt = data.Point.RecordedAt;
         SessionBuildBox.Text = data.Context.CardBuild == "unknown" ? "" : data.Context.CardBuild;
         EventsGrid.ItemsSource = data.Context.RecentEvents;
-        string Name(EntitySnapshot entity) => entity.CardId is { } card ? data.Names.GetValueOrDefault(card, card) : "身份未知";
-        HistorySnapshotText.Text = $"对局 {data.Point.SessionId} · #{exact.EventSequence} · v{exact.StateVersion} · 录制于 {data.Point.RecordedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss.fffffff}\n" +
+        HistorySnapshotText.Text = DescribeHistoryFrame(exact, data.Names,
+            $"对局 {data.Point.SessionId} · #{exact.EventSequence} · v{exact.StateVersion} · 录制于 {data.Point.RecordedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss.fffffff}", data.Gaps);
+        RenderSnapshot();
+        HistoryStatusText.Text = $"正在查看原对局 {data.Point.SessionId} · 历史 #{exact.EventSequence} · v{exact.StateVersion}，知识截止为录制时刻 {data.Point.RecordedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss.fffffff}。" + string.Join("；", data.Gaps);
+    }
+    private static string DescribeHistoryFrame(GameSnapshot exact, IReadOnlyDictionary<string, string> names, string heading, IEnumerable<string> gaps)
+    {
+        string Name(EntitySnapshot entity) => entity.CardId is { } card ? names.GetValueOrDefault(card, card) : "身份未知";
+        return heading + "\n" +
             $"回合 {exact.Turn} · {exact.Phase} · 行动方 {exact.ActivePlayerId}\n我方视角 {exact.LocalPlayerId} · 完整 {exact.Quality.IsComplete} · 稳定 {exact.Quality.IsStable}\n手牌：\n" +
             string.Join("\n", exact.Hand.Select(entity => $"({entity.Cost?.ToString() ?? "?"}) {Name(entity)}")) + "\n\n场面：\n" +
             string.Join("\n", exact.Board.Select(entity => $"玩家{entity.ControllerId} · {Name(entity)} {entity.Attack?.ToString() ?? "?"}/{entity.RemainingHealth?.ToString() ?? "?"}")) +
-            "\n\n" + string.Join("；", exact.Quality.Warnings.Concat(data.Gaps));
-        RenderSnapshot();
-        HistoryStatusText.Text = $"正在查看原对局 {data.Point.SessionId} · 历史 #{exact.EventSequence} · v{exact.StateVersion}，知识截止为录制时刻 {data.Point.RecordedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss.fffffff}。" + string.Join("；", data.Gaps);
+            "\n\n" + string.Join("；", exact.Quality.Warnings.Concat(gaps));
     }
     private void ReturnLiveClicked(object sender, RoutedEventArgs e)
     {

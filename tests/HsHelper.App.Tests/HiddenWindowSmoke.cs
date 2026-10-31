@@ -144,6 +144,8 @@ internal static class HiddenWindowSmoke
             WindowClosingRegression.RunOnDispatcher(Path.Combine(Environment.CurrentDirectory, "closing"));
             CardBrowsingChecks.RunOnDispatcher(window);
             ModelCapabilitiesUiChecks.RunOnDispatcher(window);
+            LastObservedReviewChecks.RunOnDispatcher(window);
+            LargeCardUiChecks.RunOnDispatcher(window);
             AssertPassive(window);
             Check(unhandled is null, "Dispatcher initialization or a routed action raised an unhandled exception.");
         }
