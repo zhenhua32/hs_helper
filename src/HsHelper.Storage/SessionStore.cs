@@ -370,6 +370,13 @@ public sealed class SessionStore
                     throw new InvalidDataException("历史选择的实体证据不完整。");
                 foreach (var entity in entry.OptionEntities) ValidateEntity(entity);
             }
+        if (snapshot.TurnHistory is { } turns)
+            foreach (var turn in turns.Turns)
+            {
+                if (turn is null || turn.Plays.Any(play => play is null || play.AtPlay is null || play.AtPlay.Tags is null))
+                    throw new InvalidDataException("回合出牌历史缺少当时实体证据。");
+                foreach (var play in turn.Plays) ValidateEntity(play.AtPlay);
+            }
         if (inspectEntities) foreach (var entity in snapshot.Entities.Values) ValidateEntity(entity);
     }
 

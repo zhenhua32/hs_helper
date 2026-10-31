@@ -8,7 +8,7 @@ namespace HsHelper.Core;
 /// Replays PowerTaskList records. The caller supplies the local player ID after confirming perspective.
 /// This reconstructs observed state; it neither infers absent tags nor simulates card effects.
 /// </summary>
-public sealed class PowerLogStateEngine
+public sealed partial class PowerLogStateEngine
 {
     private sealed class Entity(int id, EntityKind kind = EntityKind.Card)
     {
@@ -351,12 +351,14 @@ public sealed class PowerLogStateEngine
             _eventSequence++;
             _currentEntity = null;
             _blockCount++;
+            ObserveTurnBlockStart(content);
             return Changed();
         }
         if (content == "BLOCK_END")
         {
             _eventSequence++;
             _currentEntity = null;
+            if (_turnBlocks.Count > 0) _turnBlocks.Pop();
             if (_blockCount > 0) _blockCount--;
             else { _hasGap = true; _warnings.Add("结算块结束缺少对应开始"); }
             return Changed();
@@ -434,6 +436,7 @@ public sealed class PowerLogStateEngine
                 Array.AsReadOnly(ownChoice.Options.ToArray()), ownChoice.Ready)
                 { OfferedAtEventSequence = ownChoice.OfferedAt, PreviousOfferedAtEventSequence = ownChoice.PreviousOfferedAt, SourceCardId = ownChoice.SourceCardId },
             ChoiceHistory = SnapshotChoiceHistory(hasPerspective && playersValid),
+            TurnHistory = SnapshotTurnHistory(hasPerspective && playersValid),
             RecentEvents = Array.AsReadOnly(_recentEvents.Select(item =>
                 item.Event.CardId is not null && item.PrivateOwner.HasValue && item.PrivateOwner != (hasPerspective ? _localPlayerId : null)
                     ? item.Event with { CardId = null } : item.Event).ToArray()),
@@ -496,6 +499,8 @@ public sealed class PowerLogStateEngine
         var oldCard = IsIdentityVisible(entity) ? entity.CardId : null;
         entity.Tags[tag] = value;
         entity.Revision++;
+        ObserveTurnTag(entity, tag, value);
+        if (tag == "ZONE") ObserveTurnZone(entity, fromZone, value);
         if (recordEvent && tag == "ZONE")
             AddEvent("ZoneChanged", entity, fromZone, value, "卡牌区域发生变化", oldCard);
         else if (recordEvent && tag is "TURN" or "RESOURCES" or "RESOURCES_USED" or "PLAYSTATE" or "DAMAGE" or "HEALTH")
@@ -881,6 +886,7 @@ public sealed class PowerLogStateEngine
     private void ClearGame()
     {
         _entities.Clear(); _warnings.Clear();
+        ClearTurnHistory();
         _choices.Clear(); _currentChoice = null; _readingChosen = false; _recentEvents.Clear();
         _choiceHistory.Clear(); _choiceHistoryWarnings.Clear(); _choiceHistoryTruncatedThrough.Clear(); _lastOfferedChoiceSequence = 0;
         _unobservedPrivateChoicePlayers.Clear(); _unscopedChoiceHistoryGap = false;
@@ -911,7 +917,7 @@ public sealed class PowerLogStateEngine
         "25" => "RESOURCES_USED", "26" => "RESOURCES", "27" => "HERO_ENTITY", "30" => "PLAYER_ID",
         "43" => "EXHAUSTED", "44" => "DAMAGE", "45" => "HEALTH", "47" => "ATK", "48" => "COST",
         "49" => "ZONE", "50" => "CONTROLLER", "51" => "OWNER", "53" => "ENTITY_ID", "202" => "CARDTYPE",
-        "199" => "CLASS", "204" => "STATE", "263" => "ZONE_POSITION", "292" => "ARMOR", "305" => "MULLIGAN_STATE",
+        "199" => "CLASS", "200" => "CARDRACE", "1635" => "SPELL_SCHOOL", "204" => "STATE", "263" => "ZONE_POSITION", "292" => "ARMOR", "305" => "MULLIGAN_STATE",
         "176" => "MAXRESOURCES", "187" => "DURABILITY", "188" => "SILENCED", "189" => "WINDFURY",
         "190" => "TAUNT", "191" => "STEALTH", "192" => "SPELLPOWER", "194" => "DIVINE_SHIELD", "197" => "CHARGE",
         "227" => "CANT_ATTACK", "240" => "IMMUNE", "260" => "FROZEN", "271" => "NUM_TURNS_IN_PLAY",

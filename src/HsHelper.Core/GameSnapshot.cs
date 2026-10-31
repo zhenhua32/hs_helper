@@ -111,6 +111,7 @@ public sealed record GameSnapshot(
 {
     public CurrentChoiceSnapshot? Choice { get; init; }
     public ChoiceHistorySnapshot? ChoiceHistory { get; init; }
+    public TurnHistorySnapshot? TurnHistory { get; init; }
     public IReadOnlyList<ObservedGameEvent> RecentEvents { get; init; } = [];
     public long EventHistoryTruncatedThrough { get; init; }
     public string? Format { get; init; }

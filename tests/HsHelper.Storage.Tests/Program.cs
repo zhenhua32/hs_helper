@@ -36,6 +36,7 @@ checks.AddRange(AdviceArchiveChecks.Cases(database));
 checks.AddRange(HistoricalStatsChecks.Cases(database));
 checks.AddRange(ConversationArchiveChecks.Cases(database));
 checks.AddRange(ChoiceHistoryStorageChecks.Cases(database));
+checks.AddRange(TurnHistoryStorageChecks.Cases(database));
 var completed = 0;
 foreach (var check in checks)
 {

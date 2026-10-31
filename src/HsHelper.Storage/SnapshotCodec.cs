@@ -31,7 +31,9 @@ public static class SnapshotCodec
             snapshot.Entities.Values.Any(entity => entity is null || entity.Tags is null) ||
             snapshot.Choice is { Options: null } || snapshot.DeckTracking is { KnownRemaining: null } or { Warnings: null } ||
             snapshot.ChoiceHistory is { } history && (history.Entries.Any(entry => entry is null ||
-                entry.Options.Any(option => option is null) || entry.OptionEntities.Any(entity => entity is null || entity.Tags is null))))
+                entry.Options.Any(option => option is null) || entry.OptionEntities.Any(entity => entity is null || entity.Tags is null))) ||
+            snapshot.TurnHistory is { } turns && turns.Turns.Any(turn => turn is null ||
+                turn.Plays.Any(play => play is null || play.AtPlay is null || play.AtPlay.Tags is null)))
             throw new InvalidDataException("保存的局面缺少必要字段。");
         return snapshot with
         {
