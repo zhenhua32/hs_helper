@@ -1,7 +1,6 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media.Imaging;
 using HsHelper.Cards;
 using Microsoft.Win32;
 
@@ -11,10 +10,17 @@ public partial class MainWindow
 {
     private async Task RefreshPoolStatusAsync()
     {
-        var rules = _manifest is null ? null : await _catalog.GetPoolRulesAsync(_manifest.Build);
-        PoolStatusText.Text = rules is null ? "标准系列池尚未加载或已过期；先同步对应 build 的池证据。"
-            : rules.IsComplete ? $"已加载完整规则 {rules.RuleId}，有效至 {rules.ValidUntil.ToLocalTime():MM-dd HH:mm}。"
-            : $"已核对官方标准系列成员（build {rules.Build}）；临时禁用和上线证据不完整，单卡合法性保持未知。";
+        var build = _manifest?.Build; var revision = _catalogRefreshRevision;
+        bool Current() => !_closing && revision == _catalogRefreshRevision && _manifest?.Build == build;
+        try
+        {
+            var rules = build is null ? null : await _catalog.GetPoolRulesAsync(build);
+            if (!Current()) return;
+            PoolStatusText.Text = rules is null ? "标准系列池尚未加载或已过期；先同步对应 build 的池证据。"
+                : rules.IsComplete ? $"已加载完整规则 {rules.RuleId}，有效至 {rules.ValidUntil.ToLocalTime():MM-dd HH:mm}。"
+                : $"已核对官方标准系列成员（build {rules.Build}）；临时禁用和上线证据不完整，单卡合法性保持未知。";
+        }
+        catch { if (Current()) PoolStatusText.Text = "标准系列池信息读取失败，请重试；不能据此判断规则是否存在。"; }
     }
     private async void SyncPoolClicked(object sender, RoutedEventArgs e) => await CatalogOperation(async () =>
     {
@@ -35,16 +41,12 @@ public partial class MainWindow
         await RefreshPoolStatusAsync(); await SearchCardsAsync();
         StatusText.Text = "卡池规则已导入并保留历史版本。";
     });
-    private async void CardSelected(object sender, SelectionChangedEventArgs e) => await Run(async () =>
+    private async void CardSelected(object sender, SelectionChangedEventArgs e)
     {
-        CardImage.Source = null;
-        if (CardGrid.SelectedItem is not CardRecord card) return;
-        CardImageText.Text = "正在读取图片缓存…";
-        var path = await new CardImageCache(Path.Combine(_dataRoot, "images")).GetAsync(_cardHttp, card.Id);
-        if ((CardGrid.SelectedItem as CardRecord)?.Id != card.Id) return;
-        var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        bitmap.UriSource = new Uri(path); bitmap.EndInit(); bitmap.Freeze();
-        CardImage.Source = bitmap;
-        CardImageText.Text = "图片用于浏览，历史牌效以对应 build 的文字为准。";
-    });
+        if (_clearingCardBrowsing || _closing) return;
+        if (CardGrid.SelectedItem is not CardRecord card || _cardSearchBuild is not { } build)
+        { ClearCardDetails(); return; }
+        _cardBrowseHistory.Clear();
+        await ShowCardDetailAsync(card, build);
+    }
 }

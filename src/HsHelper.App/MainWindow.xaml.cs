@@ -5,7 +5,6 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Threading;
 using HsHelper.Agent;
 using HsHelper.Cards;
@@ -53,7 +52,7 @@ public partial class MainWindow : Window
         Closing += WindowClosing;
         InitializeOverlay();
         _timer.Tick += async (_, _) => { RefreshAccessState(); await ReadLiveAsync(); };
-        Closed += (_, _) => { _timer.Stop(); _source.Cancel(); _analysis?.Cancel(); _connectionCheck?.Cancel(); _localTools?.Close(); _http.Dispose(); _cardHttp.Dispose(); };
+        Closed += (_, _) => { _catalogRefreshRevision++; CancelCardBrowsing(); _timer.Stop(); _source.Cancel(); _analysis?.Cancel(); _connectionCheck?.Cancel(); _localTools?.Close(); _http.Dispose(); _cardHttp.Dispose(); };
     }
 
     private async void WindowLoaded(object sender, RoutedEventArgs e) => await Run(async () =>
@@ -316,29 +315,22 @@ public partial class MainWindow : Window
 
     private async Task RefreshCatalogAsync()
     {
-        _manifest = await _catalog.GetActiveManifestAsync();
-        CatalogText.Text = _manifest is null ? "尚未加载卡库" : $"build {_manifest.Build} · {_manifest.CardCount:N0} 张";
-        await RefreshPoolStatusAsync();
-        await SearchCardsAsync();
-    }
-    private async Task SearchCardsAsync()
-    {
-        var query = SearchBox.Text;
-        var hunterOnly = HunterOnlyBox.IsChecked == true;
-        var keyword = KeywordBox.Text.Trim();
-        var poolOnly = StandardPoolBox.IsChecked == true;
-        var cards = await _catalog.SearchAsync(new CardSearchQuery(Text: query, CardClass: hunterOnly ? "HUNTER" : null, Collectible: true, Limit: 200,
-            Keyword: keyword, StandardPoolOnly: poolOnly));
-        if (hunterOnly)
+        if (_closing) return;
+        var revision = ++_catalogRefreshRevision;
+        try
         {
-            var neutral = await _catalog.SearchAsync(new CardSearchQuery(Text: query, CardClass: "NEUTRAL", Collectible: true, Limit: 200,
-                Keyword: keyword, StandardPoolOnly: poolOnly));
-            cards = cards.Concat(neutral.Where(c => c.Classes.Count == 0 || c.Classes.Contains("HUNTER"))).DistinctBy(c => c.Id).OrderBy(c => c.Cost).ThenBy(c => c.Name).ToArray();
+            CancelCardBrowsing();
+            var manifest = await _catalog.GetActiveManifestAsync();
+            if (_closing || revision != _catalogRefreshRevision) return;
+            CancelCardBrowsing();
+            _manifest = manifest;
+            CatalogText.Text = _manifest is null ? "尚未加载卡库" : $"build {_manifest.Build} · {_manifest.CardCount:N0} 张";
+            await RefreshPoolStatusAsync();
+            if (_closing || revision != _catalogRefreshRevision) return;
+            await SearchCardsAsync();
         }
-        CardGrid.ItemsSource = cards;
+        catch (Exception) when (_closing || revision != _catalogRefreshRevision) { }
     }
-    private async void SearchClicked(object sender, RoutedEventArgs e) => await Run(SearchCardsAsync);
-    private async void SearchKeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) await Run(SearchCardsAsync); }
     private async void ImportCardsClicked(object sender, RoutedEventArgs e) => await CatalogOperation(async () =>
     {
         var dialog = new OpenFileDialog { Filter = "卡牌JSON|*.json" };

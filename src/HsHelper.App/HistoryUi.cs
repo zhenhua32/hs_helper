@@ -216,6 +216,8 @@ public partial class MainWindow
         if (_closing) return;
         if (!TryLeaveKnowledgeEditor()) return;
         _closing = true;
+        _catalogRefreshRevision++;
+        CancelCardBrowsing();
         try
         {
             RefreshKnowledgeControls();

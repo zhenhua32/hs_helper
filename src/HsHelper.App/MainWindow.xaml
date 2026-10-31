@@ -68,11 +68,39 @@
         </Grid>
       </TabItem>
       <TabItem Header="中文卡库">
-        <Grid Margin="16"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-          <WrapPanel><TextBlock Text="导入 build" VerticalAlignment="Center" Margin="0,0,8,6"/><TextBox x:Name="ImportBuildBox" Width="95" ToolTip="导入JSON的数字build版本"/><Button Content="导入卡牌JSON" Click="ImportCardsClicked"/><Button Content="同步客户端版本卡库" Click="SyncCurrentBuildClicked" ToolTip="使用已观察到的客户端 build；未确认版本时先诊断或连接日志。"/><Button Content="同步最新卡库" Click="SyncCardsClicked"/><Button Content="同步标准系列池" Click="SyncPoolClicked"/><Button Content="导入完整卡池规则" Click="ImportPoolClicked"/><TextBlock x:Name="CatalogText" VerticalAlignment="Center" Text="尚未加载卡库"/></WrapPanel>
-          <WrapPanel Grid.Row="1"><TextBox x:Name="SearchBox" Width="300" ToolTip="输入中文名称或效果" KeyDown="SearchKeyDown"/><TextBlock Text="关键词" VerticalAlignment="Center" Margin="0,0,6,6"/><TextBox x:Name="KeywordBox" Width="100" ToolTip="如 BATTLECRY、DEATHRATTLE"/><CheckBox x:Name="HunterOnlyBox" Content="猎人与中立" IsChecked="True" VerticalAlignment="Center" Margin="8"/><CheckBox x:Name="StandardPoolBox" Content="标准系列成员" VerticalAlignment="Center" Margin="8"/><Button Content="搜索" Click="SearchClicked"/></WrapPanel>
-          <TextBlock Grid.Row="2" x:Name="PoolStatusText" Text="尚未加载标准卡池证据。" Foreground="#7B5A22" TextWrapping="Wrap" Margin="0,4,0,10"/>
-          <Grid Grid.Row="3"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="220"/></Grid.ColumnDefinitions><DataGrid x:Name="CardGrid" SelectionChanged="CardSelected"><DataGrid.Columns><DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="140"/><DataGridTextColumn Header="费用" Binding="{Binding Cost}" Width="45"/><DataGridTextColumn Header="职业" Binding="{Binding CardClass}" Width="90"/><DataGridTextColumn Header="效果" Binding="{Binding Text}" Width="*"/><DataGridTextColumn Header="合法性" Binding="{Binding StandardLegality}" Width="80"/></DataGrid.Columns></DataGrid><StackPanel Grid.Column="1" Margin="10,0,0,0"><Image x:Name="CardImage" MaxHeight="330" Stretch="Uniform"/><TextBlock x:Name="CardImageText" Text="选择卡牌查看图片" TextWrapping="Wrap"/></StackPanel></Grid>
+        <Grid Margin="16"><Grid.RowDefinitions><RowDefinition Height="2*" MaxHeight="100"/><RowDefinition Height="3*"/></Grid.RowDefinitions>
+          <ScrollViewer x:Name="CardHeaderScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,0,0,6">
+          <StackPanel>
+          <WrapPanel>
+            <TextBox x:Name="SearchBox" Width="200" ToolTip="输入中文名称、效果或CardId" KeyDown="SearchKeyDown" TextChanged="CardSearchInputChanged"/>
+            <Button x:Name="CardSearchButton" Content="搜索" Click="SearchClicked"/>
+            <TextBlock Text="关键词" VerticalAlignment="Center" Margin="0,0,6,6"/><TextBox x:Name="KeywordBox" Width="100" ToolTip="如 BATTLECRY、DEATHRATTLE" KeyDown="SearchKeyDown" TextChanged="CardSearchInputChanged"/>
+            <ComboBox x:Name="CardCollectibleBox" Width="115" SelectedIndex="0" SelectionChanged="CardSearchInputChanged" Margin="0,0,8,6"><ComboBoxItem Content="可收藏"/><ComboBoxItem Content="全部"/><ComboBoxItem Content="不可收藏"/></ComboBox>
+            <CheckBox x:Name="HunterOnlyBox" Content="猎人与中立" IsChecked="True" VerticalAlignment="Center" Margin="8" Checked="CardSearchInputChanged" Unchecked="CardSearchInputChanged"/>
+            <CheckBox x:Name="StandardPoolBox" Content="标准系列成员" VerticalAlignment="Center" Margin="8" Checked="CardSearchInputChanged" Unchecked="CardSearchInputChanged"/>
+          </WrapPanel>
+          <Expander x:Name="CardImportExpander" IsExpanded="False" Margin="0,0,0,4">
+          <Expander.Header><WrapPanel><TextBlock Text="卡库导入与同步" Margin="0,0,10,0"/><TextBlock x:Name="CatalogText" Text="尚未加载卡库"/></WrapPanel></Expander.Header>
+          <WrapPanel><TextBlock Text="导入 build" VerticalAlignment="Center" Margin="0,0,8,6"/><TextBox x:Name="ImportBuildBox" Width="95" ToolTip="导入JSON的数字build版本"/><Button Content="导入卡牌JSON" Click="ImportCardsClicked"/><Button Content="同步客户端版本卡库" Click="SyncCurrentBuildClicked" ToolTip="使用已观察到的客户端 build；未确认版本时先诊断或连接日志。"/><Button Content="同步最新卡库" Click="SyncCardsClicked"/><Button Content="同步标准系列池" Click="SyncPoolClicked"/><Button Content="导入完整卡池规则" Click="ImportPoolClicked"/></WrapPanel>
+          </Expander>
+          <TextBlock x:Name="PoolStatusText" Text="尚未加载标准卡池证据。" Foreground="#7B5A22" TextWrapping="Wrap" Margin="0,4,0,4"/><TextBlock x:Name="CardSearchStatusText" Text="搜索最多展示200张；关联牌独立按固定版本浏览。" TextWrapping="Wrap" Margin="0,0,0,8"/>
+          </StackPanel>
+          </ScrollViewer>
+          <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="3*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
+            <DataGrid x:Name="CardGrid" SelectionChanged="CardSelected"><DataGrid.Columns><DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="130"/><DataGridTextColumn Header="费用" Binding="{Binding Cost}" Width="45"/><DataGridTextColumn Header="职业" Binding="{Binding CardClass}" Width="75"/><DataGridTextColumn Header="效果" Binding="{Binding Text}" Width="*"/><DataGridTextColumn Header="合法性" Binding="{Binding StandardLegality}" Width="75"/></DataGrid.Columns></DataGrid>
+            <ScrollViewer Grid.Column="1" x:Name="CardDetailsScroll" Margin="10,0,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel>
+                <Button x:Name="CardBackButton" Content="返回上一张卡" Click="CardBackClicked" IsEnabled="False" HorizontalAlignment="Left"/>
+                <TextBox x:Name="CardDetailText" Text="选择卡牌查看固定版本文字及直接关联牌。" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="90" MaxHeight="230" VerticalScrollBarVisibility="Auto"/>
+                <TextBlock x:Name="RelatedScopeText" Text="关联记录不是随机生成全池或概率。" TextWrapping="Wrap" Foreground="#52625A"/>
+                <WrapPanel Margin="0,6,0,0"><Button x:Name="RelatedPrevPageButton" Content="上一页" Click="RelatedPrevPageClicked" IsEnabled="False"/><Button x:Name="RelatedNextPageButton" Content="下一页" Click="RelatedNextPageClicked" IsEnabled="False"/><Button x:Name="RelatedReloadButton" Content="重试本页" Click="RelatedReloadClicked" IsEnabled="False"/></WrapPanel>
+                <TextBlock x:Name="RelatedPageText" Text="尚未选择卡牌" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                <DataGrid x:Name="RelatedCardsGrid" Height="170" SelectionChanged="RelatedCardSelected"><DataGrid.Columns><DataGridTextColumn Header="关联牌" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="CardId" Binding="{Binding CardId}" Width="120"/></DataGrid.Columns></DataGrid>
+                <Button x:Name="OpenRelatedCardButton" Content="查看选中关联牌" Click="OpenRelatedCardClicked" IsEnabled="False" HorizontalAlignment="Left"/>
+                <Image x:Name="CardImage" MaxHeight="220" Stretch="Uniform"/><TextBlock x:Name="CardImageText" Text="图片仅用于浏览；牌效以所选build的文字为准。" TextWrapping="Wrap" Margin="0,6,0,10"/>
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
         </Grid>
       </TabItem>
       <TabItem Header="套牌">
