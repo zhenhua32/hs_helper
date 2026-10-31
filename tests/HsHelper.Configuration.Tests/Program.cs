@@ -78,6 +78,7 @@ if (OperatingSystem.IsWindows())
     Check(dpapiLoaded?.Settings == explicitTuning.Settings && dpapiLoaded.ExplicitSettingKeys.SequenceEqual(explicitTuning.ExplicitSettingKeys),
         "Windows DPAPI stores and restores optional tuning with explicit-key metadata");
 }
+await ModelCapabilitiesConfigurationChecks.RunAsync(root);
 Console.WriteLine("Configuration checks passed (fixture credentials only).");
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); Console.WriteLine("PASS " + message); }
 sealed class TestProtector : ISecretProtector

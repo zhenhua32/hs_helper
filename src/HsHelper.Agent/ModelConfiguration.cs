@@ -58,6 +58,28 @@ public static class EnvironmentModelConfiguration
         var key = Read("api_key", "MODEL_API_KEY", "OPENAI_API_KEY") ?? "";
         if (key.Any(char.IsControl)) throw new InvalidDataException("环境配置中的密钥含不支持的控制字符。");
         var explicitKeys = new List<string>();
+        string? Capability(string keyName, string propertyName)
+        {
+            foreach (var name in new[] { "MODEL_" + keyName, keyName })
+            {
+                if (!values.TryGetValue(name, out var value)) continue;
+                explicitKeys.Add(propertyName);
+                return value;
+            }
+            return null;
+        }
+        var tools = Capability("ENABLE_TOOLS", nameof(ModelSettings.EnableTools));
+        var enableTools = tools is null || tools.Equals("true", StringComparison.OrdinalIgnoreCase) ? true
+            : tools.Equals("false", StringComparison.OrdinalIgnoreCase) ? false
+            : throw new InvalidDataException("环境配置中的模型工具开关无效。");
+        var format = Capability("RESPONSE_FORMAT", nameof(ModelSettings.ResponseFormat));
+        var responseFormat = format?.ToLowerInvariant() switch
+        {
+            null or "omitted" => ModelResponseFormat.Omitted,
+            "json_object" => ModelResponseFormat.JsonObject,
+            "json_schema" => ModelResponseFormat.JsonSchema,
+            _ => throw new InvalidDataException("环境配置中的模型输出模式无效。")
+        };
         long Number(string keyName, long fallback, long minimum, long maximum)
         {
             var value = keyName == "MAX_CONCURRENT_REQUESTS_PER_MATCH"
@@ -78,6 +100,8 @@ public static class EnvironmentModelConfiguration
         var defaults = new ModelSettings(endpoint, model);
         var settings = defaults with
         {
+            EnableTools = enableTools,
+            ResponseFormat = responseFormat,
             MaxToolRounds = (int)Number("MAX_TOOL_ROUNDS", defaults.MaxToolRounds, 0, 4),
             MaxOutputTokens = (int)Number("MAX_OUTPUT_TOKENS", defaults.MaxOutputTokens, 100, 8192),
             TimeoutSeconds = (int)Number("TIMEOUT_SECONDS", defaults.TimeoutSeconds, 1, 120),
@@ -98,6 +122,8 @@ public static class EnvironmentModelConfiguration
         bool Own(string key) => explicitKeys.Contains(key, StringComparer.Ordinal);
         var merged = environment with
         {
+            EnableTools = Own(nameof(ModelSettings.EnableTools)) ? environment.EnableTools : savedSettings.EnableTools,
+            ResponseFormat = Own(nameof(ModelSettings.ResponseFormat)) ? environment.ResponseFormat : savedSettings.ResponseFormat,
             MaxToolRounds = Own(nameof(ModelSettings.MaxToolRounds)) ? environment.MaxToolRounds : savedSettings.MaxToolRounds,
             MaxOutputTokens = Own(nameof(ModelSettings.MaxOutputTokens)) ? environment.MaxOutputTokens : savedSettings.MaxOutputTokens,
             TimeoutSeconds = Own(nameof(ModelSettings.TimeoutSeconds)) ? environment.TimeoutSeconds : savedSettings.TimeoutSeconds,
@@ -177,38 +203,63 @@ public sealed class ProtectedModelConfigurationStore(string path, ISecretProtect
     private sealed record Document(int Version, string ProtectedPayload);
     public async Task SaveAsync(ModelConfiguration config, CancellationToken token = default)
     {
+        token.ThrowIfCancellationRequested();
         config.Settings.ValidateTuning();
+        var fullPath = Path.GetFullPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        var temporary = fullPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         var plaintext = JsonSerializer.SerializeToUtf8Bytes(config);
         byte[] encrypted;
         try { encrypted = protector.Protect(plaintext); }
         finally { CryptographicOperations.ZeroMemory(plaintext); }
-        var fullPath = Path.GetFullPath(path);
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        var temporary = fullPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(new Document(1, Convert.ToBase64String(encrypted))), token);
+            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(new Document(2, Convert.ToBase64String(encrypted))), token);
             token.ThrowIfCancellationRequested();
             File.Move(temporary, fullPath, true);
         }
-        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(encrypted);
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
     }
     public async Task<ModelConfiguration?> LoadAsync(CancellationToken token = default)
     {
+        token.ThrowIfCancellationRequested();
         if (!File.Exists(path)) return null;
         byte[]? plaintext = null;
         try
         {
             var doc = JsonSerializer.Deserialize<Document>(await File.ReadAllTextAsync(path, token));
-            if (doc?.Version != 1) throw new InvalidDataException("模型配置版本无法识别。");
+            if (doc?.Version is not (1 or 2)) throw new InvalidDataException("模型配置版本无法识别。");
             plaintext = protector.Unprotect(Convert.FromBase64String(doc.ProtectedPayload));
+            ValidateCapabilities(plaintext, doc.Version);
             var config = JsonSerializer.Deserialize<ModelConfiguration>(plaintext) ?? throw new InvalidDataException("模型配置为空。");
+            if (config.Settings?.Endpoint is null) throw new InvalidDataException("模型配置缺少连接设置。");
             _ = EnvironmentModelConfiguration.NormalizeEndpoint(config.Settings.Endpoint.ToString());
             config.Settings.ValidateTuning();
             return config;
         }
-        catch (Exception ex) when (ex is JsonException or FormatException or CryptographicException)
+        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException or CryptographicException)
         { throw new InvalidDataException("无法读取受保护的模型配置，请重新输入或加载 .env。"); }
         finally { if (plaintext is not null) CryptographicOperations.ZeroMemory(plaintext); }
+    }
+
+    private static void ValidateCapabilities(byte[] plaintext, int version)
+    {
+        using var json = JsonDocument.Parse(plaintext);
+        if (json.RootElement.ValueKind != JsonValueKind.Object ||
+            !json.RootElement.TryGetProperty("Settings", out var settings) || settings.ValueKind != JsonValueKind.Object)
+            throw new InvalidDataException("模型配置缺少连接设置。");
+        var hasTools = settings.TryGetProperty(nameof(ModelSettings.EnableTools), out var tools);
+        var hasFormat = settings.TryGetProperty(nameof(ModelSettings.ResponseFormat), out var format);
+        if ((version == 2 && (!hasTools || !hasFormat)) ||
+            (hasTools && tools.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) ||
+            (hasFormat && (format.ValueKind != JsonValueKind.Number || !format.TryGetInt32(out var number) || !Enum.IsDefined((ModelResponseFormat)number))))
+            throw new InvalidDataException("模型配置中的能力设置无效。");
+        if (version == 1 && ((hasTools && !tools.GetBoolean()) ||
+            (hasFormat && format.GetInt32() != (int)ModelResponseFormat.Omitted)))
+            throw new InvalidDataException("旧版模型配置不能包含新的能力设置。");
     }
 }

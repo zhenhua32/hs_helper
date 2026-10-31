@@ -14,7 +14,7 @@ using HsHelper.Core;
 using HsHelper.Storage;
 
 /// <summary>Runs the production CLI, an isolated SQLite library, and a bounded loopback-only model.</summary>
-internal static class CliHistoryIntegration
+internal static partial class CliHistoryIntegration
 {
     private const string Build = "255790";
     private const string Model = "cli-history-fixture";
@@ -460,21 +460,25 @@ internal static class CliHistoryIntegration
     private static Task<CliResult> Invoke(string cli, Fixture fixture, GameSnapshot snapshot, string question, IReadOnlyList<Reply> replies, int timeoutSeconds = 10, string? task = "turn") =>
         Invoke(cli, fixture.Directory, snapshot, question, replies, timeoutSeconds, task);
 
-    private static async Task<CliResult> Invoke(string cli, string directory, GameSnapshot snapshot, string question, IReadOnlyList<Reply> replies, int timeoutSeconds = 10, string? task = "turn")
+    private static async Task<CliResult> Invoke(string cli, string directory, GameSnapshot snapshot, string question, IReadOnlyList<Reply> replies,
+        int timeoutSeconds = 10, string? task = "turn", string capabilityEnvironment = "", bool modelCheck = false)
     {
         await using var server = new FakeModel(replies);
         var prefix = Path.Combine(directory, "invocation-" + Guid.NewGuid().ToString("N"));
         var snapshotPath = prefix + ".snapshot.json"; var outputPath = prefix + ".advice.json"; var envPath = prefix + ".env";
-        await File.WriteAllTextAsync(snapshotPath, SnapshotCodec.Serialize(snapshot));
-        await File.WriteAllTextAsync(envPath, $"api_url={server.Endpoint}\nmodel_name={Model}\napi_key={FakeKey}\nMODEL_MAX_TOOL_ROUNDS=1\nMODEL_TIMEOUT_SECONDS={timeoutSeconds}\n");
+        if (!modelCheck) await File.WriteAllTextAsync(snapshotPath, SnapshotCodec.Serialize(snapshot));
+        await File.WriteAllTextAsync(envPath, $"api_url={server.Endpoint}\nmodel_name={Model}\napi_key={FakeKey}\nMODEL_MAX_TOOL_ROUNDS=1\nMODEL_TIMEOUT_SECONDS={timeoutSeconds}\n" + capabilityEnvironment);
         var processPath = Environment.ProcessPath;
         var host = processPath is not null && Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
             ? processPath : Path.Combine(Path.GetFullPath(Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), "../../..")), OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
         var start = new ProcessStartInfo(host) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
             RedirectStandardError = true, WorkingDirectory = directory };
-        foreach (var argument in new[] { cli, "advise", "--snapshot", snapshotPath, "--out", outputPath, "--env", envPath,
-            "--data-dir", directory, "--question", question }) start.ArgumentList.Add(argument);
-        if (task is not null) { start.ArgumentList.Add("--task"); start.ArgumentList.Add(task); }
+        foreach (var argument in new[] { cli, modelCheck ? "model-check" : "advise", "--env", envPath, "--data-dir", directory }) start.ArgumentList.Add(argument);
+        if (!modelCheck)
+        {
+            foreach (var argument in new[] { "--snapshot", snapshotPath, "--out", outputPath, "--question", question }) start.ArgumentList.Add(argument);
+            if (task is not null) { start.ArgumentList.Add("--task"); start.ArgumentList.Add(task); }
+        }
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
         var began = DateTimeOffset.UtcNow;
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Production CLI process failed to start.");

@@ -10,6 +10,15 @@ using HsHelper.Coaching;
 using System.Collections.Concurrent;
 
 return await MainAsync(args);
+static async Task<ModelConfiguration> LoadCliModelConfigurationAsync(string environmentPath, string dataRoot)
+{
+    var config = await EnvironmentModelConfiguration.LoadAsync(environmentPath);
+    var savedPath = Path.Combine(dataRoot, "model-config.json");
+    var saved = File.Exists(savedPath)
+        ? await new ProtectedModelConfigurationStore(savedPath, new WindowsSecretProtector()).LoadAsync() : null;
+    return EnvironmentModelConfiguration.MergeTuning(config, saved?.Settings);
+}
+
 static string ToolEvidenceSummary(CoachToolObservation observation)
 {
     if (!observation.Success || observation.ResultJson is null) return "工具未完成，未保存原始结果。";
@@ -56,7 +65,7 @@ static async Task<int> MainAsync(string[] args)
             cards-import --json path --build number [--data-dir path]
             cards-search [--query text] [--class HUNTER] [--build number] [--data-dir path]
             deck-decode --code base64
-            model-check [--env .env]
+            model-check [--env .env] [--data-dir path]
             advise --snapshot path --out advice.json [--env .env] [--data-dir path] [--task turn|mulligan|choice|review|deckplan] [--question text]
             record --log path [--player auto|1|2] [--deck-file path] [--deck-name name] [--data-dir path]
             sessions [--data-dir path]
@@ -148,11 +157,7 @@ static async Task<int> MainAsync(string[] args)
                 if (string.IsNullOrWhiteSpace(build) || build == "unknown") throw new InvalidDataException("局面没有固定卡库版本。");
                 var catalog = new CardCatalog(Path.Combine(dataRoot, "cards.db")); await catalog.InitializeAsync();
                 if (await catalog.GetManifestAsync(build) is null) throw new InvalidDataException("缺少局面对应的固定版本卡库。");
-                var config = await EnvironmentModelConfiguration.LoadAsync(environmentPath);
-                var tuningPath = Path.Combine(dataRoot, "model-config.json");
-                var saved = File.Exists(tuningPath)
-                    ? await new ProtectedModelConfigurationStore(tuningPath, new WindowsSecretProtector()).LoadAsync() : null;
-                config = EnvironmentModelConfiguration.MergeTuning(config, saved?.Settings);
+                var config = await LoadCliModelConfigurationAsync(environmentPath, dataRoot);
                 if (config.Settings.Model.Contains("://", StringComparison.Ordinal)) throw new InvalidDataException("模型标识不能包含地址。");
                 var knowledge = new CoachKnowledgeStore(Path.Combine(dataRoot, "knowledge.db")); await knowledge.InitializeAsync();
                 var archive = new AdviceArchiveStore(Path.Combine(dataRoot, "advice-archive.db")); await archive.InitializeAsync();
@@ -341,15 +346,19 @@ static async Task<int> MainAsync(string[] args)
             }
             case "model-check":
             {
-                var config = await EnvironmentModelConfiguration.LoadAsync(Option("env") ?? EnvironmentModelConfiguration.FindFile()
-                    ?? throw new ArgumentException("未找到 .env，请用 --env 指定。"));
+                var environmentPath = Option("env") ?? EnvironmentModelConfiguration.FindFile()
+                    ?? throw new ArgumentException("未找到 .env，请用 --env 指定。");
+                var dataRoot = Option("data-dir") ?? Environment.GetEnvironmentVariable("HSHELPER_DATA_DIR")
+                    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HsHelper");
+                var config = await LoadCliModelConfigurationAsync(environmentPath, dataRoot);
                 using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
                 var started = System.Diagnostics.Stopwatch.StartNew();
                 var context = new AdviceContext("connection-check", 0,
                     "连接检查：直接返回summary=连接成功，reasons和risks为空数组，alternative为null，不调用工具，不分析对局。", new JsonObject());
                 _ = await new AdviceService(http).AnalyzeAsync(config.Settings with { MaxToolRounds = 0, MaxOutputTokens = 512 }, config.ApiKey,
                     context, (_, _, _) => Task.FromResult<JsonNode>(new JsonObject()), () => true);
-                Print(new { Connected = true, ElapsedMilliseconds = started.ElapsedMilliseconds, SendsGameData = false });
+                Print(new { Connected = true, ElapsedMilliseconds = started.ElapsedMilliseconds, SendsGameData = false,
+                    ToolsEnabled = config.Settings.EnableTools, ResponseFormat = config.Settings.ResponseFormat });
                 return 0;
             }
             case "diagnose": Print(HearthstoneDiagnostics.Inspect(Option("game-dir"), Option("config"))); return 0;
