@@ -1,0 +1,179 @@
+{
+  "build": "255790",
+  "locale": "zhCN",
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "halfSemantics": "https://github.com/HearthSim/Hearthstone-Deck-Tracker/blob/7c0550fe8388bf45e0f3dbc5d2ff25ada2e1a3ae/Hearthstone%20Deck%20Tracker/Hearthstone/CardExtraInfo/AssembledHalves.cs",
+  "observedExamples": "https://github.com/HearthSim/Hearthstone-Deck-Tracker/blob/7c0550fe8388bf45e0f3dbc5d2ff25ada2e1a3ae/HDTTests/Hearthstone/RelatedCardsSystem/AssembledEffectCardIdTests.cs",
+  "cards": [
+    {
+      "artist": "Matt Dixon",
+      "attack": 3,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 128892,
+      "flavor": "手手最好的朋友。",
+      "health": 3,
+      "id": "BE_044",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "F3TCH3R寻回机",
+      "race": "BEAST",
+      "races": [
+        "MECHANICAL",
+        "BEAST"
+      ],
+      "rarity": "COMMON",
+      "set": "BE",
+      "text": "<b>战吼：</b><b>拼装</b>一张法力值消耗为（4）的随从牌。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Studio Hive",
+      "attack": 2,
+      "cardClass": "SHAMAN",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 130871,
+      "durability": 0,
+      "flavor": "古神科技继智能眼睛后的又一力作。",
+      "health": 2,
+      "id": "BE_349",
+      "mechanics": [
+        "TRIGGER_VISUAL"
+      ],
+      "name": "附眼战槌",
+      "rarity": "COMMON",
+      "referencedTags": [
+        "RUSH"
+      ],
+      "set": "BE",
+      "text": "在你的英雄攻击后，&召唤两个2/2并具有<b>突袭</b>的元素。",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "Wayne Wu",
+      "attack": 3,
+      "cardClass": "PALADIN",
+      "collectible": true,
+      "cost": 4,
+      "countAsCopyOfDbfId": 62933,
+      "dbfId": 130580,
+      "flavor": "战争时期，军医也会带上自己的专属军医。",
+      "health": 5,
+      "howToEarn": "与圣骑士职业一同解锁。",
+      "howToEarnGolden": "使用圣骑士赢得250场对战后解锁。",
+      "id": "CORE_BAR_878",
+      "mechanics": [
+        "TRIGGER_VISUAL"
+      ],
+      "name": "战地医师老兵",
+      "rarity": "EPIC",
+      "referencedTags": [
+        "LIFESTEAL"
+      ],
+      "set": "CORE",
+      "text": "在你施放一个神圣法术后，&召唤一个2/2并具有<b>吸血</b>的医师。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Peter Stapleton",
+      "attack": 2,
+      "cardClass": "PALADIN",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 102196,
+      "flavor": "如果你是杀价的高手，他还会把帽子也算进来送你。",
+      "health": 2,
+      "howToEarn": "与圣骑士职业一同解锁。",
+      "howToEarnGolden": "使用圣骑士赢得50场对战后解锁。",
+      "id": "CORE_CFM_753",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "污手街供货商",
+      "rarity": "COMMON",
+      "set": "CORE",
+      "text": "<b>战吼：</b>&使你手牌中的所有随从牌获得+1/+1。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ishmael Hoover",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 2,
+      "countAsCopyOfDbfId": 77491,
+      "dbfId": 118076,
+      "flavor": "“那么在您的左手边呢，您还可以看到一尊更大的德纳修斯大帝雕像！”",
+      "health": 1,
+      "howToEarn": "完成教学后解锁。",
+      "howToEarnGolden": "总计赢得500场对战后解锁。",
+      "id": "CORE_REV_308",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "迷宫向导",
+      "rarity": "COMMON",
+      "set": "CORE",
+      "text": "<b>战吼：</b>&随机召唤一个法力值消耗为（2）的随从。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ramzy Kamen",
+      "attack": 2,
+      "cardClass": "DEATHKNIGHT",
+      "collectible": true,
+      "cost": 2,
+      "countAsCopyOfDbfId": 78649,
+      "dbfId": 117027,
+      "flavor": "死亡本就是冰冷的，朋友……放松，躺好，别的什么都不用做。",
+      "health": 3,
+      "howToEarn": "与死亡骑士职业一同解锁。",
+      "howToEarnGolden": "使用死亡骑士赢得100场对战后解锁。",
+      "id": "CORE_RLK_083",
+      "mechanics": [
+        "TRIGGER_VISUAL"
+      ],
+      "name": "死亡寒冰",
+      "race": "ELEMENTAL",
+      "races": [
+        "ELEMENTAL"
+      ],
+      "rarity": "RARE",
+      "runeCost": {
+        "blood": 0,
+        "frost": 2,
+        "unholy": 0
+      },
+      "set": "CORE",
+      "text": "在你施放一个法术后，&随机对两个敌人造成1点伤害。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Tanamaes Leejierasaes",
+      "attack": 3,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 120452,
+      "flavor": "*老派的鱼人语*",
+      "health": 1,
+      "id": "TIME_428",
+      "mechanics": [
+        "TRIGGER_VISUAL"
+      ],
+      "name": "昨日鱼人",
+      "race": "MURLOC",
+      "races": [
+        "MURLOC"
+      ],
+      "rarity": "COMMON",
+      "set": "TIME_TRAVEL",
+      "text": "在你的回合结束时，&使你的其他随从获得+1生命值。",
+      "type": "MINION"
+    }
+  ]
+}
