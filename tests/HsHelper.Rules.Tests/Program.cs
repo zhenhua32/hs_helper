@@ -183,11 +183,12 @@ Run("simple charge minion play is simulated with summon and mana rules", () =>
 });
 Run("hero weapon combat spends durability and immunity while attacking prevents retaliation", () =>
 {
-    var weapon = Entity(31, "WEAPON", 1, "PLAY", "WEAPON", [("ATK", 3), ("DURABILITY", 2)]);
+    var weapon = Entity(31, "WEAPON", 1, "PLAY", "WEAPON", [("ATK", 3), ("HEALTH", 2), ("DAMAGE", 0)]);
     var hero = Hero(10, 1, 30, 5, 0, 3, ("IMMUNE_WHILE_ATTACKING", 1));
     var result = Eval(Replace(Fixture(weapon, Minion(20, "VANILLA", 2, 4, 5)), hero), new PlannedAction(ActionKind.Attack, 10, 20));
     Equal(LineVerification.Verified, result.Verification); Equal(25, Find(result, 10).RemainingHealth);
-    Equal(2, Find(result, 20).RemainingHealth); Equal(1, Find(result, 31).Flags["DURABILITY"]);
+    Equal(2, Find(result, 20).RemainingHealth); Equal(1, Find(result, 31).Flags["DAMAGE"]);
+    Equal(1, Find(result, 31).WeaponDurability!.Remaining);
 });
 Run("bounded lethal search returns only verified paths and never exhaustive claims", () =>
 {
@@ -676,6 +677,7 @@ foreach (var (name, run) in MagmaSplitChecks.Cases()) Run(name, run);
 foreach (var (name, run) in HunterMagmaLineChecks.Cases(cards)) Run(name, run);
 foreach (var (name, run) in ExplosiveTrapChecks.Cases()) Run(name, run);
 foreach (var (name, run) in HunterExplosiveTrapInstallChecks.Cases(cards)) Run(name, run);
+foreach (var (name, run) in WeaponCombatChecks.Cases()) Run(name, run);
 
 if (args.Length == 1)
 {

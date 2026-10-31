@@ -235,6 +235,7 @@ await MapLifecycleIntegration.RunAsync(temp, Pass);
 await SideboardChoiceEvidenceIntegration.RunAsync(temp, Pass);
 await MagmaSplitIntegration.RunAsync(temp, Pass);
 await ExplosiveTrapIntegration.RunAsync(temp, Pass);
+await WeaponCombatIntegration.RunAsync(temp, Pass);
 
 if (args.Length == 2)
 {

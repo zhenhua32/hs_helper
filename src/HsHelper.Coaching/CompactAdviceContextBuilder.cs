@@ -109,6 +109,9 @@ public static class CompactAdviceContextBuilder
             {
                 id = entity.Id, kind = entity.Kind, card_id = entity.CardId, controller = entity.ControllerId,
                 zone = Zone(entity.Zone), position = entity.ZonePosition, tags = Tags(entity),
+                current_weapon = entity.Kind == EntityKind.Card &&
+                    new[] { "CARDTYPE", "202" }.Any(key => entity.Tags.GetValueOrDefault(key) is "WEAPON" or "7")
+                    ? CurrentWeapon(snapshot, entity) : null,
                 effect = effects.TryGetValue(entity.Id, out var effect) ? EffectSummary(effect) : null
             }).ToArray(),
             zone_counts = snapshot.Entities.Values.Where(entity => entity.Kind == EntityKind.Card && entity.Zone is "DECK" or "HAND" or "SECRET")
@@ -156,6 +159,14 @@ public static class CompactAdviceContextBuilder
     }
 
     private static CurrentChoiceSnapshot? OwnChoice(GameSnapshot snapshot) => ChoiceVisibility.ConfirmedOwn(snapshot);
+
+    private static object CurrentWeapon(GameSnapshot snapshot, EntitySnapshot entity)
+    {
+        var evidence = WeaponDurabilityEvidence.Resolve(snapshot.ClientBuild, entity);
+        return new { mode = evidence.Mode.ToString(), build = evidence.Build, remaining = evidence.Remaining,
+            is_known = evidence.IsKnown, is_depleted = evidence.IsDepleted, unknowns = evidence.Unknowns,
+            scope = "当前武器耐久证据；255790仅HEALTH-DAMAGE，缺失不补零；旧DURABILITY及卡库durability不是当前耐久。" };
+    }
 
     private static SortedDictionary<string, string> Tags(EntitySnapshot entity)
     {

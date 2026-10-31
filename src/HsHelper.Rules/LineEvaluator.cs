@@ -73,6 +73,7 @@ public sealed partial class LineEvaluator
                 if (state.DiscoveryBoundaryReached) { state.Unsupported("AWAIT_DISCOVERY_SNAPSHOT", "原生发现、拼装或回溯选择尚未观察；请在新选择局面中继续，不能提前使用未生成的候选或恢复旧局面。"); break; }
                 if (state.MapFollowupBoundaryReached) { state.Unsupported("AWAIT_MAP_FOLLOWUP_SNAPSHOT", "地图首选实体已在本地顺序中使用，追加选择尚未观察；请等待真实剩余选项，不得跨过该边界继续动作。"); break; }
                 if (state.MagmaSplitBoundaryReached) { state.Unsupported("AWAIT_MAGMA_SPLIT_SNAPSHOT", "熔岩猎犬的实际分配伤害尚未观察；分支不能作为已发生结果，请等待新局面后继续动作。"); break; }
+                if (state.WeaponResolutionBoundaryReached) { state.Unsupported("AWAIT_WEAPON_SNAPSHOT", "武器损毁或替换的后续结算未观察，不能继续使用该投影安排动作。"); break; }
                 if (state.StopForExistingQuestReward()) break;
                 if (state.TurnEnded) { state.Invalid("己方回合已经结束，不能在未观察下一决策点前继续安排动作。"); break; }
                 if (state.EnemyHero!.Health <= 0 || state.OwnHero!.Health <= 0)
@@ -133,7 +134,7 @@ public sealed partial class LineEvaluator
         }
         return new(false, [], null, nodes, false, SearchCoverage + " 未找到已验证方案不表示不存在斩杀。");
     }
-    private const string SearchCoverage = "有限深度搜索，枚举攻击、稳固射击、已支持直伤、猎人印记及已覆盖随从入场，包括阿迦玛甘生命支付组合与神秘恐魔结束回合；不枚举随机、发现、抽牌或完整召唤组合。";
+    private const string SearchCoverage = "有限深度搜索，枚举攻击、稳固射击、已支持直伤、猎人印记、简单武器装备及已覆盖随从入场，包括阿迦玛甘生命支付组合与神秘恐魔结束回合；不枚举随机、发现、抽牌或完整召唤组合。";
 
     private static IEnumerable<PlannedAction> SearchCandidates(SimulatedState state, int? local,
         IReadOnlyDictionary<string, CardRecord> cards)
@@ -151,7 +152,7 @@ public sealed partial class LineEvaluator
             if (ArcaneShot.Contains(id) || KillCommand.Contains(id) || HuntersMark.Contains(id))
                 foreach (var target in targets.Where(e => !HuntersMark.Contains(id) || e.Type == "MINION"))
                     yield return new(ActionKind.PlayCard, source.EntityId, target.EntityId);
-            if (SearchableRushBodies.Contains(id) || id is "EDR_489" or "CORE_TTN_866" ||
+            if (source.Type == "WEAPON" || SearchableRushBodies.Contains(id) || id is "EDR_489" or "CORE_TTN_866" ||
                 (state.NextCardCostsOpponentHealth == true && (AuditedHunterBodies.Contains(id) || DiscoveryPlayRules.SupportsCardId(id))))
                 yield return new(ActionKind.PlayCard, source.EntityId);
         }
@@ -165,6 +166,9 @@ public sealed partial class LineEvaluator
         var source = state.Source(action.SourceEntityId, "PLAY"); if (source is null) return;
         var target = state.Target(action.TargetEntityId, requireEnemy: true); if (target is null) return;
         if (source.Type is not ("MINION" or "HERO")) { state.Invalid("该实体不能进行攻击。"); return; }
+        Entity? weapon = null;
+        if (source.Type == "HERO" && !state.ConfirmAttackWeapon(source, out weapon)) return;
+        if (weapon is not null && !state.ConfirmWeaponTarget(target)) return;
         if (!KnownStats(state, source) || !KnownStats(state, target, target.Type == "MINION")) return;
         if (source.Attack <= 0) { state.Invalid("攻击力为零的角色不能攻击。"); return; }
         if (state.Has(source, "EXHAUSTED") || state.Has(source, "FROZEN") || state.Has(source, "CANT_ATTACK") || state.Has(source, "DORMANT") || state.Has(source, "UNTOUCHABLE"))
@@ -191,9 +195,6 @@ public sealed partial class LineEvaluator
         if (!state.Has(source, "IGNORE_TAUNT") && taunts.Any() && !taunts.Any(e => e.Id == target.Id)) { state.Invalid("必须先攻击可被选中的嘲讽随从。"); return; }
         var attack = source.Attack!.Value;
         var retaliation = target.Type == "MINION" ? target.Attack!.Value : 0;
-        var weapon = source.Type == "HERO" ? state.Weapon(source.Controller) : null;
-        if (weapon is not null && (weapon.Int("DURABILITY") is null or <= 0 || weapon.Attack is null))
-        { state.Unsupported("UNKNOWN_WEAPON", "武器耐久或攻击力未知。"); return; }
         source.Attacks++;
         source.Flags["NUM_ATTACKS_THIS_TURN"] = source.Attacks;
         if (source.Attacks >= maximum) source.Flags["EXHAUSTED"] = 1;
@@ -203,16 +204,7 @@ public sealed partial class LineEvaluator
             ? 0 : state.Damage(target, source, retaliation, combat: true);
         state.HealLifesteal(source, outgoing);
         state.HealLifesteal(target, incoming);
-        if (weapon is not null)
-        {
-            weapon.Flags["DURABILITY"] = weapon.Int("DURABILITY")!.Value - 1;
-            if (weapon.Flags["DURABILITY"] <= 0)
-            {
-                source.Attack = Math.Max(0, source.Attack!.Value - weapon.Attack!.Value);
-                state.Remove(weapon);
-                if (state.Has(weapon, "WINDFURY")) state.Conditional("假设武器损毁后的额外攻击次数没有其他来源；后续攻击需要实际局面核对。", "WEAPON_ATTACK_LIMIT_CHANGE");
-            }
-        }
+        if (weapon is not null) state.SpendWeaponDurability(source, weapon);
         state.ResolveDeaths();
         state.ResolveMagmaHoundAfterAttack(source, target);
         state.Coverage.UnionWith(["attack-targets", "taunt", "attack-count", "rush-charge", "simultaneous-combat", "armor", "divine-shield", "poisonous", "lifesteal"]);
@@ -260,6 +252,7 @@ public sealed partial class LineEvaluator
         if (TryPlayNativeDiscovery(state, action, source, profile)) return;
         if (TryPlayMythicalTerror(state, action, source, profile)) return;
         if (TryPlayBeastHunter(state, action, source, profile)) return;
+        if (TryEquipWeapon(state, action, source, profile)) return;
         if ((id == "GAME_005" || ArcaneShot.Contains(id) || KillCommand.Contains(id) || HuntersMark.Contains(id) ||
             ExplosiveTrap.Contains(id) || ElvenArcher.Contains(id)) && !state.RequireAuditedBuild()) return;
         if (profile.Type == "MINION")
@@ -340,6 +333,7 @@ public sealed partial class LineEvaluator
         public int Id; public string? CardId; public string Type = ""; public int? Controller;
         public string Zone = ""; public int? Attack; public int? MaximumHealth; public int? Health; public int Armor; public int? Cost;
         public int Attacks; public Dictionary<string, int> Flags = []; public bool Alive = true;
+        public WeaponDurabilityResolution? WeaponDurability;
         public int? Int(string name) => Flags.TryGetValue(name, out var value) ? value : null;
     }
 
@@ -383,6 +377,12 @@ public sealed partial class LineEvaluator
                 if (source.Kind == EntityKind.Game) entity.Type = "GAME";
                 if (source.Kind == EntityKind.Player) entity.Type = "PLAYER";
                 if (string.IsNullOrEmpty(entity.Type)) entity.Type = Profile(entity)?.Type ?? (source.Kind == EntityKind.Player ? "PLAYER" : source.Kind == EntityKind.Game ? "GAME" : "");
+                if (entity.Type == "WEAPON")
+                {
+                    entity.WeaponDurability = WeaponDurabilityEvidence.Resolve(snapshot.ClientBuild, source);
+                    entity.MaximumHealth = entity.WeaponDurability.MaximumHealth;
+                    entity.Health = entity.WeaponDurability.Remaining;
+                }
                 entity.Alive = entity.Health is null || entity.Health > 0;
                 Entities[entity.Id] = entity;
             }
@@ -411,7 +411,7 @@ public sealed partial class LineEvaluator
             var candidates = Entities.Values.Where(e => e.Type == "HERO" && e.Controller == playerId && e.Zone == "PLAY").Take(2).ToArray();
             return candidates.Length == 1 ? candidates[0] : null;
         }
-        public Entity? Weapon(int? controller) => Entities.Values.FirstOrDefault(e => e.Alive && e.Type == "WEAPON" && e.Controller == controller && e.Zone == "PLAY");
+        public Entity? Weapon(int? controller) => Entities.Values.Where(e => e.Alive && e.Type == "WEAPON" && e.Controller == controller && e.Zone == "PLAY").Take(2).ToArray() is [var only] ? only : null;
         public Profile? Profile(Entity entity)
         {
             if (entity.CardId is null) return null;
@@ -441,7 +441,7 @@ public sealed partial class LineEvaluator
             return Profile(entity)?.Mechanics.Contains(keyword) == true;
         }
         public bool CombatHas(Entity entity, string keyword) => Has(entity, keyword) ||
-            (entity.Type == "HERO" && Weapon(entity.Controller) is { } weapon && Has(weapon, keyword));
+            (entity.Type == "HERO" && Weapon(entity.Controller) is { } weapon && WeaponHas(weapon, keyword));
         public bool IsBeast(Entity entity)
         {
             var profile = Profile(entity);
@@ -507,7 +507,7 @@ public sealed partial class LineEvaluator
             if (Has(target, "DIVINE_SHIELD")) { target.Flags["DIVINE_SHIELD"] = 0; return 0; }
             var armor = Math.Min(target.Armor, amount); target.Armor -= armor;
             target.Health -= amount - armor;
-            var poisonous = Has(source, "POISONOUS") || (source.Type == "HERO" && Weapon(source.Controller) is { } weapon && Has(weapon, "POISONOUS"));
+            var poisonous = Has(source, "POISONOUS") || (source.Type == "HERO" && Weapon(source.Controller) is { } weapon && WeaponHas(weapon, "POISONOUS"));
             if (poisonous && target.Type == "MINION") target.Health = 0;
             return amount;
         }
@@ -525,7 +525,7 @@ public sealed partial class LineEvaluator
         }
         public void HealLifesteal(Entity source, int dealt)
         {
-            var life = Has(source, "LIFESTEAL") || (source.Type == "HERO" && Weapon(source.Controller) is { } weapon && Has(weapon, "LIFESTEAL"));
+            var life = Has(source, "LIFESTEAL") || (source.Type == "HERO" && Weapon(source.Controller) is { } weapon && WeaponHas(weapon, "LIFESTEAL"));
             if (!life || dealt <= 0) return;
             var hero = Hero(source.Controller);
             if (hero?.Health is null || hero.MaximumHealth is null) { Conditional("吸血恢复目标的生命上限未知。", "LIFESTEAL_TARGET"); return; }
@@ -542,6 +542,8 @@ public sealed partial class LineEvaluator
             if ((Has(entity, "DEATHRATTLE") && !resolvedNative) || Has(entity, "REBORN"))
                 Conditional("本次死亡后的亡语或复生尚未展开；后续结果假设这些效果不改变所列动作。", "DEATHRATTLE_OR_REBORN");
             entity.Alive = false; entity.Zone = "GRAVEYARD";
+            if (entity.Type == "WEAPON") _removedWeaponIds.Add(entity.Id);
+            if (entity.Type == "WEAPON" && (Has(entity, "DEATHRATTLE") || Has(entity, "REBORN"))) MarkWeaponBoundary();
         }
         public void InspectInteractions(PlannedAction action)
         {
@@ -593,6 +595,7 @@ public sealed partial class LineEvaluator
                 if (Silenced(entity) || Has(entity, "DORMANT") || Has(entity, "UNTOUCHABLE")) continue;
                 var profile = Profile(entity);
                 if (profile is null) { Conditional("场上存在缺少卡牌效果资料的实体，可能影响动作。", "UNKNOWN_BOARD_CARD"); continue; }
+                if (entity.Type == "WEAPON" && SupportedWeaponAttackProfile(entity)) { Coverage.Add("weapon-passive-attack-profile"); continue; }
                 if (profile.Mechanics.Contains("AURA") && entity.CardId != "EDR_480")
                     Conditional("假设未覆盖的持续光环不改变费用、伤害或目标。", "UNKNOWN_AURA");
                 if (_snapshot.ClientBuild == "255790" && entity.CardId == "CORE_TTN_866")
@@ -629,7 +632,7 @@ public sealed partial class LineEvaluator
             var verification = _invalidAfterUncertainty || _unresolved ? LineVerification.Unsupported : _invalid ? LineVerification.Invalid : _assumptions.Count > 0 ? LineVerification.Conditional : LineVerification.Verified;
             var potential = EnemyHero?.Health <= 0 && OwnHero?.Health > 0;
             var entities = Entities.Values.OrderBy(e => e.Id).Select(e => new SimulatedEntity(e.Id, e.CardId, e.Type, e.Controller,
-                e.Zone, e.Attack, e.MaximumHealth, e.Health, e.Armor, e.Cost, e.Attacks, e.Alive, ResultFlags(e))).ToArray();
+                e.Zone, e.Attack, e.MaximumHealth, e.Health, e.Armor, e.Cost, e.Attacks, e.Alive, ResultFlags(e)) { WeaponDurability = e.WeaponDurability }).ToArray();
             return new(_snapshot.MatchId, _snapshot.StateVersion, verification, verification == LineVerification.Invalid ? false : verification == LineVerification.Verified ? true : null,
                 verification == LineVerification.Verified && potential, potential, Applied, _errors.AsReadOnly(),
                 _assumptions.OrderBy(x => x, StringComparer.Ordinal).ToArray(), _unsupported.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
@@ -644,13 +647,14 @@ public sealed partial class LineEvaluator
                   DiscoveryBoundaryReached = DiscoveryBoundaryReached, DiscoveryPreviews = Array.AsReadOnly(_discoveryPreviews.ToArray()),
                   MapFollowupBoundaryReached = MapFollowupBoundaryReached, MapPlayPreviews = Array.AsReadOnly(_mapPlayPreviews.ToArray()),
                   MagmaSplitBoundaryReached = MagmaSplitBoundaryReached, MagmaSplitPreviews = Array.AsReadOnly(_magmaSplitPreviews.ToArray()),
+                  WeaponResolutionBoundaryReached = WeaponResolutionBoundaryReached,
                     NextCardCostsOpponentHealth = _nextCardCostsOpponentHealth,
                     OpponentDefeatedByPayment = OpponentDefeatedByPayment,
                     OpponentHealthPayments = Array.AsReadOnly(_opponentHealthPayments.ToArray()),
                     TurnEnded = TurnEnded, EndTurnTriggersResolved = EndTurnTriggersResolved,
                     ForcedAttacks = Array.AsReadOnly(_forcedAttacks.ToArray()),
                     PendingForcedAttacks = Array.AsReadOnly(_pendingForcedAttacks.ToArray()),
-                    UnresolvedEndTurnFields = Array.AsReadOnly(_unresolvedEndTurnFields.Order(StringComparer.Ordinal).ToArray()) });
+                    UnresolvedEndTurnFields = Array.AsReadOnly(_unresolvedEndTurnFields.Order(StringComparer.Ordinal).ToArray()) }) { CardBuild = _snapshot.ClientBuild };
         }
 
         private static FrozenDictionary<string, int> ResultFlags(Entity entity)

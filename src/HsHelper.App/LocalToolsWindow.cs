@@ -346,7 +346,8 @@ public sealed class LocalToolsWindow : Window
     private string EntityName(int id)
     {
         var cards = _view is null ? [] : _view.Local.Hand.Concat(_view.Local.Board).Concat(_view.Opponent.Board)
-            .Concat(new[] { _view.Local.Hero, _view.Opponent.Hero, _view.Local.HeroPower, _view.Opponent.HeroPower }.OfType<BattleCardView>());
+            .Concat(new[] { _view.Local.Hero, _view.Opponent.Hero, _view.Local.HeroPower, _view.Opponent.HeroPower,
+                _view.Local.Weapon, _view.Opponent.Weapon }.OfType<BattleCardView>());
         return cards.FirstOrDefault(card => card.EntityId == id)?.Name ??
             (OwnInstalledTraps(_snapshot).FirstOrDefault(entity => entity.Id == id) is { } trap ? CardName(trap.CardId) : "实体 #" + id);
     }
@@ -689,6 +690,8 @@ public static class LocalToolResultFormatter
                 foreach (var magma in magmaPreviews.OfType<JsonObject>()) AppendMagmaSplit(lines, magma, entityName);
             if (state["MagmaSplitBoundaryReached"]?.ToString() == "true")
                 lines.Add("熔岩猎犬后置随机分配尚未观察；当前投影不是任一分支的实际结果，后续动作须等待新局面，也不能证明斩杀。");
+            if (state["WeaponResolutionBoundaryReached"]?.ToString() == "true")
+                lines.Add("等待武器后续结算：损毁或替换后的触发尚未观察，当前武器投影不是完整结算；后续动作须等待新局面，不能据此证明斩杀。");
             if (state["DiscoveryPreviews"] is JsonArray discoveryPreviews)
                 foreach (var discovery in discoveryPreviews.OfType<JsonObject>()) AppendDiscovery(lines, discovery);
             if (state["DiscoveryBoundaryReached"]?.ToString() == "true")
@@ -736,8 +739,13 @@ public static class LocalToolResultFormatter
                 foreach (var payment in payments.OfType<JsonObject>())
                     lines.Add($"· {entityName(payment["CardEntityId"]!.GetValue<int>())}：由{entityName(payment["PayingHeroEntityId"]!.GetValue<int>())}的生命支付 {payment["Cost"]}（生命 {payment["HealthBefore"]} → {payment["HealthAfter"]}，护甲不参与支付，支付不视为伤害）。");
             if (state["Entities"] is JsonArray entities)
+            {
                 foreach (var entity in entities.OfType<JsonObject>().Where(e => e["Type"]?.ToString() is "HERO" or "MINION"))
                     lines.Add($"· {entityName(entity["EntityId"]!.GetValue<int>())}：攻击 {entity["Attack"]?.ToString() ?? "未知"} / 生命 {entity["RemainingHealth"]?.ToString() ?? "未知"} / 护甲 {entity["Armor"]}；{(entity["IsAlive"]?.GetValue<bool>() == true ? "存活" : "已离场")}");
+                foreach (var weapon in entities.OfType<JsonObject>().Where(e => e["Type"]?.ToString() == "WEAPON" &&
+                    e["Zone"]?.ToString() is "PLAY" or "GRAVEYARD" or "REMOVEDFROMGAME"))
+                    AppendWeapon(lines, weapon, entityName);
+            }
         }
         return string.Join("\n", lines);
 
@@ -826,7 +834,25 @@ public static class LocalToolResultFormatter
     private static bool PendingChoiceBoundary(JsonNode? evaluation) =>
         evaluation?["Result"]?["DiscoveryBoundaryReached"]?.ToString() == "true" ||
         evaluation?["Result"]?["MapFollowupBoundaryReached"]?.ToString() == "true" ||
-        evaluation?["Result"]?["MagmaSplitBoundaryReached"]?.ToString() == "true";
+        evaluation?["Result"]?["MagmaSplitBoundaryReached"]?.ToString() == "true" ||
+        evaluation?["Result"]?["WeaponResolutionBoundaryReached"]?.ToString() == "true";
+
+    private static void AppendWeapon(List<string> lines, JsonObject weapon, Func<int, string> entityName)
+    {
+        if (weapon["EntityId"] is not JsonValue value || !value.TryGetValue<int>(out var id)) return;
+        var evidence = weapon["WeaponDurability"] as JsonObject;
+        var mode = evidence?["Mode"]?.ToString(); var build = evidence?["Build"]?.ToString();
+        var known = mode == "ModernHealthDamage" && build == "255790" && evidence?["IsKnown"]?.ToString() == "true" &&
+            evidence?["Remaining"] is JsonValue remaining && remaining.TryGetValue<int>(out var count) && count >= 0;
+        var current = known ? evidence!["Remaining"]!.ToString() : "未知";
+        var protocol = mode switch { "ModernHealthDamage" => "现代耐久", "LegacyDurability" => "旧版兼容，不能替代当前协议", _ => "未知" };
+        var left = weapon["Zone"]?.ToString() is "GRAVEYARD" or "REMOVEDFROMGAME";
+        var state = left ? known && current == "0" ? "耐久耗尽，已损毁" : "已离场" : known && current == "0" ? "耐久耗尽，去向待观察" : "场上武器";
+        lines.Add($"· {entityName(id)}：当前耐久 {current}；{state}；协议 {protocol}；版本 {build ?? "未知"}。");
+        if (evidence is null) lines.Add("  未收到绑定的武器耐久证据，不能用印刷值、旧标签或原局面补齐。");
+        else if (evidence["Unknowns"] is JsonArray unknowns)
+            foreach (var unknown in unknowns) lines.Add("  · " + unknown);
+    }
 
     private static void AppendMagmaSplit(List<string> lines, JsonNode split, Func<int, string> entityName)
     {

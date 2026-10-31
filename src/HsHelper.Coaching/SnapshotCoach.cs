@@ -310,6 +310,9 @@ public sealed class SnapshotCoach
     {
         var local = ChoiceVisibility.ConfirmedLocalPlayer(_snapshot);
         bool Visible(SimulatedEntity entity) => entity.Type is "GAME" or "PLAYER" || entity.Zone == "PLAY" ||
+            entity.Type == "WEAPON" && entity.Zone is "GRAVEYARD" or "REMOVEDFROMGAME" &&
+            _snapshot.Entities.TryGetValue(entity.EntityId, out var prior) && prior.CardId is not null && prior.CardId == entity.CardId &&
+            (prior.Zone == "PLAY" || local.HasValue && prior.ControllerId == local && prior.Zone == "HAND") ||
             local.HasValue && entity.ControllerId == local &&
             entity.Zone is "HAND" or "SECRET";
         static bool SafeFlag(string key) => !key.Contains("NAME", StringComparison.OrdinalIgnoreCase) &&

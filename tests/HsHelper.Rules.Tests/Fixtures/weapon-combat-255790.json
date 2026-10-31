@@ -1,0 +1,339 @@
+{
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "build": "255790",
+  "cards": [
+    {
+      "artist": "Kagi",
+      "attack": 1,
+      "cardClass": "DEMONHUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 63229,
+      "durability": 0,
+      "flavor": "在贫瘠之地，万物皆有獠牙！野猪人长着獠牙，野猪长着獠牙，獠牙也长着獠牙。",
+      "health": 2,
+      "id": "BAR_330",
+      "mechanics": [
+        "DEATHRATTLE"
+      ],
+      "name": "獠牙锥刃",
+      "rarity": "RARE",
+      "set": "THE_BARRENS",
+      "text": "<b>亡语：</b>抽一张<b>亡语</b>随从牌。",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "J. Axer",
+      "attack": 2,
+      "cardClass": "DEMONHUNTER",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 69507,
+      "durability": 0,
+      "flavor": "远古的奥达奇人曾是宇宙中最强的战斗部族。试想如果他们把刀柄老老实实地安在武器的一端，那该有多强。",
+      "health": 2,
+      "howToEarn": "与恶魔猎手职业一同解锁。",
+      "howToEarnGolden": "使用恶魔猎手赢得50场对战后解锁。",
+      "id": "CORE_BT_921",
+      "mechanics": [
+        "LIFESTEAL"
+      ],
+      "name": "奥达奇战刃",
+      "rarity": "COMMON",
+      "set": "CORE",
+      "text": "<b>吸血</b>",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "Lucas Graciano",
+      "attack": 3,
+      "cardClass": "WARRIOR",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 69534,
+      "durability": 0,
+      "flavor": "在安宁祥和的年代，人们用另一个不太流行的名字称呼这把武器，寒冰静谧战斧。",
+      "health": 2,
+      "howToEarn": "与战士职业一同解锁。",
+      "howToEarnGolden": "使用战士赢得50场对战后解锁。",
+      "id": "CORE_CS2_106",
+      "name": "炽炎战斧",
+      "rarity": "COMMON",
+      "set": "CORE_HIDDEN",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "John Polidora",
+      "attack": 2,
+      "cardClass": "SHAMAN",
+      "collectible": true,
+      "cost": 5,
+      "dbfId": 69630,
+      "durability": 0,
+      "flavor": "奥格瑞姆·毁灭之锤将他的传奇武器赠与了萨尔。他的名字只是纯属巧合。",
+      "health": 8,
+      "howToEarn": "与萨满祭司职业一同解锁。",
+      "howToEarnGolden": "使用萨满祭司赢得250场对战后解锁。",
+      "id": "CORE_EX1_567",
+      "mechanics": [
+        "OVERLOAD",
+        "WINDFURY"
+      ],
+      "name": "毁灭之锤",
+      "overload": 2,
+      "rarity": "EPIC",
+      "set": "CORE_HIDDEN",
+      "text": "<b>风怒，过载：</b>（2）",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "Joe Wilson",
+      "attack": 2,
+      "cardClass": "WARRIOR",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 95642,
+      "durability": 0,
+      "flavor": "实在是居家旅行，杀人灭口之必备佳品。刀刃锋利，请注意安全。",
+      "health": 2,
+      "id": "CORE_ICC_064",
+      "mechanics": [
+        "BATTLECRY",
+        "DEATHRATTLE"
+      ],
+      "name": "血刃剃刀",
+      "rarity": "COMMON",
+      "set": "CORE_HIDDEN",
+      "text": "<b>战吼，亡语：</b>\n对所有随从造成1点伤害。",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "Anton Kagounkin",
+      "attack": 1,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 86543,
+      "durability": 0,
+      "flavor": "曾经被称作“卡恩迪洛尔”，精灵语的意思是“上古剃须匠的短弓”。",
+      "health": 3,
+      "howToEarn": "与猎人职业一同解锁。",
+      "howToEarnGolden": "使用猎人赢得50场对战后解锁。",
+      "id": "CORE_LOOT_222",
+      "name": "蜡烛弓",
+      "rarity": "COMMON",
+      "referencedTags": [
+        "IMMUNE"
+      ],
+      "set": "CORE_HIDDEN",
+      "text": "你的英雄在攻击时<b>免疫</b>。",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "James Ryman",
+      "attack": 1,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 97376,
+      "flavor": "地精珠宝商慕名而来，失望而归…",
+      "health": 2,
+      "howToEarn": "与猎人职业一同解锁。",
+      "howToEarnGolden": "使用猎人赢得50场对战后解锁。",
+      "id": "CORE_UNG_912",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "宝石鹦鹉",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "COMMON",
+      "set": "CORE",
+      "text": "<b>战吼：</b>&随机将一张野兽牌置入你的手牌。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Lucas Graciano",
+      "attack": 3,
+      "cardClass": "WARRIOR",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 401,
+      "durability": 0,
+      "flavor": "在安宁祥和的年代，人们用另一个不太流行的名字称呼这把武器，寒冰静谧战斧。",
+      "health": 2,
+      "id": "CS2_106",
+      "name": "炽炎战斧",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "Dan Brereton",
+      "attack": 3,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 216,
+      "faction": "HORDE",
+      "flavor": "“去杀30条迅猛龙。”——赫米特·奈辛瓦里",
+      "health": 2,
+      "id": "CS2_172",
+      "name": "血沼迅猛龙",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "type": "MINION"
+    },
+    {
+      "artist": "Peter C. Lee",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 7,
+      "dbfId": 311,
+      "durability": 0,
+      "flavor": "弓弦很长，这使得射手能够射得更远，对付那些难闻的目标尤其有效。",
+      "health": 2,
+      "id": "DS1_188",
+      "name": "角斗士的长弓",
+      "rarity": "EPIC",
+      "referencedTags": [
+        "IMMUNE"
+      ],
+      "set": "EXPERT1",
+      "text": "你的英雄在攻击时<b>免疫</b>。",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "Patrik Bjorkstrom",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 114020,
+      "flavor": "所谓物以类聚，那么幽爪熊该和谁一起冬眠？",
+      "health": 2,
+      "id": "EDR_227",
+      "mechanics": [
+        "DEATHRATTLE",
+        "RUSH"
+      ],
+      "name": "幽爪熊",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。<b>亡语：</b><b>灌注</b>你的英雄技能。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Alex Horley Orlandelli",
+      "attack": 9,
+      "cardClass": "WARLOCK",
+      "collectible": true,
+      "cost": 10,
+      "dbfId": 115203,
+      "elite": true,
+      "flavor": "他虽在上古之战中身殒，但他的遗泽留在了艾泽拉斯，滋养着崇拜他的野猪人各部。",
+      "health": 9,
+      "id": "EDR_489",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "阿迦玛甘",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b>你使用的下一张牌会消耗<b>对手</b>的生命值而非法力值<i>（最高不超过10点）</i>。",
+      "type": "MINION"
+    },
+    {
+      "cardClass": "WARLOCK",
+      "dbfId": 116678,
+      "id": "EDR_489e1",
+      "name": "腐蚀棘刺",
+      "set": "EMERALD_DREAM",
+      "text": "你使用的下一张牌会消耗<b>对手</b>的生命值而非法力值。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "dbfId": 120560,
+      "id": "EDR_489e2",
+      "name": "腐蚀棘刺",
+      "set": "EMERALD_DREAM",
+      "text": "你使用的下一张牌会消耗<b>对手</b>的生命值而非法力值。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "artist": "John Polidora",
+      "attack": 2,
+      "cardClass": "SHAMAN",
+      "collectible": true,
+      "cost": 5,
+      "dbfId": 352,
+      "durability": 0,
+      "flavor": "奥格瑞姆·毁灭之锤将他的传奇武器赠与了萨尔。他的名字只是纯属巧合。",
+      "health": 8,
+      "id": "EX1_567",
+      "mechanics": [
+        "OVERLOAD",
+        "WINDFURY"
+      ],
+      "name": "毁灭之锤",
+      "overload": 2,
+      "rarity": "EPIC",
+      "set": "EXPERT1",
+      "text": "<b>风怒，过载：</b>（2）",
+      "type": "WEAPON"
+    },
+    {
+      "artist": "Ben Thompson",
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 1746,
+      "flavor": "不管你是花掉它还是留在手里，总有一枚幸运币留给后手的你。",
+      "id": "GAME_005",
+      "name": "幸运币",
+      "set": "CORE",
+      "text": "在本回合中，获得一个\n法力水晶。",
+      "type": "SPELL"
+    },
+    {
+      "artist": "Malcolm Davis",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 0,
+      "countAsCopyOfDbfId": 179,
+      "dbfId": 120970,
+      "flavor": "如果你用足够多的小精灵攻击艾瑞达领主的话，他就会爆炸。但这是为什么呢？",
+      "health": 1,
+      "howToEarn": "完成教学后解锁。",
+      "howToEarnGolden": "总计赢得500场对战后解锁。",
+      "id": "CORE_CS2_231",
+      "name": "小精灵",
+      "race": "UNDEAD",
+      "races": [
+        "UNDEAD"
+      ],
+      "rarity": "COMMON",
+      "set": "CORE_HIDDEN",
+      "type": "MINION"
+    }
+  ]
+}

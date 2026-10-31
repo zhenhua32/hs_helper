@@ -20,7 +20,7 @@ public static class MagmaToolChecks
         yield return ("magma formatting preserves unknown values and truncated enumeration", UnknownDisplay);
         yield return ("magma line and search boundaries cannot display verified lethal", BoundaryDisplay);
         yield return ("magma schema accepts only the ordinary source and attacked target", ToolSchema);
-        yield return ("turn and choice v12 policies constrain magma branches without changing other tasks", PolicyScope);
+        yield return ("turn and choice v13 policies constrain magma branches without changing other tasks", PolicyScope);
     }
 
     private static void BranchDisplay()
@@ -91,7 +91,7 @@ public static class MagmaToolChecks
         foreach (var task in new[] { AdviceTaskKind.Turn, AdviceTaskKind.Choice })
         {
             var policy = AdviceTaskTemplates.Get(task);
-            Check(policy.Version == "hunter-v12/" + task.ToString().ToLowerInvariant() &&
+            Check(policy.Version == "hunter-v13/" + task.ToString().ToLowerInvariant() &&
                 policy.Instructions.Contains("evaluate_magma_split", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("MagmaSplitBoundaryReached", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("AttackIsLegal未知", StringComparison.Ordinal) &&

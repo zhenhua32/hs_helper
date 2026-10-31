@@ -311,7 +311,7 @@ public static class BattleViewRegression
             Entity(2, null, EntityKind.Player, ("PLAYER_ID", "2"), ("HERO_ENTITY", "20"), ("RESOURCES", "5"), ("RESOURCES_USED", "1"), ("OVERLOAD_LOCKED", "0"), ("TEMP_RESOURCES", "0")),
             Entity(10, "HERO_05", EntityKind.Card, ("CONTROLLER", "1"), ("ZONE", "PLAY"), ("CARDTYPE", "3"), ("HEALTH", "30"), ("DAMAGE", "4"), ("ARMOR", "5"), ("ATK", "0")),
             Entity(20, "HERO_08", EntityKind.Card, ("CONTROLLER", "2"), ("ZONE", "PLAY"), ("CARDTYPE", "HERO"), ("HEALTH", "30"), ("DAMAGE", "1"), ("ARMOR", "2"), ("ATK", "0")),
-            Entity(11, "UI_WEAPON", EntityKind.Card, ("CONTROLLER", "1"), ("ZONE", "PLAY"), ("CARDTYPE", "7"), ("ATK", "4"), ("DURABILITY", "2")),
+            Entity(11, "UI_WEAPON", EntityKind.Card, ("CONTROLLER", "1"), ("ZONE", "PLAY"), ("CARDTYPE", "7"), ("ATK", "4"), ("HEALTH", "3"), ("DAMAGE", "1")),
             Entity(12, "HERO_05bp", EntityKind.Card, ("CONTROLLER", "1"), ("ZONE", "PLAY"), ("CARDTYPE", "10"), ("COST", "1"), ("EXHAUSTED", "0")),
             Entity(30, "UI_HAND", EntityKind.Card, ("CONTROLLER", "1"), ("ZONE", "HAND"), ("CARDTYPE", "MINION"), ("ZONE_POSITION", "1")),
             Entity(31, "UI_BODY", EntityKind.Card, ("CONTROLLER", "1"), ("ZONE", "PLAY"), ("CARDTYPE", "4"), ("ATK", "3"), ("HEALTH", "4"), ("DAMAGE", "0"), ("EXHAUSTED", "0"), ("NUM_TURNS_IN_PLAY", "1"), ("ZONE_POSITION", "1")),

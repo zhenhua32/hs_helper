@@ -164,8 +164,9 @@ public static class BattleViewBuilder
                     e.GetIntTag("PLAYER_ID") == entity.ControllerId && e.GetIntTag("HERO_POWER_DISABLED") is > 0)) statuses.Add("技能禁用");
             }
             var effect = Effect(entity.CardId, entity.Tags);
+            var durability = type == "WEAPON" ? WeaponDurabilityEvidence.Resolve(snapshot.ClientBuild, entity).Remaining : null;
             return new(entity.Id, entity.CardId, Name(entity.CardId), type, entity.Cost, entity.Attack, entity.RemainingHealth,
-                entity.GetIntTag("ARMOR"), entity.GetIntTag("DURABILITY"), entity.GetIntTag("EXHAUSTED") is { } exhausted ? exhausted != 0 : null,
+                entity.GetIntTag("ARMOR"), durability, entity.GetIntTag("EXHAUSTED") is { } exhausted ? exhausted != 0 : null,
                 entity.Zone, entity.ZonePosition, string.Join("、", statuses))
                 { EffectiveText = effect.Text, EffectTextStatus = effect.Status, IsAssembled = effect.Assembled, IsAssembledOffer = effect.Offer };
         }
