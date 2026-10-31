@@ -1,0 +1,45 @@
+{
+  "build": "255790",
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "cardDefsSource": "https://api.hearthstonejson.com/v1/255790/CardDefs.base.xml",
+  "cardDefsSha256": "EE72B26D5B90B595EE5DE63E05979BF80195896BA32CF943C6F5FFC8BFBB72A8",
+  "scope": "Native simple Charge search control; current costs/stats still require snapshot evidence.",
+  "cards": [
+    {
+      "artist": "Howard Lyon",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 648,
+      "flavor": "决斗的时候离它们远点儿。",
+      "health": 1,
+      "id": "CS2_171",
+      "mechanics": [
+        "CHARGE"
+      ],
+      "name": "石牙野猪",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "text": "<b>冲锋</b>",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ben Thompson",
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 1746,
+      "flavor": "不管你是花掉它还是留在手里，总有一枚幸运币留给后手的你。",
+      "id": "GAME_005",
+      "name": "幸运币",
+      "set": "CORE",
+      "text": "在本回合中，获得一个\n法力水晶。",
+      "type": "SPELL"
+    }
+  ]
+}

@@ -121,7 +121,11 @@ public sealed partial class LineEvaluator
             if (source.MaximumHealth.HasValue) _summonedWithObservedHealth.Add(source.Id);
             source.Zone = "PLAY"; source.Attack ??= profile.Attack; source.MaximumHealth ??= profile.Health; source.Health = source.MaximumHealth;
             source.Type = "MINION"; source.Attacks = 0;
-            source.Flags = source.Flags.Where(flag => StaticKeywords.Contains(flag.Key) || flag.Key == "SILENCED").ToDictionary(StringComparer.Ordinal);
+            // Entry resets readiness/counts, not observed restrictions used by Attack. Clearing
+            // these would make a manual or searched play->attack line bypass its original state.
+            source.Flags = source.Flags.Where(flag => StaticKeywords.Contains(flag.Key) ||
+                flag.Key is "SILENCED" or "FROZEN" or "CANT_ATTACK_HEROES" or "CANNOT_ATTACK_HEROES" or
+                    "CANT_ATTACK_MINIONS" or "DORMANT" or "UNTOUCHABLE").ToDictionary(StringComparer.Ordinal);
             source.Flags["NUM_TURNS_IN_PLAY"] = 0;
             source.Flags["EXHAUSTED"] = Has(source, "CHARGE") || Has(source, "RUSH") ? 0 : 1;
             return true;

@@ -47,6 +47,12 @@ public sealed partial class LineEvaluator
 
     private LineEvaluation EvaluateLineCore(GameSnapshot snapshot, IReadOnlyList<PlannedAction> actions,
         IReadOnlyDictionary<string, CardRecord> cards, CancellationToken cancellationToken, bool previewMagmaOnly)
+        => EvaluateLineRuntime(snapshot, actions, cards, cancellationToken, previewMagmaOnly).Build();
+
+    // Search reads the same current keyword/profile semantics as a manually evaluated line.
+    // Keeping this runtime private avoids reconstructing flags from a projected result or printed data.
+    private Runtime EvaluateLineRuntime(GameSnapshot snapshot, IReadOnlyList<PlannedAction> actions,
+        IReadOnlyDictionary<string, CardRecord> cards, CancellationToken cancellationToken, bool previewMagmaOnly)
     {
         ArgumentNullException.ThrowIfNull(snapshot); ArgumentNullException.ThrowIfNull(actions); ArgumentNullException.ThrowIfNull(cards);
         cancellationToken.ThrowIfCancellationRequested();
@@ -101,7 +107,7 @@ public sealed partial class LineEvaluator
                 state.Applied++;
             }
         }
-        return state.Build();
+        return state;
     }
 
     public LethalSearchResult FindLethal(GameSnapshot snapshot, IReadOnlyDictionary<string, CardRecord> cards,
@@ -116,17 +122,20 @@ public sealed partial class LineEvaluator
         while (paths.TryDequeue(out var path) && nodes < maximumNodes)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            Runtime runtime;
             SimulatedState state;
-            if (path.Length == 0) state = new Runtime(snapshot, cards).Build().Result;
+            if (path.Length == 0)
+            { runtime = new Runtime(snapshot, cards); state = runtime.Build().Result; }
             else
             {
-                var evaluation = EvaluateLine(snapshot, path, cards, cancellationToken); nodes++;
+                runtime = EvaluateLineRuntime(snapshot, path, cards, cancellationToken, previewMagmaOnly: false);
+                var evaluation = runtime.Build(); nodes++;
                 if (evaluation.IsLethal) return new(true, Array.AsReadOnly(path), evaluation, nodes, false, SearchCoverage);
                 if (evaluation.Verification != LineVerification.Verified) continue;
                 state = evaluation.Result;
             }
             if (path.Length >= maximumDepth) continue;
-            foreach (var action in SearchCandidates(state, snapshot.LocalPlayerId, cards))
+            foreach (var action in SearchCandidates(state, snapshot.LocalPlayerId, cards, runtime))
             {
                 paths.Enqueue([.. path, action]);
                 if (paths.Count >= maximumNodes) break;
@@ -134,10 +143,10 @@ public sealed partial class LineEvaluator
         }
         return new(false, [], null, nodes, false, SearchCoverage + " 未找到已验证方案不表示不存在斩杀。");
     }
-    private const string SearchCoverage = "有限深度搜索，枚举攻击、稳固射击、已支持直伤、猎人印记、简单武器装备及已覆盖随从入场，包括阿迦玛甘生命支付组合与神秘恐魔结束回合；不枚举随机、发现、抽牌或完整召唤组合。";
+    private const string SearchCoverage = "有限深度搜索，枚举攻击、稳固射击、硬币衔接已覆盖动作、已支持直伤、猎人印记、简单武器装备及已覆盖随从入场；包括当前可靠冲锋的简单或已支持原生随从、阿迦玛甘生命支付组合与神秘恐魔结束回合。每条路线仍须完整验证，不跨随机、发现、抽牌等观察边界，也不穷尽完整召唤组合。";
 
     private static IEnumerable<PlannedAction> SearchCandidates(SimulatedState state, int? local,
-        IReadOnlyDictionary<string, CardRecord> cards)
+        IReadOnlyDictionary<string, CardRecord> cards, Runtime runtime)
     {
         if (local is null || state.TurnEnded) yield break;
         var targets = state.Entities.Where(e => e.IsAlive && e.Zone == "PLAY" && e.ControllerId != local && e.Type is "HERO" or "MINION").ToArray();
@@ -152,7 +161,13 @@ public sealed partial class LineEvaluator
             if (ArcaneShot.Contains(id) || KillCommand.Contains(id) || HuntersMark.Contains(id))
                 foreach (var target in targets.Where(e => !HuntersMark.Contains(id) || e.Type == "MINION"))
                     yield return new(ActionKind.PlayCard, source.EntityId, target.EntityId);
-            if (source.Type == "WEAPON" || SearchableRushBodies.Contains(id) || id is "EDR_489" or "CORE_TTN_866" ||
+            var chargeBody = runtime.SearchableChargeBody(source.EntityId);
+            if (chargeBody && ElvenArcher.Contains(id))
+            {
+                foreach (var target in state.Entities.Where(e => e.IsAlive && e.Zone == "PLAY" && e.Type is "HERO" or "MINION"))
+                    yield return new(ActionKind.PlayCard, source.EntityId, target.EntityId);
+            }
+            else if (id == "GAME_005" || chargeBody || source.Type == "WEAPON" || SearchableRushBodies.Contains(id) || id is "EDR_489" or "CORE_TTN_866" ||
                 (state.NextCardCostsOpponentHealth == true && (AuditedHunterBodies.Contains(id) || DiscoveryPlayRules.SupportsCardId(id))))
                 yield return new(ActionKind.PlayCard, source.EntityId);
         }
@@ -249,11 +264,14 @@ public sealed partial class LineEvaluator
         { state.Unsupported("CONFLICTING_PLAY_IDENTITY", "使用来源的区域、归属或实体标记存在冲突，未支付或使用。"); return; }
         if (!state.CanAffordCard(source)) return;
         var id = source.CardId!;
+        // A fixed native identity must be audited before any type-specific handler can
+        // reinterpret a corrupted same-ID definition as a minion or weapon.
+        if (id == "GAME_005" && (!state.RequireAuditedBuild() || !state.AuditedCoinSource(source))) return;
         if (TryPlayNativeDiscovery(state, action, source, profile)) return;
         if (TryPlayMythicalTerror(state, action, source, profile)) return;
         if (TryPlayBeastHunter(state, action, source, profile)) return;
         if (TryEquipWeapon(state, action, source, profile)) return;
-        if ((id == "GAME_005" || ArcaneShot.Contains(id) || KillCommand.Contains(id) || HuntersMark.Contains(id) ||
+        if ((ArcaneShot.Contains(id) || KillCommand.Contains(id) || HuntersMark.Contains(id) ||
             ExplosiveTrap.Contains(id) || ElvenArcher.Contains(id)) && !state.RequireAuditedBuild()) return;
         if (profile.Type == "MINION")
         {
@@ -439,6 +457,30 @@ public sealed partial class LineEvaluator
             if (entity.Flags.TryGetValue(keyword, out var value)) return value > 0;
             if (Silenced(entity)) return false;
             return Profile(entity)?.Mechanics.Contains(keyword) == true;
+        }
+        public bool SearchableChargeBody(int id)
+        {
+            if (!Entities.TryGetValue(id, out var source) || source.Type != "MINION" ||
+                !_snapshot.Entities.TryGetValue(id, out var observed) || observed.Kind != EntityKind.Card || observed.Id != id ||
+                observed.CardId != source.CardId || observed.Tags is null ||
+                source.Attack is null or < 0 || source.MaximumHealth is null or <= 0 || source.Health is null or <= 0 || source.Cost is null or < 0 ||
+                !RawNumber(observed, "ATK", "47", true, out _) || !RawNumber(observed, "HEALTH", "45", true, out _) ||
+                !RawNumber(observed, "DAMAGE", "44", true, out var damage) || damage != 0 || !RawNumber(observed, "COST", "48", true, out _) ||
+                !RawNumber(observed, "SILENCED", "188", false, out var silenced) || silenced is not (null or 0 or 1) ||
+                !RawNumber(observed, "FROZEN", "260", false, out var frozen) || frozen is not (null or 0) ||
+                !RawNumber(observed, "DORMANT", "1518", false, out var dormant) || dormant is not (null or 0)) return false;
+            // Has deliberately falls back to native mechanics when no current flag was observed.
+            // Malformed/contradictory observations must not disappear during integer materialization
+            // and accidentally restore that printed keyword. A genuine gift still needs its own audit.
+            if (!RawNumber(observed, "CHARGE", "197", false, out var flag) || flag is not (null or 1)) return false;
+            try
+            {
+                if (!Has(source, "CHARGE") || Profile(source) is not { Type: "MINION" } profile) return false;
+                return source.CardId is { } cardId && (AuditedHunterBodies.Contains(cardId) || ElvenArcher.Contains(cardId) ||
+                    DiscoveryPlayRules.SupportsCardId(cardId) || cardId == "CORE_TTN_866" || SimpleProfile(profile));
+            }
+            catch (Exception error) when (error is JsonException or InvalidOperationException or FormatException or OverflowException or RegexMatchTimeoutException)
+            { return false; }
         }
         public bool CombatHas(Entity entity, string keyword) => Has(entity, keyword) ||
             (entity.Type == "HERO" && Weapon(entity.Controller) is { } weapon && WeaponHas(weapon, keyword));

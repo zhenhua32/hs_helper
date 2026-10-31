@@ -25,13 +25,13 @@ var cards = new Dictionary<string, CardRecord>(StringComparer.Ordinal)
     ["CORE_DS1_185"] = Card("CORE_DS1_185", "SPELL", cost: 1, text: "造成2点伤害。"),
     ["CORE_EX1_539"] = Card("CORE_EX1_539", "SPELL", cost: 3, text: "造成3点伤害，有野兽时改为5点。"),
     ["CS2_084"] = Card("CS2_084", "SPELL", cost: 1, text: "使一个随从的生命值变为1。"),
-    ["GAME_005"] = Card("GAME_005", "SPELL", cost: 0, text: "获得一点本回合的法力。"),
     ["HERO_05bp"] = Card("HERO_05bp", "HERO_POWER", cost: 2, text: "对敌方英雄造成2点伤害。"),
     ["WEAPON"] = Card("WEAPON", "WEAPON", attack: 3, text: ""),
     ["CHARGE"] = Card("CHARGE", attack: 2, health: 2, text: "冲锋", mechanics: ["CHARGE"])
 };
-using (var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "beast-hunter-255790.json"))))
+foreach (var fixtureName in new[] { "beast-hunter-255790.json", "lethal-search-255790.json" })
 {
+    using var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", fixtureName)));
     Equal("255790", fixture.RootElement.GetProperty("build").GetString());
     foreach (var raw in fixture.RootElement.GetProperty("cards").EnumerateArray())
     {
@@ -681,6 +681,7 @@ foreach (var (name, run) in HunterExplosiveTrapInstallChecks.Cases(cards)) Run(n
 foreach (var (name, run) in WeaponCombatChecks.Cases()) Run(name, run);
 foreach (var (name, run) in TerrorEndTurnResolutionChecks.Cases()) Run(name, run);
 foreach (var (name, run) in DarkGiftStaticChecks.Cases()) Run(name, run);
+foreach (var (name, run) in LethalCandidateChecks.Cases()) Run(name, run);
 
 if (args.Length == 1)
 {
