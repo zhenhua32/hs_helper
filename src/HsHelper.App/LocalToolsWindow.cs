@@ -729,6 +729,8 @@ public static class LocalToolResultFormatter
                     var candidates = (pending["CandidateSourceEntityIds"] as JsonArray ?? []).Select(id => entityName(id!.GetValue<int>()));
                     lines.Add("尚未展开的强制战斗候选：" + string.Join("、", candidates) + "；" + pending["Reason"]);
                 }
+            if (state["TerrorEndTurnPreviews"] is JsonArray terrorPreviews)
+                foreach (var preview in terrorPreviews.OfType<JsonObject>()) AppendTerrorEndTurn(lines, preview, entityName);
             if (state["OpponentDefeatedByPayment"]?.GetValue<bool>() == true)
                 lines.Add("对手因生命支付达到零生命，已停止计算该牌后续效果。");
             if (state["NextCardCostsOpponentHealth"]?.GetValue<bool>() == true)
@@ -835,7 +837,49 @@ public static class LocalToolResultFormatter
         evaluation?["Result"]?["DiscoveryBoundaryReached"]?.ToString() == "true" ||
         evaluation?["Result"]?["MapFollowupBoundaryReached"]?.ToString() == "true" ||
         evaluation?["Result"]?["MagmaSplitBoundaryReached"]?.ToString() == "true" ||
-        evaluation?["Result"]?["WeaponResolutionBoundaryReached"]?.ToString() == "true";
+        evaluation?["Result"]?["WeaponResolutionBoundaryReached"]?.ToString() == "true" ||
+        evaluation?["Result"]?["TerrorEndTurnPreviews"] is JsonArray { Count: > 0 };
+
+    private static void AppendTerrorEndTurn(List<string> lines, JsonObject preview, Func<int, string> entityName)
+    {
+        var branches = preview["Branches"] as JsonArray ?? [];
+        var name = preview["TerrorEntityId"] is JsonValue id && id.TryGetValue<int>(out var source) ? entityName(source) : "神秘恐魔";
+        var complete = preview["IsEnumerationComplete"]?.ToString() == "true";
+        lines.Add($"{name}回合末相关分支：{branches.Count} 个；枚举{(complete ? "完整（限已覆盖范围）" : "未完成")}。");
+        lines.Add("每个分支保留同一条见证顺序及其场面；顺序和分支没有概率，实际结果仍待观测，不能拼接不同分支、接续动作或证明斩杀。普通攻击次数与就绪字段仍未推导。");
+        foreach (var branch in branches.OfType<JsonObject>().Take(8))
+        {
+            var status = branch["IsComplete"]?.ToString() == "true" ? "本分支结算完成" : "未完成，仅已计算前缀";
+            lines.Add($"· 分支 {branch["Id"]}：{status}；我方英雄生命 {branch["OwnHeroHealthAfter"]?.ToString() ?? "未知"}，对方英雄生命 {branch["OpponentHeroHealthAfter"]?.ToString() ?? "未知"}；吸血实际恢复 {branch["LifestealHealing"]?.ToString() ?? "未知"}。");
+            lines.Add("  停止原因：" + TerrorStop(branch["StopReason"]?.ToString()));
+            if (branch["Combats"] is JsonArray combats)
+                foreach (var combat in combats.OfType<JsonObject>())
+                    if (combat["AttackerEntityId"] is JsonValue attacker && attacker.TryGetValue<int>(out var attackerId) &&
+                        combat["TargetEntityId"] is JsonValue target && target.TryGetValue<int>(out var targetId))
+                        lines.Add($"  {entityName(attackerId)} → {entityName(targetId)}：对恐魔伤害 {combat["DamageToTerror"]}，反击伤害 {combat["DamageToAttacker"]}。");
+            if (branch["Entities"] is JsonArray entities)
+                foreach (var entity in entities.OfType<JsonObject>())
+                    if (entity["EntityId"] is JsonValue value && value.TryGetValue<int>(out var entityId))
+                        lines.Add($"  {entityName(entityId)}：生命 {entity["RemainingHealth"]?.ToString() ?? "未知"} / 护甲 {entity["RemainingArmor"]?.ToString() ?? "未知"}；{(entity["IsAlive"]?.ToString() == "true" ? "存活" : "已离场")}；圣盾 {entity["DivineShield"]?.ToString() switch { "true" => "是", "false" => "否", _ => "未知" }}。");
+        }
+        if (branches.Count > 8) lines.Add($"其余 {branches.Count - 8} 个分支未在此摘要展开；省略不表示不存在。");
+        if (!complete) lines.Add("枚举截断或未覆盖效果之外的结果仍未知，未列出某个结果不能证明它不存在。");
+        if (preview["Unknowns"] is JsonArray unknowns)
+            foreach (var unknown in unknowns) lines.Add("  · " + unknown);
+    }
+
+    private static string TerrorStop(string? reason) => reason switch
+    {
+        "AllEligibleAttackersResolved" => "已处理本次全部攻击者",
+        "InactiveSource" => "来源已沉默、休眠、死亡或离场，本次不触发",
+        "TerrorDied" or "TerrorDead" => "恐魔已死亡，停止剩余强制战斗",
+        "HeroDied" or "HeroDeath" => "英雄死亡，停止后续结算",
+        "DeathOrRebornRequiresObservation" or "DeathrattleOrReborn" => "出现亡语或复生，等待后续观测",
+        "AfterAttackRequiresObservation" => "攻击后效果仍待结算，等待后续观测",
+        "StateLimit" or "BranchLimit" or "EnumerationLimit" or "Truncated" => "达到枚举限制，结果已截断",
+        "PriorResolutionPending" => "前置效果仍待结算",
+        _ => "停止原因尚待确认"
+    };
 
     private static void AppendWeapon(List<string> lines, JsonObject weapon, Func<int, string> entityName)
     {

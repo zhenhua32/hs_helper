@@ -236,6 +236,8 @@ await SideboardChoiceEvidenceIntegration.RunAsync(temp, Pass);
 await MagmaSplitIntegration.RunAsync(temp, Pass);
 await ExplosiveTrapIntegration.RunAsync(temp, Pass);
 await WeaponCombatIntegration.RunAsync(temp, Pass);
+await HistoryPagingIntegration.RunAsync(temp, Pass);
+await TerrorEndTurnIntegration.RunAsync(temp, Pass);
 
 if (args.Length == 2)
 {

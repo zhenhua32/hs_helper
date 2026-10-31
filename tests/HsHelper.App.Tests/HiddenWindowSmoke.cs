@@ -132,6 +132,7 @@ internal static class HiddenWindowSmoke
             Check(!fakeModel.RequestBody.Contains(FakeKey, StringComparison.Ordinal), "Fixture credential entered the model payload.");
             AssertPassive(window);
             CheckCurrentBuildSync(window, () => unhandled);
+            HistoryPagingChecks.RunOnDispatcher(window);
             LocalToolsHiddenSmoke.RunOnDispatcher(Path.Combine(Environment.CurrentDirectory, "local-tools"));
             WindowClosingRegression.RunOnDispatcher(Path.Combine(Environment.CurrentDirectory, "closing"));
             AssertPassive(window);

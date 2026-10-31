@@ -654,6 +654,7 @@ public sealed partial class LineEvaluator
                     TurnEnded = TurnEnded, EndTurnTriggersResolved = EndTurnTriggersResolved,
                     ForcedAttacks = Array.AsReadOnly(_forcedAttacks.ToArray()),
                     PendingForcedAttacks = Array.AsReadOnly(_pendingForcedAttacks.ToArray()),
+                    TerrorEndTurnPreviews = Array.AsReadOnly(_terrorEndTurnPreviews.ToArray()),
                     UnresolvedEndTurnFields = Array.AsReadOnly(_unresolvedEndTurnFields.Order(StringComparer.Ordinal).ToArray()) }) { CardBuild = _snapshot.ClientBuild };
         }
 

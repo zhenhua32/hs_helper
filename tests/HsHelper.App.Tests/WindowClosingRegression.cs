@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using HsHelper.App;
+using HsHelper.Storage;
 
 /// <summary>Real Window.Close/Closing/Closed events on the existing isolated STA, without bypassing shutdown.</summary>
 internal static class WindowClosingRegression
@@ -23,6 +24,10 @@ internal static class WindowClosingRegression
     private static void SynchronousSaveClosesAfterCallback()
     {
         var window = new MainWindow();
+        var paging = (HistoryPagingState)Get(window, "_historyPaging")!;
+        var pendingPage = paging.Begin(new SessionFilter(), 1, DateTimeOffset.UtcNow);
+        var historyRead = new CancellationTokenSource(); var historyToken = historyRead.Token;
+        Set(window, "_historyListCancellation", historyRead);
         var closed = false;
         var insideFirstClose = true;
         var closingCallbacks = 0;
@@ -36,6 +41,9 @@ internal static class WindowClosingRegression
         window.Close();
         insideFirstClose = false;
         Check(!closed && Closing(window), "The initial close did not defer shutdown until Closing returned.");
+        Check(historyToken.IsCancellationRequested && Get(window, "_historyListCancellation") is null && !paging.IsCurrent(pendingPage) &&
+            !paging.TryApply(pendingPage, new(Array.AsReadOnly(Array.Empty<GameSession>()), 1, 100, false)),
+            "Closing retained a history read or allowed its delayed page to publish after shutdown began.");
         WaitUntil(() => closed, "A synchronously completed save left the window open after the initial close.");
         Check(closingCallbacks == 2 && SourceGeneration(window) == 1,
             "Deferred shutdown repeated persistence or did not complete the final WPF close.");

@@ -65,6 +65,7 @@ public sealed class SessionStore
               UNIQUE(session_id,event_seq,state_version),
               FOREIGN KEY(session_id) REFERENCES game_sessions(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS sessions_started ON game_sessions(started_at DESC);
+            CREATE INDEX IF NOT EXISTS sessions_started_id ON game_sessions(started_at DESC,id);
             CREATE INDEX IF NOT EXISTS sessions_deck ON game_sessions(deck_version_id,card_build);
             CREATE INDEX IF NOT EXISTS snapshots_sequence ON session_snapshots(session_id,event_seq,state_version);
             """;
@@ -138,14 +139,32 @@ public sealed class SessionStore
         return await reader.ReadAsync(cancellationToken) ? ReadSession(reader) : null;
     }
 
-    public async Task<IReadOnlyList<GameSession>> ListSessionsAsync(SessionFilter? filter = null, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<GameSession>> ListSessionsAsync(SessionFilter? filter = null, CancellationToken cancellationToken = default)
     {
         filter ??= new();
         if (filter.Limit is < 1 or > 10000) throw new ArgumentOutOfRangeException(nameof(filter));
+        return ReadSessionRangeAsync(filter, filter.Limit, 0, cancellationToken);
+    }
+
+    /// <summary>Filters and ordering match ListSessionsAsync; the legacy filter Limit is replaced by this bounded page size.</summary>
+    public async Task<SessionPage> ListSessionPageAsync(SessionFilter? filter = null, int pageNumber = 1,
+        int pageSize = 100, CancellationToken cancellationToken = default)
+    {
+        if (pageNumber < 1) throw new ArgumentOutOfRangeException(nameof(pageNumber));
+        if (pageSize is < 1 or > 200) throw new ArgumentOutOfRangeException(nameof(pageSize));
+        cancellationToken.ThrowIfCancellationRequested();
+        var offset = checked(((long)pageNumber - 1) * pageSize);
+        var rows = await ReadSessionRangeAsync(filter ?? new(), pageSize + 1, offset, cancellationToken);
+        return new(Array.AsReadOnly(rows.Take(pageSize).ToArray()), pageNumber, pageSize, rows.Count > pageSize);
+    }
+
+    private async Task<IReadOnlyList<GameSession>> ReadSessionRangeAsync(SessionFilter filter, int limit, long offset,
+        CancellationToken cancellationToken)
+    {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = SessionSelect + FilterSql(command, filter) + " ORDER BY g.started_at DESC,g.id LIMIT $limit";
-        Add(command, "$limit", filter.Limit);
+        command.CommandText = SessionSelect + FilterSql(command, filter) + " ORDER BY g.started_at DESC,g.id ASC LIMIT $limit OFFSET $offset";
+        Add(command, "$limit", limit); Add(command, "$offset", offset);
         var result = new List<GameSession>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken)) result.Add(ReadSession(reader));

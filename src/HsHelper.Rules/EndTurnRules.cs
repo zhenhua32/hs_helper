@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+
 namespace HsHelper.Rules;
 
 public sealed partial class LineEvaluator
@@ -10,6 +12,8 @@ public sealed partial class LineEvaluator
     {
         if (source.CardId != "CORE_TTN_866") return false;
         if (!state.RequireAuditedBuild()) return true;
+        if (!state.IsAuditedTerrorSource(source))
+        { state.Unsupported("UNAUDITED_MYTHICAL_TERROR", "神秘恐魔的固定身份、完整文字或机制不一致，未支付或入场。"); return true; }
         if (action.TargetEntityId is not null) { state.Invalid("神秘恐魔入场不需要指定目标。"); return true; }
         var extra = source.Flags.Where(flag => flag.Value > 0 &&
             flag.Key is "BATTLECRY" or "DEATHRATTLE" or "AURA").ToArray();
@@ -35,7 +39,10 @@ public sealed partial class LineEvaluator
         public bool EndTurnTriggersResolved { get; private set; }
         private readonly List<ForcedAttackResult> _forcedAttacks = [];
         private readonly List<PendingForcedAttack> _pendingForcedAttacks = [];
+        private readonly List<TerrorEndTurnOutcome> _terrorEndTurnPreviews = [];
         private readonly HashSet<string> _unresolvedEndTurnFields = new(StringComparer.Ordinal);
+        public bool IsAuditedTerrorSource(Entity source) => source.CardId is { } id &&
+            TerrorEndTurnResolutionRules.IsAuditedSource(_cards.GetValueOrDefault(id));
 
         public void ResolveOwnEndTurn()
         {
@@ -70,7 +77,22 @@ public sealed partial class LineEvaluator
                 { Pending(terror, attackers, "对手玩家或场上随从归属未唯一确认，无法确定强制攻击候选集合。", "UNKNOWN_FORCED_COMBAT_OWNERSHIP"); continue; }
                 if (attackers.Length == 0) { Coverage.Add("CORE_TTN_866-no-enemy-minions"); continue; }
                 if (triggers.Length != 1 || attackers.Length != 1)
-                { Pending(terror, attackers, "存在多个恐魔触发或敌方攻击者，未确认强制战斗顺序；没有按实体编号或位置擅自排序。", "UNCONFIRMED_FORCED_ATTACK_ORDER"); continue; }
+                {
+                    if (triggers.Length == 1 && attackers.Length > 1)
+                    {
+                        var overlay = new TerrorEndTurnState(_snapshot.MatchId, _snapshot.StateVersion, _snapshot.EventSequence,
+                            terror.Id, Array.AsReadOnly(Entities.Values.OrderBy(entity => entity.Id).Select(FreezeTerrorEndTurn).ToArray()))
+                        {
+                            PriorResolutionPending = HasUnresolvedNativeResolution || WeaponResolutionBoundaryReached ||
+                                _unsupported.Overlaps(["UNMAPPED_END_TURN_EFFECT", "END_TURN_TRIGGER_MULTIPLIER", "UNKNOWN_BOARD_CARD"])
+                        };
+                        var preview = TerrorEndTurnResolutionRules.Evaluate(_snapshot, terror.Id, _cards, overlay);
+                        _terrorEndTurnPreviews.Add(preview);
+                        Coverage.UnionWith(preview.RuleCoverage);
+                    }
+                    Pending(terror, attackers, "多个恐魔触发或敌方攻击者的实际顺序尚未观察；有限分支单列比较，不作为已发生状态。", "UNCONFIRMED_FORCED_ATTACK_ORDER");
+                    continue;
+                }
                 var source = attackers[0];
                 if (source.Controller is null || source.Attack is null or < 0 || source.Health is null ||
                     terror.Attack is null or < 0 || terror.Health is null || Profile(source) is null)
@@ -109,6 +131,14 @@ public sealed partial class LineEvaluator
             Conditional(reason, kind);
             _pendingForcedAttacks.Add(new(terror.Id, terror.Id,
                 Array.AsReadOnly(attackers.Select(e => e.Id).Order().ToArray()), reason));
+        }
+
+        private HsHelper.Core.EntitySnapshot FreezeTerrorEndTurn(Entity entity)
+        {
+            var frozen = FreezeForPlayTriggers(entity);
+            if (_snapshot.Entities[entity.Id].Zone is null && string.IsNullOrEmpty(entity.Zone))
+                frozen = frozen with { Tags = frozen.Tags.Where(pair => pair.Key is not ("ZONE" or "49")).ToFrozenDictionary() };
+            return frozen;
         }
     }
 }

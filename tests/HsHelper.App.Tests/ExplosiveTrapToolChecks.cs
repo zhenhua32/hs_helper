@@ -20,7 +20,7 @@ public static class ExplosiveTrapToolChecks
         yield return ("trap display preserves unknown values and current own-turn non-trigger", UnknownDisplay);
         yield return ("trap attacker survival does not certify that the full attack continues", SurvivingAttacker);
         yield return ("trap tool rejects model-selected targets damage and future turns", Schema);
-        yield return ("v13 trap policy preserves random boundaries and unrelated task versions", Policy);
+        yield return ("v14 trap policy preserves random boundaries and unrelated task versions", Policy);
     }
 
     private static void DirectDisplay()
@@ -85,12 +85,12 @@ public static class ExplosiveTrapToolChecks
         foreach (var task in new[] { AdviceTaskKind.Turn, AdviceTaskKind.Choice })
         {
             var policy = AdviceTaskTemplates.Get(task);
-            Check(policy.Version == "hunter-v13/" + task.ToString().ToLowerInvariant() &&
+            Check(policy.Version == "hunter-v14/" + task.ToString().ToLowerInvariant() &&
                 policy.Instructions.Contains("evaluate_explosive_trap", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("攻击对象固定为我方英雄", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("完整攻击会继续或已经结算", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("MagmaSplitBoundaryReached", StringComparison.Ordinal) &&
-                policy.Instructions.Contains("MapPlayPreviews", StringComparison.Ordinal), "The v13 trap policy lost conditional scope or prior lifecycle constraints.");
+                policy.Instructions.Contains("MapPlayPreviews", StringComparison.Ordinal), "The v14 trap policy lost conditional scope or prior lifecycle constraints.");
         }
         foreach (var task in new[] { AdviceTaskKind.Mulligan, AdviceTaskKind.Review, AdviceTaskKind.DeckPlan })
             Check(AdviceTaskTemplates.Get(task).Version.StartsWith("hunter-v4/", StringComparison.Ordinal) &&

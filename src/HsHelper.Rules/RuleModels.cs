@@ -31,6 +31,7 @@ public sealed record SimulatedState(int AvailableMana, IReadOnlyList<SimulatedEn
     public bool EndTurnTriggersResolved { get; init; }
     public IReadOnlyList<ForcedAttackResult> ForcedAttacks { get; init; } = [];
     public IReadOnlyList<PendingForcedAttack> PendingForcedAttacks { get; init; } = [];
+    public IReadOnlyList<TerrorEndTurnOutcome> TerrorEndTurnPreviews { get; init; } = [];
     /// <summary>These fields retain their last observed value rather than a purported post-trigger value.</summary>
     public IReadOnlyList<string> UnresolvedEndTurnFields { get; init; } = [];
     public int? ImbueCountBefore { get; init; }

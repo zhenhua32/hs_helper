@@ -27,6 +27,12 @@ public sealed record SessionFilter(string? CardBuild = null, string? DeckVersion
     string? PlayerClass = null, string? Region = null, string? GameType = null,
     DateTimeOffset? EndedBefore = null, string? ExcludeSessionId = null);
 
+/// <summary>One bounded history page. HasMore comes from a single extra row, not an unbounded load.</summary>
+public sealed record SessionPage(IReadOnlyList<GameSession> Sessions, int PageNumber, int PageSize, bool HasMore)
+{
+    public bool HasPrevious => PageNumber > 1;
+}
+
 public sealed record ClassMatchupStats(string OpponentClass, int Games, int Wins, int Losses, int Ties,
     int Unknown, double? WinRate);
 

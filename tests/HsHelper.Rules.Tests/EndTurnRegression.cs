@@ -18,6 +18,7 @@ public static class EndTurnRegression
         yield return ("both owners receive their own forced-combat lifesteal and attacking immunity is respected", CombatModifiers);
         yield return ("pinned terror secondary beast race respects its observed primary and later race changes", DualRaceGoldrinn);
         yield return ("multiple enemies retain every pending candidate without inventing an attack order", MultipleEnemies);
+        yield return ("native terror definition changes reject before payment or entry", SourceDefinition);
         yield return ("multiple terrors do not invent trigger ordering", MultipleTerrors);
         yield return ("silenced dormant dead or enemy terrors do not trigger on our end turn", InactiveTerrors);
         yield return ("unmapped end-turn text and repetition modifiers never claim fully resolved triggers", UnmappedEffects);
@@ -40,6 +41,19 @@ public static class EndTurnRegression
         Check(Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30, 20)).Verification == LineVerification.Invalid, "Terror accepted an artificial battlecry target.");
         var full = Fixture([Hand(30, 4, 9, 14), .. Enumerable.Range(40, 7).Select(id => Minion(id, "VANILLA", 1, 1, 1))]);
         Check(Eval(full, new PlannedAction(ActionKind.PlayCard, 30)).Verification == LineVerification.Invalid, "A full board accepted another terror.");
+    }
+
+    private static void SourceDefinition()
+    {
+        var source = Cards["CORE_TTN_866"];
+        foreach (var definition in new[] { source with { Text = "未覆盖的替代文字" }, source with { DbfId = 1 },
+            source with { RawJson = source.RawJson.Replace("LIFESTEAL", "POISONOUS", StringComparison.Ordinal) } })
+        {
+            var cards = Cards.ToDictionary(); cards[source.Id] = definition;
+            var line = Evaluator.EvaluateLine(Fixture(Hand(30, 1, 4, 5)), [new PlannedAction(ActionKind.PlayCard, 30)], cards);
+            Check(line.Verification == LineVerification.Unsupported && line.AppliedActions == 0 && line.Result.AvailableMana == 10 &&
+                Find(line, 30).Zone == "HAND", "An unaudited native terror definition consumed mana or entered play.");
+        }
     }
 
     private static void EndBoundary()

@@ -10,6 +10,45 @@ using HsHelper.Storage;
 
 namespace HsHelper.App;
 
+public sealed record HistoryPageRequest(long Revision, SessionFilter Scope, SessionFilter Query, int PageNumber);
+
+/// <summary>Guards delayed list results and freezes the first page's time boundary while browsing.</summary>
+public sealed class HistoryPagingState
+{
+    private long _revision;
+    public SessionFilter? Scope { get; private set; }
+    public int PageNumber { get; private set; } = 1;
+    public int ItemCount { get; private set; }
+    public bool HasMore { get; private set; }
+    public bool IsLoading { get; private set; }
+    public DateTimeOffset? BrowsingUntil { get; private set; }
+
+    public void Reset(SessionFilter scope)
+    {
+        _revision++; Scope = scope; PageNumber = 1; ItemCount = 0; HasMore = false; IsLoading = false; BrowsingUntil = null;
+    }
+    public HistoryPageRequest Begin(SessionFilter scope, int pageNumber, DateTimeOffset now, bool refresh = false)
+    {
+        if (pageNumber < 1) throw new ArgumentOutOfRangeException(nameof(pageNumber));
+        if (Scope != scope || refresh) { Reset(scope); pageNumber = 1; }
+        BrowsingUntil ??= scope.Until is { } until && until < now ? until : now;
+        IsLoading = true;
+        return new(++_revision, scope, scope with { Until = BrowsingUntil }, pageNumber);
+    }
+    public bool IsCurrent(HistoryPageRequest request) => request.Revision == _revision && request.Scope == Scope;
+    public bool TryApply(HistoryPageRequest request, SessionPage page)
+    {
+        if (!IsCurrent(request) || page.PageNumber != request.PageNumber) return false;
+        PageNumber = page.PageNumber; ItemCount = page.Sessions.Count; HasMore = page.HasMore; IsLoading = false;
+        return true;
+    }
+    public bool TryFail(HistoryPageRequest request)
+    {
+        if (!IsCurrent(request)) return false;
+        IsLoading = false; return true;
+    }
+}
+
 public partial class MainWindow
 {
     private SessionStore _store = null!;
@@ -27,6 +66,8 @@ public partial class MainWindow
     private long _historyRevision;
     private bool _historyLoading;
     private Task? _replayTask;
+    private readonly HistoryPagingState _historyPaging = new();
+    private CancellationTokenSource? _historyListCancellation;
 
     private sealed record DeckItem(DeckVersion Value)
     { public string Label => $"{Value.Name} · {Value.CreatedAt.ToLocalTime():MM-dd HH:mm} · {Value.Id[..6]}"; }
@@ -175,6 +216,11 @@ public partial class MainWindow
         _closing = true;
         try
         {
+            var historyRead = _historyListCancellation; _historyListCancellation = null;
+            if (_historyPaging.IsLoading) HistoryPageText.Text = "记录读取已取消，可刷新重试。";
+            _historyPaging.Reset(_historyPaging.Scope ?? new());
+            try { historyRead?.Cancel(); } finally { historyRead?.Dispose(); }
+            RefreshHistoryPageButtons();
             // Even a fully synchronous save must leave this Closing callback before calling Close again.
             await System.Windows.Threading.Dispatcher.Yield(DispatcherPriority.Background);
             await StopRecordingAsync();
@@ -184,22 +230,93 @@ public partial class MainWindow
         catch (Exception error)
         {
             _allowClose = false; _closing = false;
+            RefreshHistoryPageButtons();
             StatusText.Text = "记录尚未安全保存，请重试关闭：" + error.Message;
         }
     }
 
-    private async Task RefreshHistoryAsync()
+    private Task RefreshHistoryAsync() => LoadHistoryPageAsync(1, refresh: true);
+
+    private SessionFilter HistoryFilter() => new(CardBuild: HistoryFilterText(StatsBuildBox.Text), DeckVersionId: HistoryFilterText(StatsDeckBox.Text),
+        OpponentClass: HistoryFilterText(StatsOpponentBox.Text)?.ToUpperInvariant(),
+        WentFirst: StatsFirstBox.SelectedIndex switch { 1 => true, 2 => false, _ => null },
+        Format: "STANDARD", PlayerClass: "HUNTER", Region: "CN", GameType: RankedOnlyBox.IsChecked == true ? "GT_RANKED" : null);
+    private static string? HistoryFilterText(string text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+
+    private void ClearHistoryPageSelection()
     {
-        var decks = (await _store.ListDeckVersionsAsync()).ToDictionary(d => d.Id);
-        var filter = new SessionFilter(CardBuild: Null(StatsBuildBox.Text), DeckVersionId: Null(StatsDeckBox.Text),
-            OpponentClass: Null(StatsOpponentBox.Text), WentFirst: StatsFirstBox.SelectedIndex switch { 1 => true, 2 => false, _ => null },
-            Format: "STANDARD", PlayerClass: "HUNTER", Region: "CN", GameType: RankedOnlyBox.IsChecked == true ? "GT_RANKED" : null);
-        var sessions = await _store.ListSessionsAsync(filter);
-        SessionsGrid.ItemsSource = sessions.Select(s => new SessionItem(s,
-            s.DeckVersionId is { } id && decks.TryGetValue(id, out var deck) ? $"{deck.Name} · {id[..6]}" : "未绑定套牌")).ToArray();
-        var stats = await _store.GetStatsAsync(filter);
-        StatsText.Text = $"{(filter.GameType is null ? "标准猎人" : "标准猎人天梯")} · {stats.Games} 局 · {stats.Wins}胜 {stats.Losses}负 {stats.Ties}平 · 胜率 {(stats.WinRate is { } rate ? rate.ToString("P1") : "样本不足")} · 未完成/未知 {stats.Unknown} 局";
-        static string? Null(string text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+        _historyRevision++; _historyLoading = false;
+        SessionsGrid.ItemsSource = null; DecisionsList.ItemsSource = null;
+        if (_historyContext is null)
+        { _historyObservedAt = null; EventsGrid.ItemsSource = null; HistorySnapshotText.Text = ""; }
+        // A completed historical frame stays explicitly pinned while the list changes.
+        // A new session selection still clears that frame before loading another session's decisions.
+        if (_analysis is not null) InvalidateAdvice();
+    }
+
+    private async Task LoadHistoryPageAsync(int pageNumber, bool refresh = false)
+    {
+        if (_store is null || _closing) return;
+        var request = _historyPaging.Begin(HistoryFilter(), pageNumber, DateTimeOffset.UtcNow, refresh);
+        _historyListCancellation?.Cancel(); _historyListCancellation?.Dispose();
+        _historyListCancellation = new CancellationTokenSource(); var token = _historyListCancellation.Token;
+        HistoryPageText.Text = $"正在读取第 {request.PageNumber} 页…";
+        StatsText.Text = "正在读取匹配范围的战绩…";
+        RefreshHistoryPageButtons();
+        try
+        {
+            var data = await Task.Run(async () =>
+            {
+                var decks = await _store.ListDeckVersionsAsync(token);
+                var page = await _store.ListSessionPageAsync(request.Query, request.PageNumber, 100, token);
+                var stats = await _store.GetStatsAsync(request.Query, token);
+                return (Decks: decks.ToDictionary(deck => deck.Id), Page: page, Stats: stats);
+            }, token);
+            if (_closing || !_historyPaging.TryApply(request, data.Page)) return;
+            ClearHistoryPageSelection();
+            SessionsGrid.ItemsSource = data.Page.Sessions.Select(session => new SessionItem(session,
+                session.DeckVersionId is { } id && data.Decks.TryGetValue(id, out var deck) ? $"{deck.Name} · {id[..6]}" : "未绑定套牌")).ToArray();
+            var stats = data.Stats;
+            StatsText.Text = $"{(request.Scope.GameType is null ? "标准猎人" : "标准猎人天梯")} · {stats.Games} 局 · {stats.Wins}胜 {stats.Losses}负 {stats.Ties}平 · 胜率 {(stats.WinRate is { } rate ? rate.ToString("P1") : "样本不足")} · 未完成/未知 {stats.Unknown} 局";
+            HistoryPageText.Text = $"第 {data.Page.PageNumber} 页 · 本页 {data.Page.Sessions.Count} 条 · " +
+                (data.Page.HasMore ? "后面还有记录" : "已到末页") + "（刷新可包含新记录）";
+            HistoryStatusText.Text = _historyContext is { } pinned
+                ? $"记录列表已更新；仍固定复盘 {pinned.SessionId} · #{pinned.Snapshot.EventSequence}。选择新对局再切换局面。"
+                : "选择一局，再选择决策点查看当时信息。";
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch
+        {
+            if (_closing || !_historyPaging.TryFail(request)) return;
+            HistoryPageText.Text = "记录读取失败，请刷新重试。";
+            StatsText.Text = "战绩读取失败，请刷新重试。";
+            throw;
+        }
+        finally { if (!_closing && _historyPaging.IsCurrent(request)) RefreshHistoryPageButtons(); }
+    }
+    private void RefreshHistoryPageButtons()
+    {
+        var ready = _store is not null && !_historyPaging.IsLoading && !_closing;
+        SessionsGrid.IsEnabled = ready;
+        SessionPrevPageButton.IsEnabled = ready && _historyPaging.PageNumber > 1;
+        SessionNextPageButton.IsEnabled = ready && _historyPaging.HasMore && _historyPaging.PageNumber < int.MaxValue;
+    }
+    private async void HistoryFilterChanged(object sender, RoutedEventArgs e)
+    {
+        if (_store is null || _closing) return;
+        _historyPaging.Reset(HistoryFilter());
+        ClearHistoryPageSelection();
+        await Run(RefreshHistoryAsync);
+    }
+    private async void HistoryPrevPageClicked(object sender, RoutedEventArgs e)
+    {
+        if (!_historyPaging.IsLoading && _historyPaging.PageNumber > 1)
+            await Run(() => LoadHistoryPageAsync(_historyPaging.PageNumber - 1));
+    }
+    private async void HistoryNextPageClicked(object sender, RoutedEventArgs e)
+    {
+        if (!_historyPaging.IsLoading && _historyPaging.HasMore && _historyPaging.PageNumber < int.MaxValue)
+            await Run(() => LoadHistoryPageAsync(_historyPaging.PageNumber + 1));
     }
     private async void RefreshHistoryClicked(object sender, RoutedEventArgs e) => await Run(RefreshHistoryAsync);
     private async void SessionSelected(object sender, SelectionChangedEventArgs e) => await Run(async () =>
