@@ -48,6 +48,8 @@ public sealed record SimulatedState(int AvailableMana, IReadOnlyList<SimulatedEn
     public IReadOnlyList<DiscoveryPlayOutcome> DiscoveryPreviews { get; init; } = [];
     public bool MapFollowupBoundaryReached { get; init; }
     public IReadOnlyList<MapPlayTriggerOutcome> MapPlayPreviews { get; init; } = [];
+    public bool MagmaSplitBoundaryReached { get; init; }
+    public IReadOnlyList<MagmaSplitOutcome> MagmaSplitPreviews { get; init; } = [];
 }
 public sealed record LineEvaluation(string MatchId, long StateVersion, LineVerification Verification,
     bool? IsLegal, bool IsLethal, bool PotentialLethal, int AppliedActions,

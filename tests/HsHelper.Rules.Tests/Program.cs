@@ -368,7 +368,7 @@ Run("real goldrinn can be summoned then rush with its own damage aura", () =>
 });
 Run("real magma hound can rush and split damage deterministically after the last opposing minion dies", () =>
 {
-    var snapshot = Fixture(Hand(30, "FIR_953", 8), Minion(20, "VANILLA", 2, 1, 5));
+    var snapshot = Fixture(ObservedHand(30, "FIR_953", 8, 5, 8), Minion(20, "VANILLA", 2, 1, 5));
     var before = JsonSerializer.Serialize(snapshot);
     var result = Eval(snapshot, new PlannedAction(ActionKind.PlayCard, 30), new PlannedAction(ActionKind.Attack, 30, 20));
     Equal(LineVerification.Verified, result.Verification); Equal(2, result.Result.AvailableMana);
@@ -428,7 +428,7 @@ Run("magma hound stops damage and lifesteal packets when the opposing hero dies"
 });
 Run("bounded lethal search includes audited rush summons and keeps unresolved magma outcomes unverified", () =>
 {
-    var snapshot = Replace(Fixture(Hand(30, "FIR_953", 8), Minion(20, "TAUNT", 2, 1, 5)), Hero(11, 2, 5));
+    var snapshot = Replace(Fixture(ObservedHand(30, "FIR_953", 8, 5, 8), Minion(20, "TAUNT", 2, 1, 5)), Hero(11, 2, 5));
     var result = evaluator.FindLethal(snapshot, cards, maximumDepth: 2, maximumNodes: 200);
     Equal(true, result.VerifiedLethalFound); Equal(false, result.IsExhaustive);
     Equal(ActionKind.PlayCard, result.Actions[0].Kind); Equal(30, result.Actions[0].SourceEntityId);
@@ -672,6 +672,8 @@ foreach (var (name, run) in MapFollowupChecks.Cases()) Run(name, run);
 foreach (var (name, run) in SideboardChoiceEvidenceChecks.Cases()) Run(name, run);
 foreach (var (name, run) in HunterDiscoveryLineChecks.Cases(cards)) Run(name, run);
 foreach (var (name, run) in HunterMapPlayChecks.Cases()) Run(name, run);
+foreach (var (name, run) in MagmaSplitChecks.Cases()) Run(name, run);
+foreach (var (name, run) in HunterMagmaLineChecks.Cases(cards)) Run(name, run);
 
 if (args.Length == 1)
 {

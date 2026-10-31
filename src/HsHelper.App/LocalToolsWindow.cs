@@ -29,6 +29,7 @@ public sealed class LocalToolsWindow : Window
     private readonly Button _previewDraw = new() { Content = "预览所选手牌抽牌" };
     private readonly Button _previewGeneration = new() { Content = "预览随机生成数量" };
     private readonly Button _previewWolfBlessing = new() { Content = "比较巨狼祝福分支" };
+    private readonly Button _previewMagmaSplit = new() { Content = "预览熔岩猎犬分配", ToolTip = "使用当前攻击者与攻击对象预览基础交换及后置逐包随机分配；攻击对象不是随机命中，不改变当前局面。" };
     private readonly Button _previewPlayTriggers = new() { Content = "预览使用后触发", ToolTip = "预览原生发现、拼装、回溯入口及使用后任务和迅猛龙触发；各段条件独立，实际出牌仍须验证。" };
     private readonly Button _inspectEffect = new() { Content = "查看所选牌当前效果" };
     private readonly TextBox _depth = new() { Text = "4", Width = 45 };
@@ -77,6 +78,7 @@ public sealed class LocalToolsWindow : Window
         };
         _add.Click += (_, _) => AddAction();
         _source.SelectionChanged += (_, _) => RefreshEnabled();
+        _target.SelectionChanged += (_, _) => RefreshEnabled();
         _previewDraw.Click += (_, _) =>
         {
             if (_source.SelectedItem is EntityOption source)
@@ -91,6 +93,11 @@ public sealed class LocalToolsWindow : Window
         {
             if (_source.SelectedItem is EntityOption source)
                 _ = RunToolAsync("evaluate_wolf_blessing", new() { ["source_entity_id"] = source.Id });
+        };
+        _previewMagmaSplit.Click += (_, _) =>
+        {
+            if (_source.SelectedItem is EntityOption source && _target.SelectedItem is EntityOption target)
+                _ = RunToolAsync("evaluate_magma_split", new() { ["source_entity_id"] = source.Id, ["target_entity_id"] = target.Id });
         };
         _previewPlayTriggers.Click += (_, _) =>
         {
@@ -331,6 +338,14 @@ public sealed class LocalToolsWindow : Window
             _snapshot.Entities.TryGetValue(generation.Id, out var generator) && generator.Zone == "HAND" && generator.CardId == "CORE_UNG_912";
         _previewWolfBlessing.IsEnabled = ready && _snapshot.Phase == GamePhase.Main && _source.SelectedItem is EntityOption wolf &&
             _snapshot.Entities.TryGetValue(wolf.Id, out var power) && power.Zone == "PLAY" && power.CardId == "EDR_850p";
+        _previewMagmaSplit.IsEnabled = ready && _snapshot.ClientBuild == "255790" && _snapshot.Phase == GamePhase.Main &&
+            _snapshot.Quality.HasGameStart && _snapshot.Quality.IsStable && _snapshot.Quality.IsComplete && _snapshot.Quality.OpenBlockCount == 0 &&
+            (_kind.SelectedItem as KindOption)?.Kind == "attack" && ChoiceVisibility.ConfirmedLocalPlayer(_snapshot) is { } magmaLocal && magmaLocal is (1 or 2) &&
+            _snapshot.ActivePlayerId == magmaLocal && _source.SelectedItem is EntityOption magma && _target.SelectedItem is EntityOption attacked &&
+            _snapshot.Entities.TryGetValue(magma.Id, out var magmaSource) && magmaSource.CardId == "FIR_953" &&
+            PreviewBoardMinion(magmaSource, magmaLocal) && !AssembledCardText.RequiresCustomText(magmaSource.Tags) &&
+            _snapshot.Entities.TryGetValue(attacked.Id, out var magmaTarget) && magmaTarget.ControllerId is { } targetOwner &&
+            targetOwner is (1 or 2) && targetOwner != magmaLocal && PreviewBoardMinion(magmaTarget, targetOwner);
         _previewPlayTriggers.IsEnabled = ready && _snapshot.Phase == GamePhase.Main && _snapshot.Quality.HasGameStart && _snapshot.Quality.IsStable &&
             _snapshot.Quality.IsComplete && _snapshot.Quality.OpenBlockCount == 0 && (_kind.SelectedItem as KindOption)?.Kind == "play" &&
             ChoiceVisibility.ConfirmedLocalPlayer(_snapshot) is (1 or 2) and var local && _snapshot.ActivePlayerId == local && _source.SelectedItem is EntityOption played &&
@@ -352,6 +367,13 @@ public sealed class LocalToolsWindow : Window
         _result.Text = $"{name}应为 {minimum}～{maximum} 的整数。"; return false;
     }
 
+    private static bool PreviewBoardMinion(EntitySnapshot entity, int owner) => entity.Kind == EntityKind.Card && entity.Zone == "PLAY" &&
+        entity.ControllerId == owner && (!entity.Tags.TryGetValue("49", out var zone) || zone is "PLAY" or "1") &&
+        (!entity.Tags.TryGetValue("50", out var alias) || int.TryParse(alias, out var controller) && controller == owner) &&
+        (entity.Tags.ContainsKey("CARDTYPE") || entity.Tags.ContainsKey("202")) &&
+        (!entity.Tags.TryGetValue("CARDTYPE", out var named) || named is "MINION" or "4") &&
+        (!entity.Tags.TryGetValue("202", out var numeric) || numeric is "MINION" or "4");
+
     private FrameworkElement BuildContent()
     {
         var body = new StackPanel { Margin = new Thickness(14) };
@@ -361,7 +383,7 @@ public sealed class LocalToolsWindow : Window
         body.Children.Add(new TextBlock { Text = "候选顺序：编辑动作只影响本地计算", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
         body.Children.Add(Row(_kind, _source, Label("目标"), _target, _add));
         body.Children.Add(_actions); body.Children.Add(Row(_remove, _evaluate, _inspectEffect));
-        body.Children.Add(Row(_previewDraw, _previewGeneration, _previewWolfBlessing, _previewPlayTriggers));
+        body.Children.Add(Row(_previewDraw, _previewGeneration, _previewWolfBlessing, _previewMagmaSplit, _previewPlayTriggers));
         body.Children.Add(Row(Label("搜索深度"), _depth, Label("节点上限"), _nodes, _lethal));
         body.Children.Add(new TextBlock { Text = "我方当前选择", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
         body.Children.Add(_choiceLabel); body.Children.Add(_choices); body.Children.Add(Row(_validateChoice, _evaluateChoice, _cancel));
@@ -375,6 +397,7 @@ public sealed class LocalToolsWindow : Window
         Register("LocalPreviewDrawButton", _previewDraw);
         Register("LocalPreviewGenerationButton", _previewGeneration);
         Register("LocalPreviewWolfBlessingButton", _previewWolfBlessing);
+        Register("LocalPreviewMagmaSplitButton", _previewMagmaSplit);
         Register("LocalPreviewPlayTriggersButton", _previewPlayTriggers);
         Register("LocalInspectEffectButton", _inspectEffect);
         Register("LocalCancelButton", _cancel); Register("LocalResultBox", _result);
@@ -437,6 +460,19 @@ public static class LocalToolResultFormatter
         if (tool == "evaluate_wolf_blessing")
         {
             AppendWolfBlessing(lines, result, entityName); return string.Join("\n", lines);
+        }
+        if (tool == "evaluate_magma_split")
+        {
+            lines.Add("熔岩猎犬攻击与后置随机分配 · 条件预览");
+            lines.Add("攻击与相关机制合法性：" + (result["AttackIsLegal"]?.ToString() switch
+            { "true" => "在已覆盖范围内成立", "false" => "不成立", _ => "未知或仍有条件，不能确认完整动作合法" }));
+            lines.Add("已预览基础攻击动作数：" + (result["AppliedActions"]?.ToString() ?? "未知") + "（未修改原局面）");
+            if (result["Split"] is JsonObject split) AppendMagmaSplit(lines, split, entityName);
+            else lines.Add("攻击尚未形成可用的后置分配证据，不能生成随机结果。");
+            foreach (var key in new[] { "Errors", "Assumptions" })
+                if (result[key] is JsonArray values) foreach (var value in values) lines.Add("· " + value);
+            lines.Add("攻击对象不是随机命中；不能选择分支、拼接有利区间或据此证明斩杀，后续动作须等待新局面。");
+            return string.Join("\n", lines);
         }
         if (tool == "evaluate_play_triggers")
         {
@@ -561,6 +597,10 @@ public static class LocalToolResultFormatter
             if (state["WolfBlessingBoundaryReached"]?.ToString() == "true") lines.Add("巨狼祝福的实际命中待确认；未修改任一候选，后续动作须等待新局面。");
             if (state["WolfBlessingPreviews"] is JsonArray wolfPreviews)
                 foreach (var wolf in wolfPreviews.OfType<JsonObject>()) AppendWolfBlessing(lines, wolf, entityName);
+            if (state["MagmaSplitPreviews"] is JsonArray magmaPreviews)
+                foreach (var magma in magmaPreviews.OfType<JsonObject>()) AppendMagmaSplit(lines, magma, entityName);
+            if (state["MagmaSplitBoundaryReached"]?.ToString() == "true")
+                lines.Add("熔岩猎犬后置随机分配尚未观察；当前投影不是任一分支的实际结果，后续动作须等待新局面，也不能证明斩杀。");
             if (state["DiscoveryPreviews"] is JsonArray discoveryPreviews)
                 foreach (var discovery in discoveryPreviews.OfType<JsonObject>()) AppendDiscovery(lines, discovery);
             if (state["DiscoveryBoundaryReached"]?.ToString() == "true")
@@ -697,7 +737,59 @@ public static class LocalToolResultFormatter
 
     private static bool PendingChoiceBoundary(JsonNode? evaluation) =>
         evaluation?["Result"]?["DiscoveryBoundaryReached"]?.ToString() == "true" ||
-        evaluation?["Result"]?["MapFollowupBoundaryReached"]?.ToString() == "true";
+        evaluation?["Result"]?["MapFollowupBoundaryReached"]?.ToString() == "true" ||
+        evaluation?["Result"]?["MagmaSplitBoundaryReached"]?.ToString() == "true";
+
+    private static void AppendMagmaSplit(List<string> lines, JsonNode split, Func<int, string> entityName)
+    {
+        lines.Add("熔岩猎犬逐包分配预览：触发条件" + (split["TriggerActive"]?.ToString() switch
+            { "true" => "在列出条件下满足", "false" => "未满足或已抑制", _ => "未知" }) + "。");
+        lines.Add($"请求伤害包数：{split["RequestedPackets"]?.ToString() ?? "未知"}；每包伤害（含已覆盖修正）：{split["DamagePerPacket"]?.ToString() ?? "未知"}。");
+        if (split["PriorResolutionPending"]?.ToString() == "true") lines.Add("前序结算仍待确认，以下后置分配只作条件预览。");
+        lines.Add(split["IsEnumerationComplete"]?.ToString() == "true"
+            ? "本次已覆盖分配枚举完整；这仍不是实际随机命中或完整对局结算。"
+            : "枚举未完成或已截断；已列分支不代表全部可能结果，不能据此排除未列出的结果。");
+        if (split["ResolvesBranches"]?.ToString() != "true") lines.Add("当前证据不足以完整展开随机分支，缺失数值保持未知。");
+        if (split["Targets"] is JsonArray ranges)
+            foreach (var target in ranges.OfType<JsonObject>())
+                lines.Add($"· {TargetName(target)}：分配伤害 {MagmaRange(target["Damage"])}；生命 {MagmaRange(target["RemainingHealth"])}；护甲 {MagmaRange(target["RemainingArmor"])}；存活 {YesNo(target["Survives"])}。");
+        if (split["Branches"] is JsonArray branches)
+        {
+            if (branches.Count == 0 && split["TriggerActive"]?.ToString() != "false") lines.Add("未列出可确认分支，不表示没有伤害或没有其它可能。");
+            foreach (var branch in branches.OfType<JsonObject>())
+            {
+                lines.Add($"候选分支 {branch["Id"]?.ToString() ?? "未知"}：预览分配 {branch["PacketsApplied"]?.ToString() ?? "未知"} 包，剩余 {branch["PacketsRemaining"]?.ToString() ?? "未知"} 包；" +
+                    (branch["IsComplete"]?.ToString() == "true" ? "该分支已展开" : "该分支未完整展开") + "；" + MagmaStop(branch["StopReason"]?.ToString()) + "。");
+                if (branch["Targets"] is JsonArray targets)
+                    foreach (var target in targets.OfType<JsonObject>())
+                        lines.Add($"  {TargetName(target)}：生命 {target["RemainingHealth"]?.ToString() ?? "未知"} / 护甲 {target["RemainingArmor"]?.ToString() ?? "未知"}；圣盾 {YesNo(target["DivineShield"])}；存活 {YesNo(target["IsAlive"])}。");
+                lines.Add($"  我方英雄生命预览 {branch["SourceHeroHealthAfter"]?.ToString() ?? "未知"}；本分支吸血恢复 {branch["LifestealHealing"]?.ToString() ?? "未知"}。");
+            }
+        }
+        foreach (var key in new[] { "Unknowns", "Assumptions" })
+            if (split[key] is JsonArray values) foreach (var value in values) lines.Add("· " + value);
+        lines.Add("各目标区间互相关联，不能拼接上下界为一个有利局面；不指定随机顺序、命中或概率，不修改当前局面。");
+        string TargetName(JsonNode target) => target["EntityId"] is JsonValue value && value.TryGetValue<int>(out var id) ? entityName(id) : "未知公开目标";
+        static string YesNo(JsonNode? value) => value?.ToString() switch { "true" => "是", "false" => "否", _ => "未知" };
+    }
+    private static string MagmaRange(JsonNode? range)
+    {
+        if (range is null) return "未知";
+        var minimum = range["Minimum"]?.ToString(); var maximum = range["Maximum"]?.ToString();
+        return minimum is null ? "未知" : maximum == minimum ? minimum : maximum is null ? minimum + "～上界未知" : minimum + "～" + maximum;
+    }
+    private static string MagmaStop(string? reason) => reason switch
+    {
+        "AllPacketsApplied" => "请求伤害包已用尽",
+        "NoNativeTrigger" => "本次没有已覆盖的原生后置触发",
+        "EnemyHeroDied" or "HeroDied" or "HeroDeath" => "英雄死亡，停止后续包",
+        "NoEligibleTargets" or "NoTargets" => "没有已确认可继续分配的目标",
+        "EnumerationLimit" or "Truncated" or "StateLimit" or "PacketLimit" => "达到枚举限制，结果已截断",
+        "DeathrattleOrReborn" => "出现亡语或复生，等待后续观测",
+        "UncoveredTargetEffect" => "目标存在未覆盖的受伤或其它效果，等待观测",
+        "ImmuneTargetPolicyUnknown" => "免疫角色的随机分配规则尚未确认",
+        _ => "停止原因尚待确认"
+    };
 
     private static void AppendMap(List<string> lines, JsonNode map, Func<int, string> entityName)
     {

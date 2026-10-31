@@ -233,6 +233,7 @@ await HunterPlayTriggerIntegration.RunAsync(temp, Pass);
 await NativeDiscoveryIntegration.RunAsync(temp, Pass);
 await MapLifecycleIntegration.RunAsync(temp, Pass);
 await SideboardChoiceEvidenceIntegration.RunAsync(temp, Pass);
+await MagmaSplitIntegration.RunAsync(temp, Pass);
 
 if (args.Length == 2)
 {

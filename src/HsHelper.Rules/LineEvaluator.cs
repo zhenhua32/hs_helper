@@ -25,7 +25,7 @@ public sealed partial class LineEvaluator
         "build255790：苦花骑士、振翅守卫与幽爪熊灌注；单一野兽的巨狼祝福及多候选互斥分支；无法确认当前参数时保留未知",
         "build255790：宝石鹦鹉原生生成的直接数量与满手损失；生成及随机命中后等待新局面，不推测牌身份或选择结果",
         "build255790：围攻城门安装及已观察进度延续，奖励选择前停止；梦缚迅猛龙入场与来源/目标绑定的使用后触发次数，随机额外效果待观察",
-        "build255790：熔岩猎犬入场、突袭及击杀最后敌方随从后对唯一敌方英雄的分配伤害；多个候选仍保留随机限制",
+        "build255790：熔岩猎犬入场、突袭及唯一敌方英雄的确定分配伤害；多目标列有限逐包分支与范围，实际命中前等待新局面",
         "build255790：阿迦玛甘入场与下一张牌的对手生命支付，当前费用上限10；未知剩余效力不由本体推断",
         "build255790：神秘恐魔入场及己方回合结束；唯一敌方随从展开强制战斗，多目标/多触发顺序与未实证计数字段保留条件",
         "未知奥秘、未覆盖光环/触发、亡语与复生会降低为有条件结果；发现与随机选项不自行生成，选择范围可单独核验",
@@ -43,10 +43,14 @@ public sealed partial class LineEvaluator
 
     public LineEvaluation EvaluateLine(GameSnapshot snapshot, IReadOnlyList<PlannedAction> actions,
         IReadOnlyDictionary<string, CardRecord> cards, CancellationToken cancellationToken = default)
+        => EvaluateLineCore(snapshot, actions, cards, cancellationToken, previewMagmaOnly: false);
+
+    private LineEvaluation EvaluateLineCore(GameSnapshot snapshot, IReadOnlyList<PlannedAction> actions,
+        IReadOnlyDictionary<string, CardRecord> cards, CancellationToken cancellationToken, bool previewMagmaOnly)
     {
         ArgumentNullException.ThrowIfNull(snapshot); ArgumentNullException.ThrowIfNull(actions); ArgumentNullException.ThrowIfNull(cards);
         cancellationToken.ThrowIfCancellationRequested();
-        var state = new Runtime(snapshot, cards);
+        var state = new Runtime(snapshot, cards, previewMagmaOnly);
         if (actions.Count is 0 or > 16) state.Invalid("动作序列需要包含1至16步。");
         else if (!snapshot.Quality.IsComplete || !snapshot.Quality.IsStable || !snapshot.Quality.HasLocalPerspective || snapshot.IsSpectating)
             state.Unsupported("INCOMPLETE_SNAPSHOT", "局面不完整、未稳定、我方视角尚未确认或正在观战。");
@@ -68,6 +72,7 @@ public sealed partial class LineEvaluator
                 if (state.RaptorBoundaryReached) { state.Unsupported("AWAIT_RAPTOR_SNAPSHOT", "梦缚迅猛龙的随机额外效果尚未观察，不能假定关键词后继续动作。"); break; }
                 if (state.DiscoveryBoundaryReached) { state.Unsupported("AWAIT_DISCOVERY_SNAPSHOT", "原生发现、拼装或回溯选择尚未观察；请在新选择局面中继续，不能提前使用未生成的候选或恢复旧局面。"); break; }
                 if (state.MapFollowupBoundaryReached) { state.Unsupported("AWAIT_MAP_FOLLOWUP_SNAPSHOT", "地图首选实体已在本地顺序中使用，追加选择尚未观察；请等待真实剩余选项，不得跨过该边界继续动作。"); break; }
+                if (state.MagmaSplitBoundaryReached) { state.Unsupported("AWAIT_MAGMA_SPLIT_SNAPSHOT", "熔岩猎犬的实际分配伤害尚未观察；分支不能作为已发生结果，请等待新局面后继续动作。"); break; }
                 if (state.StopForExistingQuestReward()) break;
                 if (state.TurnEnded) { state.Invalid("己方回合已经结束，不能在未观察下一决策点前继续安排动作。"); break; }
                 if (state.EnemyHero!.Health <= 0 || state.OwnHero!.Health <= 0)
@@ -361,9 +366,9 @@ public sealed partial class LineEvaluator
         private bool _unresolved;
         public int Applied;
 
-        public Runtime(GameSnapshot snapshot, IReadOnlyDictionary<string, CardRecord> cards)
+        public Runtime(GameSnapshot snapshot, IReadOnlyDictionary<string, CardRecord> cards, bool previewMagmaOnly = false)
         {
-            _snapshot = snapshot; _cards = cards;
+            _snapshot = snapshot; _cards = cards; _previewMagmaOnly = previewMagmaOnly;
             foreach (var source in snapshot.Entities.Values)
             {
                 var values = source.Tags.Where(t => int.TryParse(t.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
@@ -636,6 +641,7 @@ public sealed partial class LineEvaluator
                   RaptorBoundaryReached = RaptorBoundaryReached, RaptorPreviews = Array.AsReadOnly(_raptorPreviews.ToArray()),
                   DiscoveryBoundaryReached = DiscoveryBoundaryReached, DiscoveryPreviews = Array.AsReadOnly(_discoveryPreviews.ToArray()),
                   MapFollowupBoundaryReached = MapFollowupBoundaryReached, MapPlayPreviews = Array.AsReadOnly(_mapPlayPreviews.ToArray()),
+                  MagmaSplitBoundaryReached = MagmaSplitBoundaryReached, MagmaSplitPreviews = Array.AsReadOnly(_magmaSplitPreviews.ToArray()),
                     NextCardCostsOpponentHealth = _nextCardCostsOpponentHealth,
                     OpponentDefeatedByPayment = OpponentDefeatedByPayment,
                     OpponentHealthPayments = Array.AsReadOnly(_opponentHealthPayments.ToArray()),

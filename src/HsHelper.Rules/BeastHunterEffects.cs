@@ -62,14 +62,19 @@ public sealed partial class LineEvaluator
 
         public void ResolveMagmaHoundAfterAttack(Entity source, Entity target)
         {
-            if (source.CardId != "FIR_953" || target.Type != "MINION" || !source.Alive ||
-                source.Zone != "PLAY" || source.Health is not > 0 || Silenced(source)) return;
-            if (_snapshot.ClientBuild != AuditedBuild)
-            { Conditional("当前版本的熔岩猎犬攻击后触发尚未审计，未展开分配伤害。", "UNAUDITED_MAGMA_HOUND_BUILD"); return; }
+            if (source.CardId != "FIR_953" || target.Type != "MINION") return;
+            var preview = PreviewMagmaSplit(source, target);
+            if (_previewMagmaOnly || !preview.SingleHeroStateAudited)
+            {
+                RecordMagmaSplit(source, target, preview);
+                if (_snapshot.ClientBuild != AuditedBuild)
+                    Conditional("当前版本的熔岩猎犬攻击后触发尚未审计，未展开分配伤害。", "UNAUDITED_MAGMA_HOUND_BUILD");
+                return;
+            }
             var enemies = Entities.Values.Where(e => e.Alive && e.Zone == "PLAY" && e.Controller != source.Controller &&
                 e.Type is "HERO" or "MINION" && !Has(e, "DORMANT") && !Has(e, "UNTOUCHABLE")).ToArray();
             if (enemies.Length != 1 || enemies[0].Id != EnemyHero?.Id)
-            { Conditional("熔岩猎犬攻击后的伤害仍有多个或未确认的敌方候选，未选择随机分配结果；当前交换不包含该分配伤害。", "FIR_953_RANDOM_AFTER_ATTACK"); return; }
+            { RecordMagmaSplit(source, target, preview); return; }
             var hero = enemies[0];
             if (source.Attack is null or < 0 || hero.Health is null || hero.Armor < 0)
             { Conditional("熔岩猎犬攻击力或敌方英雄当前生命/护甲未知，未展开分配伤害。", "UNKNOWN_MAGMA_HOUND_DAMAGE"); return; }

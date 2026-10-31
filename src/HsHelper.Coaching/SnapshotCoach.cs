@@ -173,6 +173,23 @@ public sealed class SnapshotCoach
             return Node(GenerationResolutionRules.Evaluate(_snapshot, args["source_entity_id"]!.GetValue<int>(), rulesCards));
         if (name == "evaluate_wolf_blessing")
             return Node(WolfBlessingResolutionRules.Evaluate(_snapshot, args["source_entity_id"]!.GetValue<int>(), rulesCards));
+        if (name == "evaluate_magma_split")
+        {
+            var sourceId = args["source_entity_id"]!.GetValue<int>(); var targetId = args["target_entity_id"]!.GetValue<int>();
+            if (ChoiceVisibility.ConfirmedLocalPlayer(_snapshot) is not { } local || local is not (1 or 2) || _snapshot.ClientBuild != "255790" ||
+                _snapshot.Phase != GamePhase.Main || _snapshot.ActivePlayerId != local || !_snapshot.Quality.HasGameStart ||
+                !_snapshot.Quality.IsComplete || !_snapshot.Quality.IsStable || _snapshot.Quality.OpenBlockCount != 0 ||
+                _snapshot.Entities.Any(pair => pair.Key != pair.Value.Id) ||
+                !_snapshot.Entities.TryGetValue(sourceId, out var source) || source.Id != sourceId || source.Kind != EntityKind.Card ||
+                source.CardId != "FIR_953" || source.Zone != "PLAY" || !OwnController(source, local) || !MagmaMinion(source) ||
+                AssembledCardText.RequiresCustomText(source.Tags) ||
+                source.Tags.TryGetValue("49", out var sourceZone) && sourceZone is not ("PLAY" or "1") ||
+                !_snapshot.Entities.TryGetValue(targetId, out var target) || target.Id != targetId || target.Kind != EntityKind.Card ||
+                target.ControllerId is not (1 or 2) || target.ControllerId == local || !OwnController(target, target.ControllerId.Value) ||
+                target.Zone != "PLAY" || !MagmaMinion(target) || target.Tags.TryGetValue("49", out var targetZone) && targetZone is not ("PLAY" or "1"))
+                return new JsonObject { ["error"] = "需要完整稳定我方回合中的原生熔岩猎犬与敌方场上随从；攻击对象不是可指定的随机命中。" };
+            return await Task.Run(() => Node(_rules.EvaluateMagmaSplit(_snapshot, sourceId, targetId, rulesCards, token)), token);
+        }
         if (name == "evaluate_play_triggers")
         {
             var sourceId = args["source_entity_id"]!.GetValue<int>();
@@ -295,6 +312,9 @@ public sealed class SnapshotCoach
     private static JsonNode Node<T>(T value) => JsonSerializer.SerializeToNode(value, Json)!;
     private static bool OwnController(EntitySnapshot entity, int local) => entity.ControllerId == local &&
         (!entity.Tags.TryGetValue("50", out var raw) || int.TryParse(raw, out var owner) && owner == local);
+    private static bool MagmaMinion(EntitySnapshot entity) => (entity.Tags.ContainsKey("CARDTYPE") || entity.Tags.ContainsKey("202")) &&
+        (!entity.Tags.TryGetValue("CARDTYPE", out var named) || named is "MINION" or "4") &&
+        (!entity.Tags.TryGetValue("202", out var numeric) || numeric is "MINION" or "4");
     private static JsonObject Schema(string json) => JsonNode.Parse(json)!.AsObject();
     private static bool Empty(JsonObject args) => args.Count == 0;
     private static bool ValidCardIds(JsonObject args) => args.Count == 1 && args["card_ids"] is JsonArray { Count: <= 30 } ids &&
@@ -322,6 +342,8 @@ public sealed class SnapshotCoach
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("evaluate_wolf_blessing", "比较巨狼祝福随机命中各野兽手牌的直接攻击/减费分支；不指定实际命中，不替换当前局面，不证明技能使用合法或后续斩杀。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
+        new AgentToolDefinition("evaluate_magma_split", "以当前我方原生熔岩猎犬及其攻击的敌方随从，预览基础攻击与后置逐包随机分配。target_entity_id仅为攻击对象，不是随机命中；不接受指定伤害、分配顺序、分支或概率。区间相关，截断分支不代表全部可能结果；整体是条件预览，不修改局面、不证明后续动作或斩杀。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1},"target_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id","target_entity_id"],"additionalProperties":false}"""),
+            args => args.Count == 2 && Integer(args["source_entity_id"], 1, int.MaxValue) && Integer(args["target_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("evaluate_play_triggers", "核对当前我方手牌的原生发现、拼装、回溯入口，并预览主机自动绑定的围攻城门进度与梦缚迅猛龙直接触发次数。发现入口以成功离手为条件，使用后触发以前置效果完成为条件；各段不是已经发生的完整结算。不接受指定进度、触发来源、候选、目标或随机效果。达到发现、任务奖励或随机边界后等待真实选择和新局面；不创建手牌实体、成品或最终费用，也不证明斩杀，合法出牌另用evaluate_line核验。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("get_recent_events", "查询固定决策点及以前的匿名事件摘要。", Schema("""{"type":"object","properties":{},"required":[],"additionalProperties":false}"""), Empty),
