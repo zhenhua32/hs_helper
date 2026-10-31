@@ -1,0 +1,124 @@
+{
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "cards": [
+    {
+      "artist": "James Ryman",
+      "attack": 1,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 97376,
+      "flavor": "地精珠宝商慕名而来，失望而归…",
+      "health": 2,
+      "howToEarn": "与猎人职业一同解锁。",
+      "howToEarnGolden": "使用猎人赢得50场对战后解锁。",
+      "id": "CORE_UNG_912",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "宝石鹦鹉",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "COMMON",
+      "set": "CORE",
+      "text": "<b>战吼：</b>&随机将一张野兽牌置入你的手牌。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Patrik Bjorkstrom",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 114020,
+      "flavor": "所谓物以类聚，那么幽爪熊该和谁一起冬眠？",
+      "health": 2,
+      "id": "EDR_227",
+      "mechanics": [
+        "DEATHRATTLE",
+        "RUSH"
+      ],
+      "name": "幽爪熊",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。<b>亡语：</b><b>灌注</b>你的英雄技能。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Eva Widermann",
+      "attack": 9,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 9,
+      "dbfId": 114254,
+      "elite": true,
+      "flavor": "以勇猛果决而闻名于世，且拥有的名号众多，其中包括洛戈什，还有巨狼。",
+      "health": 9,
+      "id": "EDR_480",
+      "mechanics": [
+        "AURA",
+        "RUSH"
+      ],
+      "name": "戈德林",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。友方野兽造成的伤害翻倍。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Timur Shevtsov",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 114933,
+      "flavor": "梦啊，梦，梦，梦……",
+      "health": 1,
+      "howToEarnGolden": "可以在<i>漫游翡翠梦境</i>奖励路线中获得该奖励。",
+      "id": "EDR_849",
+      "mechanics": [
+        "TRIGGER_VISUAL"
+      ],
+      "name": "梦缚迅猛龙",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "COMMON",
+      "set": "EMERALD_DREAM",
+      "text": "在你使用一张随从牌后，随机使其获得一项<b>额外效果</b>。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ramzy Kamen",
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 117596,
+      "flavor": "偶也不知道这个图案指向哪里！",
+      "id": "TLC_824",
+      "mechanics": [
+        "DISCOVER"
+      ],
+      "name": "奇异的地图",
+      "rarity": "COMMON",
+      "set": "THE_LOST_CITY",
+      "text": "<b>发现</b>一张攻击力为奇数的野兽牌，如果你在本回合中使用该牌，再从其余选项中选择一张。",
+      "type": "SPELL"
+    }
+  ],
+  "build": "255790"
+}

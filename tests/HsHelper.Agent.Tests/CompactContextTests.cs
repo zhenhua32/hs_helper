@@ -263,6 +263,9 @@ static class CompactContextTests
             Check(handler.Requests[0].Body.Contains(AdviceTaskTemplates.Get(kind).Version, StringComparison.Ordinal), "Missing task template version");
             var prompt = JsonNode.Parse(handler.Requests[0].Body)!["messages"]![0]!["content"]!.GetValue<string>();
             Check(prompt.Contains(AdviceTaskTemplates.Get(kind).Instructions, StringComparison.Ordinal), "Wrong system task template");
+            if (kind is AdviceTaskKind.Turn or AdviceTaskKind.Choice)
+                Check(prompt.Contains("MapFollowupBoundaryReached后等待真实追加选择", StringComparison.Ordinal) &&
+                    prompt.Contains("不是实际PLAY历史", StringComparison.Ordinal), "Map pending request lost its actual-history and observation boundary policy");
         }
         Check(AdviceTaskTemplates.Resolve("套牌计划") == AdviceTaskKind.DeckPlan && AdviceTaskTemplates.Resolve("局面复盘") == AdviceTaskKind.Review, "Task label aliases lost");
     }

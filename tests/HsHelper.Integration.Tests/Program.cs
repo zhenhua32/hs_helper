@@ -230,6 +230,9 @@ await HunterHistoryIntegration.RunAsync(temp, Pass);
 await AssembledEffectIntegration.RunAsync(temp, Pass);
 await HunterRandomEffectIntegration.RunAsync(temp, Pass);
 await HunterPlayTriggerIntegration.RunAsync(temp, Pass);
+await NativeDiscoveryIntegration.RunAsync(temp, Pass);
+await MapLifecycleIntegration.RunAsync(temp, Pass);
+await SideboardChoiceEvidenceIntegration.RunAsync(temp, Pass);
 
 if (args.Length == 2)
 {

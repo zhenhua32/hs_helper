@@ -11,6 +11,8 @@ internal static class ChoiceResolutionChecks
         yield return ("tracking resolves only the selected card and preserves the other deck candidates", () => Tracking(cards));
         yield return ("tracking still removes one selected card when the observed hand is full", () => FullHand(cards));
         yield return ("sideboard discovery reports granted discount without subtracting an already observed candidate cost", () => Sideboard(cards));
+        yield return ("sideboard effects require a current offer with proven timing rather than historical facts", () => SideboardOfferBinding(cards));
+        yield return ("sideboard effects reject bound current type contradictions without borrowing unidentified traits", () => SideboardCandidateTypes(cards));
         yield return ("odd map resolves its offered card but does not invent a second choice", () => Map(cards));
         yield return ("choice effects distinguish legal range from unknown source version and mechanisms", () => UnsupportedSources(cards));
         yield return ("choice effects reject source zone ownership and selected entity conflicts", () => SourceAndCandidate(cards));
@@ -60,6 +62,8 @@ internal static class ChoiceResolutionChecks
     private static void Sideboard(IReadOnlyDictionary<string, CardRecord> cards)
     {
         var frame = Frame("JAIL_831", "PLAY");
+        frame = frame with { Choice = frame.Choice! with { OfferedAtEventSequence = 90,
+            Options = [new(40, "EDR_227", 1, 0), new(41, "EDR_480", 1, 1)] } };
         var entities = frame.Entities.ToDictionary();
         entities[40] = Entity(40, "EDR_227", "SETASIDE", 1, ("COST", 0));
         var result = Evaluate(frame with { Entities = entities.ToFrozenDictionary() }, cards);
@@ -67,14 +71,69 @@ internal static class ChoiceResolutionChecks
         Check(result.SourceName == "下水道之王" && card.Origin == "Sideboard" && card.GrantedCostReduction == 3 &&
             card.ResultingCost is null && card.AddedToHand == true && result.DirectDeckChange is null,
             "Sideboard discovery used printed/candidate cost as final, double-discounted, or removed a deck card.");
-        Check(result.Unknowns.Any(text => text.Contains("重复战吼", StringComparison.Ordinal)), "A repeated battlecry's pool was treated as already simulated.");
+        Check(result.SideboardEvidence is { ResolvesEvidence: true, IsHistoryComplete: false, CurrentPoolIsExact: false,
+                CurrentOffer.OptionCount: 2, InitialReference: null } &&
+            result.Unknowns.Any(text => text.Contains("完整剩余池未知", StringComparison.Ordinal)),
+            "Actual current offers and missing historical evidence were confused with a simulated complete sideboard pool.");
+    }
+
+    private static void SideboardOfferBinding(IReadOnlyDictionary<string, CardRecord> cards)
+    {
+        var frame = Frame("JAIL_831", "PLAY");
+        frame = frame with { Choice = frame.Choice! with { OfferedAtEventSequence = 90 } };
+        var entry = new ChoiceHistoryEntry(3, 1, "GENERAL", 30, "JAIL_831", 1, 1, 30, 50,
+            [new(99, "EDR_227", 1, 0)], [], [99], true);
+        foreach (var bad in new[]
+        {
+            frame with { Choice = frame.Choice with { OfferedAtEventSequence = 0 } },
+            frame with { Choice = frame.Choice with { OfferedAtEventSequence = 101 } },
+            frame with { Choice = frame.Choice with { OfferedAtEventSequence = 20 },
+                ChoiceHistory = new(frame.MatchId, frame.StateVersion, frame.EventSequence, [entry], true, 0, []) }
+        })
+        {
+            var result = Evaluate(bad, cards);
+            Check(result.SideboardEvidence is { IsCurrentSourceConfirmed: true, CurrentOffer: null } &&
+                !result.ResolvesEffects && result.CardOutcomes.Count == 0 && result.HandCountAfter is null &&
+                result.Verification == LineVerification.Unsupported, "An unbound or stale current offer still granted a sideboard card and reduction.");
+        }
+        var valid = Evaluate(frame with { ChoiceHistory = new(frame.MatchId, frame.StateVersion, frame.EventSequence, [entry], true, 0, []) }, cards);
+        Check(valid.SideboardEvidence?.CurrentOffer?.ChoiceId == frame.Choice.Id && valid.ResolvesEffects,
+            "A correctly later fresh offer could not resolve independently of past selections.");
+    }
+
+    private static void SideboardCandidateTypes(IReadOnlyDictionary<string, CardRecord> cards)
+    {
+        var frame = Frame("JAIL_831", "PLAY"); frame = frame with { Choice = frame.Choice! with { OfferedAtEventSequence = 90 } };
+        foreach (var key in new[] { "CARDTYPE", "202" })
+        foreach (var value in new[] { "SPELL", "5", "", "bad" })
+        {
+            var candidate = Entity(40, "EDR_227", "SETASIDE", 1); var tags = candidate.Tags.ToDictionary(); tags[key] = value;
+            var entities = frame.Entities.ToDictionary(); entities[40] = candidate with { Tags = tags.ToFrozenDictionary() };
+            var result = Evaluate(frame with { Entities = entities.ToFrozenDictionary() }, cards);
+            Check(result.SideboardEvidence?.CurrentOffer is not null && !result.ResolvesEffects && result.CardOutcomes.Count == 0 &&
+                result.HandCountAfter is null, "A bound observed non-minion/invalid type was repaired from printed metadata before granting the native card.");
+        }
+        foreach (var known in new[] { true, false })
+        {
+            var candidate = Entity(40, known ? "EDR_227" : null, "SETASIDE", 1);
+            var tags = candidate.Tags.ToDictionary(); tags["CARDTYPE"] = known ? "MINION" : "SPELL"; tags["202"] = known ? "4" : "5";
+            var entities = frame.Entities.ToDictionary(); entities[40] = candidate with { Tags = tags.ToFrozenDictionary() };
+            Check(Evaluate(frame with { Entities = entities.ToFrozenDictionary() }, cards).ResolvesEffects,
+                "Valid equivalent aliases or explicit offered identity without bound residual traits were rejected.");
+        }
+        var noTraits = frame.Entities.ToDictionary(); noTraits[40] = Entity(40, "EDR_227", "SETASIDE", 1);
+        Check(Evaluate(frame with { Entities = noTraits.ToFrozenDictionary() }, cards).ResolvesEffects && !noTraits[40].Tags.ContainsKey("CARDTYPE"),
+            "Missing current type was invented or written into the source entity.");
     }
 
     private static void Map(IReadOnlyDictionary<string, CardRecord> cards)
     {
-        var result = Evaluate(Frame("TLC_824"), cards);
+        var frame = Frame("TLC_824");
+        frame = frame with { Choice = frame.Choice! with { Options = [new(40, "EDR_227", 1, 0), new(41, "EDR_480", 1, 1), new(42, "CORE_UNG_912", 1, 2)], OfferedAtEventSequence = 90 } };
+        frame = Replace(frame, Entity(42, null, "SETASIDE", 1));
+        var result = Evaluate(frame, cards);
         Check(result.CardOutcomes.Single() is { Origin: "DiscoverPool", AddedToHand: true, ResultingCost: null } &&
-            result.DirectDeckChange is null && result.Unknowns.Any(text => text.Contains("追加选择尚未触发", StringComparison.Ordinal)) &&
+            result.DirectDeckChange is null && result.Map is { Stage: "InitialChoice", InitialSelectedPlayedAtEventSequence: null } &&
             !result.CanEvaluateFollowupActions, "Map created an unobserved second selection or a next playable hand state.");
     }
 

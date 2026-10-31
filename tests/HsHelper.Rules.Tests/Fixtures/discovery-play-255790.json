@@ -1,0 +1,175 @@
+{
+  "build": "255790",
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "rewindSource": "https://news.blizzard.com/en-gb/article/24245210/across-the-timeways-is-now-live",
+  "cards": [
+    {
+      "artist": "Mauro Cascioli",
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 69545,
+      "flavor": "为了那些不知道该把什么牌放入套牌的人准备的！",
+      "howToEarn": "与猎人职业一同解锁。",
+      "howToEarnGolden": "使用猎人赢得100场对战后解锁。",
+      "id": "CORE_DS1_184",
+      "mechanics": [
+        "DISCOVER"
+      ],
+      "name": "追踪术",
+      "rarity": "RARE",
+      "set": "CORE",
+      "text": "从你的牌库中<b>发现</b>一张牌。",
+      "type": "SPELL"
+    },
+    {
+      "artist": "Ramzy Kamen",
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 117596,
+      "flavor": "偶也不知道这个图案指向哪里！",
+      "id": "TLC_824",
+      "mechanics": [
+        "DISCOVER"
+      ],
+      "name": "奇异的地图",
+      "rarity": "COMMON",
+      "set": "THE_LOST_CITY",
+      "text": "<b>发现</b>一张攻击力为奇数的野兽牌，如果你在本回合中使用该牌，再从其余选项中选择一张。",
+      "type": "SPELL"
+    },
+    {
+      "artist": "James Ryman",
+      "attack": 8,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 8,
+      "dbfId": 115186,
+      "elite": true,
+      "flavor": "玛洛恩是神话传奇中的存在，最古老的荒野诸神之一，也是塞纳留斯的父亲。",
+      "health": 6,
+      "id": "EDR_888",
+      "mechanics": [
+        "BATTLECRY",
+        "DISCOVER"
+      ],
+      "name": "护路者玛洛恩",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b><b>发现</b>一张<b>传说</b>荒野之神。如果你已<b>灌注</b>过你的英雄技能4次，则将发现的荒野之神的法力值消耗变为（1）点。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Matt Dixon",
+      "attack": 6,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 6,
+      "dbfId": 125998,
+      "elite": true,
+      "faction": "HORDE",
+      "flavor": "鼠王被粗暴地逐出暴风城下水道之后，又自封为达拉然下水道的王者。这下梵妮莎和她的团队捡了个便宜——鼠王的私运通道直通紫罗兰监狱……",
+      "health": 5,
+      "id": "JAIL_831",
+      "mechanics": [
+        "BATTLECRY",
+        "DISCOVER"
+      ],
+      "name": "下水道之王",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "ESCAPEFROM_VIOLET_HOLD",
+      "text": "构筑套牌时，选择三张私藏的野兽牌。<b>战吼：</b>从中<b>发现</b>一张，其法力值消耗减少（3）点。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Matt Dixon",
+      "attack": 3,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 128892,
+      "flavor": "手手最好的朋友。",
+      "health": 3,
+      "id": "BE_044",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "F3TCH3R寻回机",
+      "race": "BEAST",
+      "races": [
+        "MECHANICAL",
+        "BEAST"
+      ],
+      "rarity": "COMMON",
+      "set": "BE",
+      "text": "<b>战吼：</b><b>拼装</b>一张法力值消耗为（4）的随从牌。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Zoltan Boros",
+      "attack": 4,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "countAsCopyOfDbfId": 119798,
+      "dbfId": 131356,
+      "flavor": "这块陨石离我们太近了吧！",
+      "health": 2,
+      "howToEarn": "完成教学后解锁。",
+      "howToEarnGolden": "总计赢得2500场对战后解锁。",
+      "id": "CORE_EDR_004_2026",
+      "mechanics": [
+        "BATTLECRY",
+        "DISCOVER"
+      ],
+      "name": "迅猛龙先锋",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "EPIC",
+      "set": "CORE",
+      "text": "<b>回溯</b>。<b>战吼：</b><b>发现</b>一张具有<b>黑暗之赐</b>的野兽牌。<b>延系：</b>其法力值消耗减少（1）点。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Zoltan Boros",
+      "attack": 4,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 119798,
+      "flavor": "这块陨石离我们太近了吧！",
+      "health": 2,
+      "howToEarn": "打开<i>深暗领域</i>卡牌包后可解锁。",
+      "howToEarnGolden": "打开<i>深暗领域</i>金色包后可解锁。",
+      "id": "CORE_EDR_004",
+      "mechanics": [
+        "BATTLECRY",
+        "DISCOVER"
+      ],
+      "name": "迅猛龙先锋",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "EPIC",
+      "set": "LEGACY",
+      "text": "<b>回溯</b>。<b>战吼：</b><b>发现</b>一张具有<b>黑暗之赐</b>的野兽牌。<b>延系：</b>其法力值消耗减少（1）点。",
+      "type": "MINION"
+    }
+  ]
+}

@@ -25,8 +25,10 @@ public sealed record ChoiceResolutionEvaluation(string MatchId, long StateVersio
     public CraftChoiceOutcome? Crafting { get; init; }
     public RewindChoiceResolution? Rewind { get; init; }
     public MalorneChoiceOutcome? Malorne { get; init; }
+    public MapFollowupOutcome? Map { get; init; }
+    public SideboardChoiceEvidenceOutcome? SideboardEvidence { get; init; }
     public bool SelectionOnly => !ResolvesEffects;
-    public bool ResolvesEffects => CardOutcomes.Count > 0 || Crafting?.ResolvesEffects == true || Rewind?.ResolvesEffects == true || Malorne?.ResolvesEffects == true;
+    public bool ResolvesEffects => CardOutcomes.Count > 0 || Crafting?.ResolvesEffects == true || Rewind?.ResolvesEffects == true || Malorne?.ResolvesEffects == true || Map?.ResolvesEffects == true;
     public bool CanEvaluateFollowupActions => false;
 }
 
@@ -67,6 +69,8 @@ public sealed partial class LineEvaluator
         CraftChoiceOutcome? crafting = null;
         RewindChoiceResolution? rewind = null;
         MalorneChoiceOutcome? malorne = null;
+        MapFollowupOutcome? map = null;
+        SideboardChoiceEvidenceOutcome? sideboardEvidence = null;
         if (validation.Verification != LineVerification.Verified)
         {
             unknowns.AddRange(validation.Assumptions);
@@ -84,13 +88,23 @@ public sealed partial class LineEvaluator
             source.Kind != EntityKind.Card || source.ControllerId != snapshot.LocalPlayerId ||
             source.Zone is not ("PLAY" or "GRAVEYARD") || source.CardId is null ||
             choice.SourceCardId != source.CardId)
-        { unknowns.Add("未确认我方已使用的选择来源，不能把手中、牌库中或对手的卡当作已触发的来源。"); return Result(LineVerification.Unsupported, true); }
+        {
+            if (choice.SourceCardId == "JAIL_831" && choice.SourceEntityId is { } historicalSource)
+                sideboardEvidence = SideboardChoiceEvidenceRules.Evaluate(snapshot, historicalSource, cards);
+            unknowns.Add("未确认我方已使用的选择来源，不能把手中、牌库中或对手的卡当作已触发的来源。");
+            return Result(LineVerification.Unsupported, true);
+        }
         sourceEntityId = source.Id; sourceCardId = source.CardId;
         if (AssembledCardText.RequiresCustomText(source.Tags))
-        { unknowns.Add("选择来源具有拼装文字，不能按原卡ID展开原生牌效。"); return Result(LineVerification.Unsupported, true); }
+        {
+            if (choice.SourceCardId == "JAIL_831") sideboardEvidence = SideboardChoiceEvidenceRules.Evaluate(snapshot, source.Id, cards);
+            unknowns.Add("选择来源具有拼装文字，不能按原卡ID展开原生牌效。"); return Result(LineVerification.Unsupported, true);
+        }
         if (!cards.TryGetValue(source.CardId, out var sourceCard) || sourceCard.Id != source.CardId || string.IsNullOrWhiteSpace(sourceCard.Name))
         { unknowns.Add("固定版本卡库缺少选择来源的资料，不能核对其效果。"); return Result(LineVerification.Unsupported, true); }
         sourceName = sourceCard.Name;
+        if (source.CardId == "JAIL_831" && sourceCard.Type == "MINION")
+            sideboardEvidence = SideboardChoiceEvidenceRules.Evaluate(snapshot, source.Id, cards);
         var option = choice.Options.Single(option => option.EntityId == selected[0]);
         if (string.IsNullOrWhiteSpace(option.CardId))
         { unknowns.Add("所选候选身份未知，不能虚构入手卡牌。"); return Result(LineVerification.Unsupported, true); }
@@ -138,11 +152,19 @@ public sealed partial class LineEvaluator
             handAfter = malorne.AddedToHand switch { true => added == true ? handBefore + 1 : null, false => handBefore, _ => null };
             return Result(malorne.ResolvesEffects ? LineVerification.Conditional : LineVerification.Unsupported, true);
         }
+        if (source.CardId == "TLC_824")
+        {
+            map = MapFollowupRules.Evaluate(snapshot, source.Id, cards, option.EntityId);
+            coverage.AddRange(map.RuleCoverage); unknowns.AddRange(map.Unknowns); assumptions.AddRange(map.Assumptions);
+            handBefore = map.HandCountBefore; handAfter = map.HandCountAfter; handLimit = map.HandLimit;
+            if (map.ResolvesEffects && map.SelectedCardId is { } chosen && map.SelectedCardName is { } name)
+                outcomes.Add(new(option.EntityId, chosen, name, map.Stage == "FollowupChoice" ? "MapRemainingOptions" : "DiscoverPool", map.AddedToHand, null, null));
+            return Result(map.ResolvesEffects ? LineVerification.Conditional : LineVerification.Unsupported, true);
+        }
         var origin = source.CardId switch
         {
             "CORE_DS1_184" when sourceCard.Type == "SPELL" => "Deck",
             "JAIL_831" when sourceCard.Type == "MINION" => "Sideboard",
-            "TLC_824" when sourceCard.Type == "SPELL" => "DiscoverPool",
             _ => null
         };
         if (origin is null)
@@ -171,13 +193,35 @@ public sealed partial class LineEvaluator
         }
         else if (origin == "Sideboard")
         {
+            sideboardEvidence ??= SideboardChoiceEvidenceRules.Evaluate(snapshot, source.Id, cards);
+            coverage.AddRange(sideboardEvidence.RuleCoverage);
+            if (!sideboardEvidence.IsCurrentSourceConfirmed)
+            {
+                unknowns.Add("当前下水道之王的原生身份、类型、归属或固定卡面未确认；过去选择事实不能证明本次原生战吼。");
+                return Result(LineVerification.Unsupported, true);
+            }
+            if (sideboardEvidence.CurrentChoiceHasHistory)
+            {
+                unknowns.Add("当前选择已有已选或相冲突的历史记录；残留 Ready 候选不能再次投影入手或减费，需等待新局面确认。");
+                return Result(LineVerification.Unsupported, true);
+            }
+            if (sideboardEvidence.CurrentOffer is not { } currentOffer || currentOffer.ChoiceId != choice.Id ||
+                currentOffer.SourceEntityId != source.Id || currentOffer.OfferedAtEventSequence != choice.OfferedAtEventSequence)
+            {
+                unknowns.Add("本次边栏提供的来源、选择 ID 或事件时序未确认；历史事实不能代替当前提供，未推导入手或减费。");
+                return Result(LineVerification.Unsupported, true);
+            }
+            // An explicit offer identity does not bind an unidentified entity's residual traits.
+            // Only current traits belonging to the same known raw identity can contradict this native grant.
+            if (candidate is { CardId: not null } && candidate.CardId == option.CardId &&
+                (candidate.Tags.TryGetValue("CARDTYPE", out var currentType) && currentType is not ("MINION" or "4") ||
+                 candidate.Tags.TryGetValue("202", out var typeAlias) && typeAlias is not ("MINION" or "4")))
+            {
+                unknowns.Add("所选边栏候选已观察的随从类别存在冲突，不能用印刷类型修复反证后授予原生入手和减费。");
+                return Result(LineVerification.Unsupported, true);
+            }
             coverage.AddRange(["JAIL_831-selected-sideboard-card", "JAIL_831-granted-cost-reduction-3"]);
-            unknowns.Add("未模拟后续重复战吼的边栏候选池变化。");
-        }
-        else
-        {
-            coverage.Add("TLC_824-selected-offered-beast");
-            unknowns.Add("地图在本回合使用所选牌后的追加选择尚未触发，本次不模拟该后续过程。");
+            unknowns.Add("边栏证据只记录实际已选、来源和本次提供的候选；完整剩余池未知，不由初始牌码或历史次数推定。");
         }
         cards.TryGetValue(option.CardId, out var selectedCard);
         if (selectedCard is null || selectedCard.Id != option.CardId)
@@ -195,9 +239,9 @@ public sealed partial class LineEvaluator
             snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence, snapshot.Choice?.Id,
             verification, legal, sourceEntityId, sourceCardId, sourceName,
             Array.AsReadOnly(selected), Array.AsReadOnly(outcomes.ToArray()), handBefore,
-            outcomes.Count > 0 || crafting?.ResolvesEffects == true || rewind?.ResolvesEffects == true || malorne?.ResolvesEffects == true ? handAfter : null, handLimit, deckChange,
+            outcomes.Count > 0 || crafting?.ResolvesEffects == true || rewind?.ResolvesEffects == true || malorne?.ResolvesEffects == true || map?.ResolvesEffects == true ? handAfter : null, handLimit, deckChange,
             Array.AsReadOnly(errors.ToArray()), Array.AsReadOnly(assumptions.ToArray()),
             Array.AsReadOnly(unknowns.Distinct(StringComparer.Ordinal).ToArray()), Array.AsReadOnly(coverage.Distinct(StringComparer.Ordinal).ToArray()))
-            { Crafting = crafting, Rewind = rewind, Malorne = malorne };
+            { Crafting = crafting, Rewind = rewind, Malorne = malorne, Map = map, SideboardEvidence = sideboardEvidence };
     }
 }

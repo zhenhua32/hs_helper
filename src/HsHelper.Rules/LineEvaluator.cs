@@ -39,7 +39,7 @@ public sealed partial class LineEvaluator
     private static readonly HashSet<string> ExplosiveTrap = ["EX1_610", "CORE_EX1_610"];
     private static readonly HashSet<string> StaticKeywords = ["TAUNT", "DIVINE_SHIELD", "CHARGE", "RUSH", "WINDFURY", "MEGA_WINDFURY", "LIFESTEAL", "POISONOUS", "STEALTH", "ELUSIVE", "CANT_ATTACK", "REBORN", "IMMUNE", "SPELLPOWER"];
     // Known battlecries from the supplied build-255790 deck do not trigger again while attacking.
-    private static readonly HashSet<string> BattlecryOnlyBodies = ["BE_044", "CORE_UNG_912", "EDR_226", "EDR_800", "EDR_852", "EDR_888", "FIR_921", "JAIL_831", "EDR_489", "CORE_EDR_004_2026"];
+    private static readonly HashSet<string> BattlecryOnlyBodies = ["BE_044", "CORE_UNG_912", "EDR_226", "EDR_800", "EDR_852", "EDR_888", "FIR_921", "JAIL_831", "EDR_489", "CORE_EDR_004_2026", "CORE_EDR_004"];
 
     public LineEvaluation EvaluateLine(GameSnapshot snapshot, IReadOnlyList<PlannedAction> actions,
         IReadOnlyDictionary<string, CardRecord> cards, CancellationToken cancellationToken = default)
@@ -66,6 +66,8 @@ public sealed partial class LineEvaluator
                 if (state.WolfBlessingBoundaryReached) { state.Unsupported("AWAIT_WOLF_BLESSING_SNAPSHOT", "巨狼祝福的实际随机命中尚未观察；请等待新局面后继续动作，不能指定任一分支为真实结果。"); break; }
                 if (state.QuestRewardBoundaryReached) { state.Unsupported("AWAIT_QUEST_REWARD_SNAPSHOT", "任务计数或僵尸兽奖励选择尚待确认，不能跨越该边界继续动作。"); break; }
                 if (state.RaptorBoundaryReached) { state.Unsupported("AWAIT_RAPTOR_SNAPSHOT", "梦缚迅猛龙的随机额外效果尚未观察，不能假定关键词后继续动作。"); break; }
+                if (state.DiscoveryBoundaryReached) { state.Unsupported("AWAIT_DISCOVERY_SNAPSHOT", "原生发现、拼装或回溯选择尚未观察；请在新选择局面中继续，不能提前使用未生成的候选或恢复旧局面。"); break; }
+                if (state.MapFollowupBoundaryReached) { state.Unsupported("AWAIT_MAP_FOLLOWUP_SNAPSHOT", "地图首选实体已在本地顺序中使用，追加选择尚未观察；请等待真实剩余选项，不得跨过该边界继续动作。"); break; }
                 if (state.StopForExistingQuestReward()) break;
                 if (state.TurnEnded) { state.Invalid("己方回合已经结束，不能在未观察下一决策点前继续安排动作。"); break; }
                 if (state.EnemyHero!.Health <= 0 || state.OwnHero!.Health <= 0)
@@ -145,7 +147,7 @@ public sealed partial class LineEvaluator
                 foreach (var target in targets.Where(e => !HuntersMark.Contains(id) || e.Type == "MINION"))
                     yield return new(ActionKind.PlayCard, source.EntityId, target.EntityId);
             if (SearchableRushBodies.Contains(id) || id is "EDR_489" or "CORE_TTN_866" ||
-                (state.NextCardCostsOpponentHealth == true && AuditedHunterBodies.Contains(id)))
+                (state.NextCardCostsOpponentHealth == true && (AuditedHunterBodies.Contains(id) || DiscoveryPlayRules.SupportsCardId(id))))
                 yield return new(ActionKind.PlayCard, source.EntityId);
         }
         if (state.Entities.Any(e => e.IsAlive && e.Zone == "PLAY" && e.ControllerId == local && e.CardId == "CORE_TTN_866") &&
@@ -250,6 +252,7 @@ public sealed partial class LineEvaluator
         { state.Unsupported("CONFLICTING_PLAY_IDENTITY", "使用来源的区域、归属或实体标记存在冲突，未支付或使用。"); return; }
         if (!state.CanAffordCard(source)) return;
         var id = source.CardId!;
+        if (TryPlayNativeDiscovery(state, action, source, profile)) return;
         if (TryPlayMythicalTerror(state, action, source, profile)) return;
         if (TryPlayBeastHunter(state, action, source, profile)) return;
         if ((id == "GAME_005" || ArcaneShot.Contains(id) || KillCommand.Contains(id) || HuntersMark.Contains(id) ||
@@ -631,6 +634,8 @@ public sealed partial class LineEvaluator
                   WolfBlessingBoundaryReached = WolfBlessingBoundaryReached, WolfBlessingPreviews = Array.AsReadOnly(_wolfBlessingPreviews.ToArray()),
                   QuestRewardBoundaryReached = QuestRewardBoundaryReached, QuestProgressPreviews = Array.AsReadOnly(_questProgressPreviews.ToArray()),
                   RaptorBoundaryReached = RaptorBoundaryReached, RaptorPreviews = Array.AsReadOnly(_raptorPreviews.ToArray()),
+                  DiscoveryBoundaryReached = DiscoveryBoundaryReached, DiscoveryPreviews = Array.AsReadOnly(_discoveryPreviews.ToArray()),
+                  MapFollowupBoundaryReached = MapFollowupBoundaryReached, MapPlayPreviews = Array.AsReadOnly(_mapPlayPreviews.ToArray()),
                     NextCardCostsOpponentHealth = _nextCardCostsOpponentHealth,
                     OpponentDefeatedByPayment = OpponentDefeatedByPayment,
                     OpponentHealthPayments = Array.AsReadOnly(_opponentHealthPayments.ToArray()),

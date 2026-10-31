@@ -81,6 +81,38 @@ public static class PlayTriggerToolChecks
             Await(window.BindingReady); button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, button));
             WaitUntil(() => !window.HasPendingCalculation && window.ResultText.Contains("当前进度 未知 / 3", StringComparison.Ordinal), "Unobserved progress was replaced by zero through the actual UI tool.");
             Check(window.ResultText.Contains("直接后果进度 未知", StringComparison.Ordinal), "Unknown task progress became a known completion in the actual view.");
+            var trackingEntities = entities.ToDictionary(); trackingEntities.Remove(40); trackingEntities.Remove(50);
+            trackingEntities[30] = Card(30, "CORE_DS1_184", "HAND", "SPELL", ("COST", "1"));
+            var playerTags = trackingEntities[1].Tags.ToDictionary();
+            playerTags["NUM_CARDS_IN_DECK"] = Math.Max(1, trackingEntities.Values.Count(entity => entity.Kind == EntityKind.Card && entity.ControllerId == 1 && entity.Zone == "DECK")).ToString();
+            trackingEntities[1] = trackingEntities[1] with { Tags = playerTags.ToFrozenDictionary() };
+            var trackingFrame = frame with { StateVersion = 72, EventSequence = 172, Entities = trackingEntities.ToFrozenDictionary() };
+            var trackingBefore = JsonSerializer.Serialize(trackingFrame);
+            window.UpdateBinding(trackingFrame, BattleViewRegression.Build); Await(window.BindingReady);
+            Control<ComboBox>(window, "LocalKindBox").SelectedIndex = 0; SelectSource(window, 30);
+            Check(button.IsEnabled && button.ToolTip?.ToString()?.Contains("原生发现", StringComparison.Ordinal) == true,
+                "Tracking could not reuse the existing play-trigger button.");
+            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, button));
+            WaitUntil(() => !window.HasPendingCalculation && window.ResultText.Contains("原生使用入口 · 追踪术", StringComparison.Ordinal),
+                "The existing button did not reach native Tracking discovery.");
+            Check(window.ResultText.Contains("外部选择：需要等待真实选项", StringComparison.Ordinal) &&
+                window.ResultText.Contains("未生成候选、手牌实体或最终费用", StringComparison.Ordinal) &&
+                !window.ResultText.Contains("DeckDiscover", StringComparison.Ordinal) && JsonSerializer.Serialize(trackingFrame) == trackingBefore,
+                "Tracking's real button created candidates, displayed mechanism codes or lost its pending choice boundary.");
+            foreach (var id in trackingEntities.Values.Where(entity => entity.ControllerId == 1 && entity.Zone == "DECK").Select(entity => entity.Id).ToArray()) trackingEntities.Remove(id);
+            playerTags["NUM_CARDS_IN_DECK"] = "0";
+            trackingEntities[1] = trackingEntities[1] with { Tags = playerTags.ToFrozenDictionary() };
+            var emptyFrame = trackingFrame with { StateVersion = 73, EventSequence = 173, Entities = trackingEntities.ToFrozenDictionary() };
+            var emptyBefore = JsonSerializer.Serialize(emptyFrame);
+            window.UpdateBinding(emptyFrame, BattleViewRegression.Build); Await(window.BindingReady);
+            Control<ComboBox>(window, "LocalKindBox").SelectedIndex = 0; SelectSource(window, 30);
+            Check(button.IsEnabled, "Confirmed empty Tracking scope disabled a hypothetical direct-effect preview.");
+            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, button));
+            WaitUntil(() => !window.HasPendingCalculation && window.ResultText.Contains("当前牌库数：0", StringComparison.Ordinal),
+                "Explicit empty deck evidence did not reach the actual button's discovery display.");
+            Check(window.ResultText.Contains("外部选择：本次原生效果无需选择", StringComparison.Ordinal) &&
+                window.ResultText.Contains("不证明出牌合法", StringComparison.Ordinal) && JsonSerializer.Serialize(emptyFrame) == emptyBefore,
+                "Empty Tracking forced a candidate or was presented as proof of full settlement/legal play.");
             Control<ComboBox>(window, "LocalKindBox").SelectedIndex = 1;
             Check(!button.IsEnabled, "An attack source enabled a hand-play preview.");
             foreach (var rejected in new[] { frame with { IsSpectating = true }, frame with { Quality = frame.Quality with { HasLocalPerspective = false } },
@@ -102,6 +134,11 @@ public static class PlayTriggerToolChecks
         new(id, card, EntityKind.Card, extra.Concat(new[] { ("CONTROLLER", "1"), ("ZONE", zone), ("CARDTYPE", type) })
             .ToFrozenDictionary(pair => pair.Item1, pair => pair.Item2, StringComparer.Ordinal));
     private static T Control<T>(LocalToolsWindow window, string name) where T : class => window.FindName(name) as T ?? throw new InvalidOperationException("Missing control: " + name);
+    private static void SelectSource(LocalToolsWindow window, int id)
+    {
+        var sources = Control<ComboBox>(window, "LocalSourceBox");
+        sources.SelectedItem = sources.Items.OfType<object>().Single(item => (int)item.GetType().GetProperty("Id")!.GetValue(item)! == id);
+    }
     private static void Await(Task task) { WaitUntil(() => task.IsCompleted, "The trigger catalog task timed out."); task.GetAwaiter().GetResult(); }
     private static void WaitUntil(Func<bool> complete, string message)
     {

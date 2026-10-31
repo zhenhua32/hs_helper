@@ -667,6 +667,11 @@ foreach (var (name, run) in HunterWolfLineChecks.Cases(cards)) Run(name, run);
 foreach (var (name, run) in QuestProgressChecks.Cases()) Run(name, run);
 foreach (var (name, run) in DreamboundRaptorChecks.Cases()) Run(name, run);
 foreach (var (name, run) in HunterPlayTriggerLineChecks.Cases(cards)) Run(name, run);
+foreach (var (name, run) in DiscoveryPlayChecks.Cases()) Run(name, run);
+foreach (var (name, run) in MapFollowupChecks.Cases()) Run(name, run);
+foreach (var (name, run) in SideboardChoiceEvidenceChecks.Cases()) Run(name, run);
+foreach (var (name, run) in HunterDiscoveryLineChecks.Cases(cards)) Run(name, run);
+foreach (var (name, run) in HunterMapPlayChecks.Cases()) Run(name, run);
 
 if (args.Length == 1)
 {

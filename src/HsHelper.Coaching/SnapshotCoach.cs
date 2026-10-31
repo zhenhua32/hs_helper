@@ -191,9 +191,10 @@ public sealed class SnapshotCoach
                 .OrderBy(entity => entity.Id).Select(entity => QuestProgressRules.Evaluate(_snapshot, entity.Id, rulesCards, frozenSource)).ToArray();
             return Node(new { _snapshot.MatchId, _snapshot.StateVersion, _snapshot.EventSequence,
                 SourceEntityId = source.Id, SourceCardId = source.CardId, QuestProgress = quests,
+                Discovery = DiscoveryPlayRules.SupportsCardId(source.CardId) ? DiscoveryPlayRules.Evaluate(_snapshot, source.Id, rulesCards) : null,
                 Raptor = DreamboundRaptorRules.Evaluate(_snapshot, source.Id, rulesCards), IsLegal = (bool?)null,
                 CanEvaluateFollowupActions = false, HasAuthoritativeNextState = false,
-                Assumptions = new[] { "仅假设所选手牌成功使用且前序效果已结算；实际支付、结算边界和动作顺序另用evaluate_line核验。" } });
+                Assumptions = new[] { "发现入口与使用后触发分属不同结算边界：前者假设成功离手，后者假设前置效果已完成。各段预览不能拼接为已发生的局面；实际支付和动作顺序另用evaluate_line核验。" } });
         }
         if (name == "evaluate_choice")
             return await Task.Run(() => Node(_rules.EvaluateChoice(_snapshot,
@@ -321,7 +322,7 @@ public sealed class SnapshotCoach
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("evaluate_wolf_blessing", "比较巨狼祝福随机命中各野兽手牌的直接攻击/减费分支；不指定实际命中，不替换当前局面，不证明技能使用合法或后续斩杀。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
-        new AgentToolDefinition("evaluate_play_triggers", "预览当前我方手牌成功使用后，主机自动绑定的围攻城门进度与梦缚迅猛龙直接触发次数。不接受指定任务进度、触发来源、目标或随机效果。达到任务奖励或随机边界后等待新局面；不创建奖励候选、成品或权威后续局面，合法出牌另用evaluate_line核验。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
+        new AgentToolDefinition("evaluate_play_triggers", "核对当前我方手牌的原生发现、拼装、回溯入口，并预览主机自动绑定的围攻城门进度与梦缚迅猛龙直接触发次数。发现入口以成功离手为条件，使用后触发以前置效果完成为条件；各段不是已经发生的完整结算。不接受指定进度、触发来源、候选、目标或随机效果。达到发现、任务奖励或随机边界后等待真实选择和新局面；不创建手牌实体、成品或最终费用，也不证明斩杀，合法出牌另用evaluate_line核验。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("get_recent_events", "查询固定决策点及以前的匿名事件摘要。", Schema("""{"type":"object","properties":{},"required":[],"additionalProperties":false}"""), Empty),
         new AgentToolDefinition("validate_choice", "只验证当前我方选择的候选范围和数量，不模拟选择后效果，也不能证明斩杀。", Schema("""{"type":"object","properties":{"choice_id":{"type":"integer","minimum":1},"selected_entity_ids":{"type":"array","maxItems":30,"items":{"type":"integer","minimum":1}}},"required":["choice_id","selected_entity_ids"],"additionalProperties":false}"""),

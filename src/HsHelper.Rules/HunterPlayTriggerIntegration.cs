@@ -7,7 +7,7 @@ namespace HsHelper.Rules;
 public sealed partial class LineEvaluator
 {
     private sealed record PlayTriggerFrame(EntitySnapshot PlayedBefore, IReadOnlyList<int> QuestIds,
-        IReadOnlyList<EntitySnapshot> RaptorsBefore);
+        IReadOnlyList<EntitySnapshot> RaptorsBefore, IReadOnlyList<MapFollowupOutcome> MapsBefore);
 
     private sealed partial class Runtime
     {
@@ -26,18 +26,16 @@ public sealed partial class LineEvaluator
                 Array.AsReadOnly(Entities.Values.Where(entity => entity.Controller == Local && entity.Zone == "SECRET" && entity.CardId == "TLC_EVENT_400")
                     .Select(entity => entity.Id).Order().ToArray()),
                 Array.AsReadOnly(Entities.Values.Where(entity => entity.Controller == Local && entity.Zone == "PLAY" && entity.CardId == "EDR_849")
-                    .OrderBy(entity => entity.Id).Select(FreezeForPlayTriggers).ToArray()));
+                    .OrderBy(entity => entity.Id).Select(FreezeForPlayTriggers).ToArray()), CaptureMapPlayTriggers(source));
         }
 
         public void ResolvePlayTriggers(PlayTriggerFrame? before)
         {
             if (before is null || OpponentDefeatedByPayment || OwnHero?.Health <= 0 || EnemyHero?.Health <= 0 ||
                 !Entities.TryGetValue(before.PlayedBefore.Id, out var played) || played.Zone == "HAND") return;
-            var pending = DrawBoundaryReached || GenerationBoundaryReached || WolfBlessingBoundaryReached ||
-                _unsupported.Overlaps(["DEATHRATTLE_OR_REBORN", "BATTLECRY_OR_DEATHRATTLE_MODIFIER", "UNKNOWN_MYTHICAL_TERROR_EXTRA_EFFECT",
-                    "UNKNOWN_TRIGGER", "UNKNOWN_AURA", "UNMAPPED_BOARD_TEXT", "UNMAPPED_ATTACHED_ENCHANTMENT",
-                    "OPPONENT_SECRET", "FRIENDLY_SECRET_OR_QUEST", "CUSTOM_ASSEMBLED_HAND"]);
+            var pending = HasUnresolvedNativeResolution;
             pending |= RecordRaptorTriggers(before, played, pending);
+            pending |= RecordMapPlayTriggers(before.MapsBefore, played, pending);
             foreach (var id in before.QuestIds)
             {
                 if (!Entities.TryGetValue(id, out var quest) || quest.Zone != "SECRET" || quest.Controller != Local) continue;

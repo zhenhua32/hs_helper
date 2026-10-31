@@ -29,7 +29,7 @@ public sealed class LocalToolsWindow : Window
     private readonly Button _previewDraw = new() { Content = "预览所选手牌抽牌" };
     private readonly Button _previewGeneration = new() { Content = "预览随机生成数量" };
     private readonly Button _previewWolfBlessing = new() { Content = "比较巨狼祝福分支" };
-    private readonly Button _previewPlayTriggers = new() { Content = "预览使用后触发" };
+    private readonly Button _previewPlayTriggers = new() { Content = "预览使用后触发", ToolTip = "预览原生发现、拼装、回溯入口及使用后任务和迅猛龙触发；各段条件独立，实际出牌仍须验证。" };
     private readonly Button _inspectEffect = new() { Content = "查看所选牌当前效果" };
     private readonly TextBox _depth = new() { Text = "4", Width = 45 };
     private readonly TextBox _nodes = new() { Text = "1500", Width = 65 };
@@ -440,8 +440,9 @@ public static class LocalToolResultFormatter
         }
         if (tool == "evaluate_play_triggers")
         {
-            lines.Add("使用后触发预览（假设所选手牌成功使用；不证明出牌合法或完整结算）");
+            lines.Add("原生使用入口与使用后触发预览（各段条件独立；不证明出牌合法或完整结算）");
             if (result["Assumptions"] is JsonArray assumptions) foreach (var assumption in assumptions) lines.Add("· " + assumption);
+            if (result["Discovery"] is JsonObject discovery) AppendDiscovery(lines, discovery);
             if (result["QuestProgress"] is JsonArray quests)
             {
                 if (quests.Count == 0) lines.Add("当前没有已确认的我方围攻城门任务。");
@@ -465,13 +466,15 @@ public static class LocalToolResultFormatter
                     var destination = outcome["AddedToHand"]?.ToString() switch
                     { "true" => "直接加入手牌", "false" => "不能加入手牌（手牌已满）", _ => "是否入手尚未确认" };
                     var origin = outcome["Origin"]?.ToString() switch
-                    { "Deck" => "牌库", "Sideboard" => "边栏", "DiscoverPool" => "发现池", _ => "未知来源" };
+                    { "Deck" => "牌库", "Sideboard" => "边栏", "DiscoverPool" => "发现池", "MapRemainingOptions" => "地图原剩余选项", _ => "未知来源" };
                     lines.Add($"· {outcome["Name"]?.ToString() ?? "未知卡牌"}：来自{origin}；{destination}。");
                     if (outcome["GrantedCostReduction"] is { } reduction) lines.Add("  授予减费：" + reduction + "；不从候选费用重复扣减。");
                     lines.Add("  入手后当前费用：" + (outcome["ResultingCost"]?.ToString() ?? "未知，等待客户端结算"));
                 }
             if (result["DirectDeckChange"] is JsonObject change)
                 lines.Add($"牌库直接移出 {change["RemovedCopies"]} 张：{change["TotalCardsBefore"]?.ToString() ?? "未知"} → {change["TotalCardsAfter"]?.ToString() ?? "未知"}；不包含其他触发或后续发现。");
+            if (result["SideboardEvidence"] is JsonObject sideboard) AppendSideboardEvidence(lines, sideboard);
+            if (result["Map"] is JsonObject map) AppendMap(lines, map, entityName);
             if (result["Crafting"] is JsonObject crafting)
             {
                 lines.Add("制造方式：" + (crafting["Mechanism"]?.ToString() switch
@@ -523,7 +526,7 @@ public static class LocalToolResultFormatter
         var evaluation = result;
         if (tool == "find_lethal")
         {
-            var found = result["VerifiedLethalFound"]?.GetValue<bool>() == true;
+            var found = result["VerifiedLethalFound"]?.GetValue<bool>() == true && !PendingChoiceBoundary(result["Evaluation"]);
             lines.Add(found ? "找到已验证的斩杀路线。" : "在本次有限搜索中未找到已验证的斩杀；不代表没有斩杀。");
             lines.Add($"已搜索节点：{result["ExploredNodes"]}；穷尽当前覆盖分支：{(result["IsExhaustive"]?.GetValue<bool>() == true ? "是" : "否")}");
             if (result["Coverage"] is { } coverage) lines.Add("搜索范围：" + coverage);
@@ -535,6 +538,7 @@ public static class LocalToolResultFormatter
             evaluation = nested;
         }
         var verification = evaluation["Verification"]?.ToString();
+        if (verification == "Verified" && PendingChoiceBoundary(evaluation)) verification = "Conditional";
         lines.Add("验证级别：" + (verification switch
         {
             "Verified" => "已验证（仅限已实现规则范围）", "Conditional" => "条件成立（不能作确定结果）",
@@ -557,6 +561,21 @@ public static class LocalToolResultFormatter
             if (state["WolfBlessingBoundaryReached"]?.ToString() == "true") lines.Add("巨狼祝福的实际命中待确认；未修改任一候选，后续动作须等待新局面。");
             if (state["WolfBlessingPreviews"] is JsonArray wolfPreviews)
                 foreach (var wolf in wolfPreviews.OfType<JsonObject>()) AppendWolfBlessing(lines, wolf, entityName);
+            if (state["DiscoveryPreviews"] is JsonArray discoveryPreviews)
+                foreach (var discovery in discoveryPreviews.OfType<JsonObject>()) AppendDiscovery(lines, discovery);
+            if (state["DiscoveryBoundaryReached"]?.ToString() == "true")
+                lines.Add("原生发现、拼装或回溯尚待真实选择或新观测；投影停在该边界，不能宣称完整结算、继续后续动作或证明斩杀。");
+            if (state["MapPlayPreviews"] is JsonArray mapPreviews)
+                foreach (var map in mapPreviews.OfType<JsonObject>())
+                {
+                    lines.Add($"奇异的地图 #{map["MapSourceEntityId"]}：原首选{entityName(map["PlayedEntityId"]!.GetValue<int>())}的模拟使用已记录为条件请求。");
+                    lines.Add("当前身份与原首选：" + (map["IdentityMatch"]?.ToString() switch
+                    { "true" => "相符", "false" => "已改变，脚本关联仍待确认", _ => "未知" }));
+                    if (map["PriorResolutionPending"]?.ToString() == "true") lines.Add("前序结算尚待确认，地图请求也需等待。");
+                    lines.Add("这不是实际使用记录或追加候选；不写入真实历史，不创建第二张手牌。");
+                }
+            if (state["MapFollowupBoundaryReached"]?.ToString() == "true")
+                lines.Add("地图追加选择尚待真实提供；投影停在该边界，不能继续后续动作或证明斩杀。");
             if (state["QuestProgressPreviews"] is JsonArray questPreviews)
                 foreach (var quest in questPreviews.OfType<JsonObject>()) AppendQuestProgress(lines, quest);
             if (state["QuestRewardBoundaryReached"]?.ToString() == "true")
@@ -643,6 +662,93 @@ public static class LocalToolResultFormatter
                 lines.Add($"· 若命中{entityName(branch["TargetEntityId"]!.GetValue<int>())}：攻击 {branch["CurrentAttack"]?.ToString() ?? "未知"} → {branch["ResultingAttack"]?.ToString() ?? "未知"}；费用 {branch["CurrentCost"]?.ToString() ?? "未知"} → {branch["ResultingCost"]?.ToString() ?? "未知"}。");
         if (wolf["Unknowns"] is JsonArray values) foreach (var value in values) lines.Add("· " + value);
         lines.Add("各分支互斥，不能指定实际命中或合并结果；当前手牌不变，后续动作须等待新局面。");
+    }
+
+    private static void AppendSideboardEvidence(List<string> lines, JsonNode evidence)
+    {
+        lines.Add("下水道之王边栏选择证据（已观察记录，不是当前完整池）");
+        if (evidence["ResolvesEvidence"]?.ToString() != "true") lines.Add("当前来源或证据绑定尚未确认，不能据此补出候选或剩余牌。");
+        else
+        {
+            var complete = evidence["IsHistoryComplete"]?.ToString() == "true";
+            lines.Add(complete ? "已选历史：所列来源的实际选择记录完整。" : "已选历史：有缺口，所列次数仅为已观察下限，缺失明细不当作零次。");
+            if (evidence["IsCurrentSourceConfirmed"]?.ToString() != "true") lines.Add("当前来源原生身份未确认；下列只展示过去冻结的选择事实。");
+            if (evidence["Sources"] is JsonArray sources)
+                foreach (var source in sources.OfType<JsonObject>())
+                {
+                    lines.Add("历史来源实体 #" + source["SourceEntityId"] + "（提供时为下水道之王）：");
+                    if (source["Selections"] is JsonArray selections)
+                        foreach (var selection in selections.OfType<JsonObject>())
+                            lines.Add($"· 实际已选 {selection["CardId"]}；选择 #{selection["ChoiceId"]}，候选 #{selection["SelectedEntityId"]}，事件 {selection["ChosenAtEventSequence"]}。");
+                }
+            if (evidence["SelectedCounts"] is JsonArray counts)
+                foreach (var count in counts.OfType<JsonObject>())
+                    lines.Add($"已选次数：{count["CardId"]} {(count["IsLowerBound"]?.ToString() == "true" ? "至少 " : "")}{count["ObservedSelections"]} 次（实际选择，不等于成功入手）。");
+            if (evidence["CurrentOffer"] is JsonObject offer)
+                lines.Add("当前实际提供候选：" + (offer["OptionCount"]?.ToString() ?? "未知") + " 项；" +
+                    (offer["HasCompleteCardIdentities"]?.ToString() == "true" ? "身份已确认" : "部分身份未知") + "，仅指本次提供数量。");
+            else lines.Add("当前没有绑定到该来源的已确认候选，不从历史或起始牌码补出。");
+        }
+        if (evidence["InitialReference"] is JsonObject reference)
+            lines.Add("起始牌码参考数量：" + (reference["IsValid"]?.ToString() == "true" ? reference["TotalCards"]?.ToString() ?? "未知" : "未知") + "；只作初始参考，不代表当前余量。");
+        if (evidence["Unknowns"] is JsonArray unknowns) foreach (var unknown in unknowns) lines.Add("· " + unknown);
+        lines.Add("完整剩余边栏池未知；不合并复制或偷取来源为精确共享池，也不从初始三张扣出虚构余量。");
+    }
+
+    private static bool PendingChoiceBoundary(JsonNode? evaluation) =>
+        evaluation?["Result"]?["DiscoveryBoundaryReached"]?.ToString() == "true" ||
+        evaluation?["Result"]?["MapFollowupBoundaryReached"]?.ToString() == "true";
+
+    private static void AppendMap(List<string> lines, JsonNode map, Func<int, string> entityName)
+    {
+        lines.Add("奇异的地图选择阶段：" + (map["Stage"]?.ToString() switch
+        {
+            "InitialChoice" => "首次发现，尚未证明使用首选",
+            "FollowupChoice" => "已核对本回合实际使用首选，当前为原剩余选项",
+            "AwaitingFollowupOffer" => "已确认首选实际使用，等待追加候选",
+            "AwaitingSelectedCardPlay" => "首选已实际选择，尚待使用",
+            "ConditionNotMet" => "本次已确认不满足追加条件",
+            "FollowupAlreadyChosen" => "追加选择已被实际选择，不重复入手",
+            "FollowupWindowEnded" => "原使用回合已结束",
+            _ => "证据不足，不能确认追加选择"
+        }));
+        if (map["InitialSelectedEntityId"] is { } selected)
+            lines.Add("原首选实体：" + entityName(selected.GetValue<int>()) + "；实际使用事件：" +
+                (map["InitialSelectedPlayedAtEventSequence"]?.ToString() ?? "尚未确认"));
+        if (map["RemainingOptions"] is JsonArray options)
+            foreach (var option in options.OfType<JsonObject>())
+                lines.Add("· 已观察的原剩余选项：" + (option["Name"]?.ToString() ?? "未知卡牌") + "；候选 #" + option["EntityId"]);
+        lines.Add("只核算当前实际提供的选项；不按同名牌、卡牌身份或创建者猜测新实体关联，不生成后续候选或可执行手牌。");
+    }
+
+    private static void AppendDiscovery(List<string> lines, JsonNode discovery)
+    {
+        var kind = discovery["Kind"]?.ToString();
+        lines.Add("原生使用入口 · " + (kind switch
+        {
+            "DeckDiscover" => "追踪术：从当前牌库发现",
+            "OddAttackBeastDiscover" => "奇异的地图：发现奇数攻击野兽",
+            "WildGodDiscover" => "护路者玛洛恩：发现传说荒野之神",
+            "SideboardDiscover" => "下水道之王：从私藏野兽边栏发现",
+            "AssembleFourCostMinion" => "寻回机：拼装四费随从",
+            "RewindDarkGiftBeastDiscover" => "迅猛龙先锋：发现野兽、黑暗之赐与回溯",
+            _ => "来源或原生效果尚未确认"
+        }));
+        if (discovery["IsConditionalPreview"]?.ToString() == "true") lines.Add("前序效果尚未确认，本段仅列条件预览。");
+        lines.Add("原生入口证据：" + (discovery["ResolvesEffects"]?.ToString() == "true" ? "已核对该来源；完整结算仍待确认" : "不足，保持未知"));
+        lines.Add("发现或拼装效果：" + (discovery["EffectActive"]?.ToString() switch
+        { "true" => "以成功使用为条件生效", "false" => "本次已抑制", _ => "是否生效未知" }));
+        if (kind == "DeckDiscover") lines.Add("当前牌库数：" + (discovery["DeckCountBeforeEffect"]?.ToString() ?? "未知"));
+        if (kind == "SideboardDiscover") lines.Add("当前私藏野兽可选数：" + (discovery["SideboardCandidateCount"]?.ToString() ?? "未知"));
+        if (kind == "RewindDarkGiftBeastDiscover")
+            lines.Add("独立回溯选择：" + (discovery["RewindActive"]?.ToString() switch
+            { "true" => "仍需等待维持或回溯选项；战吼被抑制不等于回溯已移除", "false" => "当前未生效", _ => "未知，不能假定已经用尽或移除" }));
+        lines.Add("外部选择：" + (discovery["RequiresChoice"]?.ToString() switch
+        { "true" => "需要等待真实选项", "false" => "本次原生效果无需选择；其他触发另行核验", _ => "未知，等待真实观测" }));
+        if (discovery["Scope"] is { } scope) lines.Add("范围与条件：" + scope);
+        foreach (var key in new[] { "Unknowns", "Assumptions" })
+            if (discovery[key] is JsonArray values) foreach (var value in values) lines.Add("· " + value);
+        lines.Add("直接预览不证明出牌合法；未生成候选、手牌实体或最终费用，也不能证明斩杀。");
     }
 
     private static void AppendQuestProgress(List<string> lines, JsonNode quest)

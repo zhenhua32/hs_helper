@@ -88,11 +88,11 @@ internal static class HunterPlayTriggerIntegration
         var advice = await new AdviceService(http).AnalyzeAsync(new(new Uri("https://play-trigger-fixture.invalid/v1/chat/completions"), "trigger-fixture"),
             "trigger-fixture-unused-key", context, coach.ExecuteAsync, () => true, capabilities: coach.Capabilities());
         Check(model.Calls == 2 && advice.Actions.Count == 0 && !advice.VerifiedLethal && advice.Risks.Length > 0 &&
-            context.TemplateVersion == "hunter-v9/turn" && AdviceTaskTemplates.Get(AdviceTaskKind.Choice).Version == "hunter-v9/choice" &&
+            context.TemplateVersion == "hunter-v10/turn" && AdviceTaskTemplates.Get(AdviceTaskKind.Choice).Version == "hunter-v10/choice" &&
             observations.Last() is { Name: "evaluate_play_triggers", Success: true, ResultHash.Length: 64, RequestId: not null } &&
             observations.Last().EventSequence == frame.EventSequence,
             "Trigger preview allowed an invented following action or lost its request-bound v9 policy.");
-        pass("fake model receives v9 direct-trigger evidence while host action validation rejects reward or random followups and lethal claims");
+        pass("fake model receives v10 direct-trigger evidence while host action validation rejects reward or random followups and lethal claims");
     }
 
     private static IEnumerable<string> Lines()
@@ -136,8 +136,9 @@ internal static class HunterPlayTriggerIntegration
             Calls++; var text = await request.Content!.ReadAsStringAsync(token); object message;
             if (Calls == 1)
             {
-                Check(text.Contains("hunter-v9/turn", StringComparison.Ordinal) && text.Contains("evaluate_play_triggers", StringComparison.Ordinal) &&
-                    text.Contains("不能自行给定进度", StringComparison.Ordinal), "The model did not receive the v9 trigger tool and boundary policy.");
+                Check(text.Contains("hunter-v10/turn", StringComparison.Ordinal) && text.Contains("evaluate_play_triggers", StringComparison.Ordinal) &&
+                    text.Contains("不能自行给定进度", StringComparison.Ordinal) && text.Contains("DiscoveryBoundaryReached", StringComparison.Ordinal) &&
+                    text.Contains("各段不能拼成已发生的局面", StringComparison.Ordinal), "The model did not receive the v10 trigger tool and boundary policy.");
                 message = new { role = "assistant", tool_calls = new[] { new { id = "trigger-preview", type = "function", function = new { name = "evaluate_play_triggers", arguments = "{\"source_entity_id\":30}" } } } };
             }
             else

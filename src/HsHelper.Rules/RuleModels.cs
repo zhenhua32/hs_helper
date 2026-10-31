@@ -44,6 +44,10 @@ public sealed record SimulatedState(int AvailableMana, IReadOnlyList<SimulatedEn
     public IReadOnlyList<QuestProgressOutcome> QuestProgressPreviews { get; init; } = [];
     public bool RaptorBoundaryReached { get; init; }
     public IReadOnlyList<DreamboundRaptorOutcome> RaptorPreviews { get; init; } = [];
+    public bool DiscoveryBoundaryReached { get; init; }
+    public IReadOnlyList<DiscoveryPlayOutcome> DiscoveryPreviews { get; init; } = [];
+    public bool MapFollowupBoundaryReached { get; init; }
+    public IReadOnlyList<MapPlayTriggerOutcome> MapPlayPreviews { get; init; } = [];
 }
 public sealed record LineEvaluation(string MatchId, long StateVersion, LineVerification Verification,
     bool? IsLegal, bool IsLethal, bool PotentialLethal, int AppliedActions,
