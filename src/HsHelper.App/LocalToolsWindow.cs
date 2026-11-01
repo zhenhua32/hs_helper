@@ -28,6 +28,7 @@ public sealed class LocalToolsWindow : Window
     private readonly ListBox _actions = new() { MinHeight = 80, MaxHeight = 150, DisplayMemberPath = nameof(LocalAction.Text) };
     private readonly Button _evaluate = new() { Content = "验证候选顺序" };
     private readonly Button _previewDraw = new() { Content = "预览所选手牌抽牌" };
+    private readonly Button _previewDeathrattleDraw = new() { Content = "预览所选随从亡语抽牌", ToolTip = "在“角色攻击”中选中我方场上随从，预览实际已观察的心中的恶魔附魔在其死亡后单次抽两张的直接风险；不杀死随从或腾出手牌位置。" };
     private readonly Button _previewGeneration = new() { Content = "预览随机生成数量" };
     private readonly Button _previewWolfBlessing = new() { Content = "比较巨狼祝福分支" };
     private readonly Button _previewMagmaSplit = new() { Content = "预览熔岩猎犬分配", ToolTip = "使用当前攻击者与攻击对象预览基础交换及后置逐包随机分配；攻击对象不是随机命中，不改变当前局面。" };
@@ -96,6 +97,11 @@ public sealed class LocalToolsWindow : Window
         {
             if (_source.SelectedItem is EntityOption source)
                 _ = RunToolAsync("evaluate_draw", new() { ["source_entity_id"] = source.Id });
+        };
+        _previewDeathrattleDraw.Click += (_, _) =>
+        {
+            if (_source.SelectedItem is EntityOption source)
+                _ = RunToolAsync("evaluate_deathrattle_draw", new() { ["source_entity_id"] = source.Id });
         };
         _previewGeneration.Click += (_, _) =>
         {
@@ -377,6 +383,14 @@ public sealed class LocalToolsWindow : Window
         _evaluate.IsEnabled = ready && _line.Count > 0; _lethal.IsEnabled = ready;
         _previewDraw.IsEnabled = ready && _snapshot.Phase == GamePhase.Main && _source.SelectedItem is EntityOption selected &&
             _snapshot.Entities.TryGetValue(selected.Id, out var source) && source.Zone == "HAND" && source.CardId is "FIR_921" or "EDR_226";
+        _previewDeathrattleDraw.IsEnabled = ready && _snapshot.ClientBuild == "255790" && _snapshot.Phase == GamePhase.Main &&
+            _snapshot.Quality.HasGameStart && _snapshot.Quality.IsComplete && _snapshot.Quality.IsStable && _snapshot.Quality.OpenBlockCount == 0 &&
+            ChoiceVisibility.ConfirmedLocalPlayer(_snapshot) is (1 or 2) and var deathrattleLocal &&
+            _source.SelectedItem is EntityOption deathrattle && _snapshot.Entities.TryGetValue(deathrattle.Id, out var deathrattleBody) &&
+            deathrattleBody.ControllerId == deathrattleLocal && deathrattleBody.Zone == "PLAY" && PreviewType(deathrattleBody, "MINION", "4") &&
+            deathrattleBody.RemainingHealth is > 0 && _snapshot.Entities.Values.Any(entity => entity.CardId == "EDR_100t4e" &&
+                entity.Zone == "PLAY" && entity.ControllerId == deathrattleLocal && PreviewType(entity, "ENCHANTMENT", "6") &&
+                entity.GetIntTag("ATTACHED") == deathrattleBody.Id);
         _previewGeneration.IsEnabled = ready && _snapshot.Phase == GamePhase.Main && _source.SelectedItem is EntityOption generation &&
             _snapshot.Entities.TryGetValue(generation.Id, out var generator) && generator.Zone == "HAND" && generator.CardId == "CORE_UNG_912";
         _previewWolfBlessing.IsEnabled = ready && _snapshot.Phase == GamePhase.Main && _source.SelectedItem is EntityOption wolf &&
@@ -451,7 +465,7 @@ public sealed class LocalToolsWindow : Window
         body.Children.Add(new TextBlock { Text = "候选顺序：编辑动作只影响本地计算", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
         body.Children.Add(Row(_kind, _source, Label("目标"), _target, _add));
         body.Children.Add(_actions); body.Children.Add(Row(_remove, _evaluate, _inspectEffect));
-        body.Children.Add(Row(_previewDraw, _previewGeneration, _previewWolfBlessing, _previewMagmaSplit, _previewPlayTriggers));
+        body.Children.Add(Row(_previewDraw, _previewDeathrattleDraw, _previewGeneration, _previewWolfBlessing, _previewMagmaSplit, _previewPlayTriggers));
         body.Children.Add(Row(Label("搜索深度"), _depth, Label("节点上限"), _nodes, _lethal));
         body.Children.Add(new TextBlock { Text = "我方陷阱来袭预览：固定攻击我方英雄，不执行敌方动作", FontWeight = FontWeights.SemiBold, Margin = new(0, 12, 0, 4) });
         body.Children.Add(Row(Label("我方陷阱"), _trapSource, Label("敌方来袭者"), _trapAttacker, _previewExplosiveTrap));
@@ -465,6 +479,7 @@ public sealed class LocalToolsWindow : Window
         Register("LocalLethalButton", _lethal); Register("LocalChoicesList", _choices); Register("LocalValidateChoiceButton", _validateChoice);
         Register("LocalEvaluateChoiceButton", _evaluateChoice);
         Register("LocalPreviewDrawButton", _previewDraw);
+        Register("LocalDeathrattleDrawButton", _previewDeathrattleDraw);
         Register("LocalPreviewGenerationButton", _previewGeneration);
         Register("LocalPreviewWolfBlessingButton", _previewWolfBlessing);
         Register("LocalPreviewMagmaSplitButton", _previewMagmaSplit);
@@ -523,9 +538,9 @@ public static class LocalToolResultFormatter
             lines.Add("文字查询不证明可执行动作或结算结果，也不改变当前费用和属性。");
             return string.Join("\n", lines);
         }
-        if (tool == "evaluate_draw")
+        if (tool is "evaluate_draw" or "evaluate_deathrattle_draw")
         {
-            AppendDraw(lines, result); return string.Join("\n", lines);
+            AppendDraw(lines, result, entityName, cardName, tool == "evaluate_deathrattle_draw"); return string.Join("\n", lines);
         }
         if (tool == "evaluate_generation")
         {
@@ -699,7 +714,7 @@ public static class LocalToolResultFormatter
                 lines.Add($"累计灌注预览：{state["ImbueCountBefore"]?.ToString() ?? "未知"} → {state["ImbueCountAfter"]?.ToString() ?? "未知或有后置灌注待确认"}");
             if (state["DrawBoundaryReached"]?.ToString() == "true") lines.Add("实体和资源投影停在抽牌前；抽牌直接后果列于下方，后续动作须等待新局面。");
             if (state["DrawPreviews"] is JsonArray drawPreviews)
-                foreach (var draw in drawPreviews.OfType<JsonObject>()) AppendDraw(lines, draw);
+                foreach (var draw in drawPreviews.OfType<JsonObject>()) AppendDraw(lines, draw, entityName, cardName);
             if (state["GenerationBoundaryReached"]?.ToString() == "true") lines.Add("实体和资源投影停在随机生成前；后续动作须等待新局面。");
             if (state["GenerationPreviews"] is JsonArray generationPreviews)
                 foreach (var generation in generationPreviews.OfType<JsonObject>()) AppendGeneration(lines, generation);
@@ -777,7 +792,8 @@ public static class LocalToolResultFormatter
         }
     }
 
-    private static void AppendDraw(List<string> lines, JsonNode draw)
+    private static void AppendDraw(List<string> lines, JsonNode draw, Func<int, string> entityName,
+        Func<string, string> cardName, bool deathrattle = false)
     {
         static string Range(JsonNode? range)
         {
@@ -785,7 +801,18 @@ public static class LocalToolResultFormatter
             var minimum = range["Minimum"]?.ToString() ?? "未知"; var maximum = range["Maximum"]?.ToString();
             return maximum == minimum ? minimum : maximum is null ? minimum + "～上界未知" : minimum + "～" + maximum;
         }
-        lines.Add("抽牌直接后果预览（假设本体成功离手；不证明出牌合法）");
+        deathrattle |= draw["Kind"]?.ToString() == "DeathrattleOrdinary";
+        if (deathrattle)
+        {
+            lines.Add("亡语抽牌直接后果预览（假设该随从死亡后触发一次；不会杀死随从）");
+            if (draw["TriggerEntityId"] is JsonValue trigger && trigger.TryGetValue<int>(out var triggerId))
+                lines.Add("触发随从：" + entityName(triggerId) + " #" + triggerId);
+            if (draw["EnchantmentEntityId"] is { } enchantment)
+                lines.Add("已审核附魔：" + (draw["EnchantmentCardId"] is { } id ? cardName(id.ToString()) : "未知") + " #" + enchantment);
+            lines.Add("该随从原已在场，本次不从手牌离开，也不额外腾出手牌位置；不证明死亡或完整后续结算已经发生。");
+            if (draw["ResolvesEffects"]?.ToString() == "false") lines.Add("当前来源或触发条件未确认，不能把以下范围当作已结算结果。");
+        }
+        else lines.Add("抽牌直接后果预览（假设本体成功离手；不证明出牌合法）");
         lines.Add($"抽取次数 {Range(draw["RequestedDraws"])}；牌库移出 {Range(draw["CardsRemovedFromDeck"])}；入手 {Range(draw["CardsAddedToHand"])}；满手损失 {Range(draw["CardsBurned"])}。");
         lines.Add($"空库尝试 {Range(draw["EmptyDeckAttempts"])}；直接疲劳伤害 {Range(draw["FatigueDamage"])}（护甲吸收前，免疫另行计算）。");
         lines.Add($"直接后果手牌数 {Range(draw["HandCountAfter"])} / 牌库数 {Range(draw["DeckCountAfter"])} / 疲劳计数 {Range(draw["FatigueAfter"])}。");

@@ -661,6 +661,7 @@ foreach (var (name, run) in CraftChoiceChecks.Cases(cards)) Run(name, run);
 foreach (var (name, run) in RewindChoiceChecks.Cases()) Run(name, run);
 foreach (var (name, run) in ImbueAndMalorneChecks.Cases()) Run(name, run);
 foreach (var (name, run) in DrawResolutionChecks.Cases()) Run(name, run);
+foreach (var (name, run) in DeathrattleDrawChecks.Cases()) Run(name, run);
 foreach (var (name, run) in HunterDrawLineChecks.Cases(cards)) Run(name, run);
 foreach (var (name, run) in AssembledRuleChecks.Cases(cards)) Run(name, run);
 foreach (var (name, run) in GenerationResolutionChecks.Cases()) Run(name, run);

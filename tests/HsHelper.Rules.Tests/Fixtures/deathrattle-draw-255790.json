@@ -1,0 +1,234 @@
+{
+  "build": "255790",
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "cardDefsSource": "https://api.hearthstonejson.com/v1/255790/CardDefs.base.xml",
+  "cardDefsSha256": "EE72B26D5B90B595EE5DE63E05979BF80195896BA32CF943C6F5FFC8BFBB72A8",
+  "scope": "Exact observed Inner Demons enchantment and bodies used by direct deathrattle draw checks. The SPELL gift button does not substitute for the ENCHANTMENT.",
+  "cardDefsEvidence": [
+    {
+      "CardId": "EDR_100t4e",
+      "DbfId": 113807,
+      "Tags": {
+        "CARDTYPE": 6,
+        "ENCHANTMENT_BIRTH_VISUAL": 1,
+        "ENCHANTMENT_IDLE_VISUAL": 1,
+        "IS_NIGHTMARE_BONUS": 1
+      },
+      "AbsentTags": [
+        "TAG_SCRIPT_DATA_NUM_6"
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "artist": "Konstantin Turovec",
+      "attack": 4,
+      "cardClass": "DEMONHUNTER",
+      "collectible": true,
+      "cost": 7,
+      "countAsCopyOfDbfId": 98469,
+      "dbfId": 129169,
+      "flavor": "游戏内禁止养恐魔。",
+      "health": 10,
+      "howToEarn": "与恶魔猎手职业一同解锁。",
+      "howToEarnGolden": "使用恶魔猎手赢得250场对战后解锁。",
+      "id": "CORE_TTN_866",
+      "mechanics": [
+        "LIFESTEAL",
+        "TRIGGER_VISUAL"
+      ],
+      "name": "神秘恐魔",
+      "race": "DEMON",
+      "races": [
+        "DEMON",
+        "BEAST"
+      ],
+      "rarity": "EPIC",
+      "set": "CORE",
+      "text": "<b>吸血</b>。在你的回合结束时，&迫使所有敌方随从攻击本随从。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Howard Lyon",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 648,
+      "flavor": "决斗的时候离它们远点儿。",
+      "health": 1,
+      "id": "CS2_171",
+      "mechanics": [
+        "CHARGE"
+      ],
+      "name": "石牙野猪",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "text": "<b>冲锋</b>",
+      "type": "MINION"
+    },
+    {
+      "artist": "Dan Brereton",
+      "attack": 3,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 216,
+      "faction": "HORDE",
+      "flavor": "“去杀30条迅猛龙。”——赫米特·奈辛瓦里",
+      "health": 2,
+      "id": "CS2_172",
+      "name": "血沼迅猛龙",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "type": "MINION"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 113800,
+      "hideCost": true,
+      "id": "EDR_100t4",
+      "name": "心中的恶魔",
+      "set": "EMERALD_DREAM",
+      "text": "<b>亡语：</b>抽两张牌。",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113807,
+      "id": "EDR_100t4e",
+      "name": "心中的恶魔",
+      "set": "EMERALD_DREAM",
+      "text": "<b>亡语：</b>抽两张牌。",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "artist": "Patrik Bjorkstrom",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 114020,
+      "flavor": "所谓物以类聚，那么幽爪熊该和谁一起冬眠？",
+      "health": 2,
+      "id": "EDR_227",
+      "mechanics": [
+        "DEATHRATTLE",
+        "RUSH"
+      ],
+      "name": "幽爪熊",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。<b>亡语：</b><b>灌注</b>你的英雄技能。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Eva Widermann",
+      "attack": 9,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 9,
+      "dbfId": 114254,
+      "elite": true,
+      "flavor": "以勇猛果决而闻名于世，且拥有的名号众多，其中包括洛戈什，还有巨狼。",
+      "health": 9,
+      "id": "EDR_480",
+      "mechanics": [
+        "AURA",
+        "RUSH"
+      ],
+      "name": "戈德林",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。友方野兽造成的伤害翻倍。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Stefano Spagnuolo",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 114935,
+      "flavor": "鲜花虽美，却也有刺。还有胡子。还有盾牌。",
+      "health": 3,
+      "id": "EDR_852",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "苦花骑士",
+      "rarity": "COMMON",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "<b>战吼：</b><b>灌注</b>你的英雄技能。",
+      "type": "MINION"
+    },
+    {
+      "artist": "Juan Calle",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 8,
+      "dbfId": 115751,
+      "flavor": "千万不要提起零食，不然他的熔涎肯定淌得到处都是。",
+      "health": 8,
+      "id": "FIR_953",
+      "isMiniSet": true,
+      "mechanics": [
+        "RUSH",
+        "TRIGGER_VISUAL"
+      ],
+      "name": "熔岩猎犬",
+      "race": "BEAST",
+      "races": [
+        "ELEMENTAL",
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "set": "EMERALD_DREAM",
+      "text": "<b>突袭</b>。在本随从攻击随从并存活下来后，&造成等同于本随从攻击力的伤害，随机分配到所有敌人身上。",
+      "type": "MINION"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113809,
+      "id": "EDR_100t6e",
+      "name": "隐匿梦行",
+      "set": "EMERALD_DREAM",
+      "text": "<b>冲锋</b>",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113803,
+      "id": "EDR_100te",
+      "name": "起床怒气",
+      "set": "EMERALD_DREAM",
+      "text": "+3攻击力和<b>吸血</b>。",
+      "type": "ENCHANTMENT"
+    }
+  ]
+}

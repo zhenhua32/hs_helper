@@ -45,7 +45,7 @@ internal static class TerrorToolChecks
             foreach (var task in new[] { AdviceTaskKind.Turn, AdviceTaskKind.Choice })
             {
                 var policy = AdviceTaskTemplates.Get(task);
-                Check(policy.Version == "hunter-v18/" + task.ToString().ToLowerInvariant() && policy.Instructions.Contains("TerrorEndTurnPreviews", StringComparison.Ordinal) &&
+                Check(policy.Version == "hunter-v19/" + task.ToString().ToLowerInvariant() && policy.Instructions.Contains("TerrorEndTurnPreviews", StringComparison.Ordinal) &&
                     policy.Instructions.Contains("等概率", StringComparison.Ordinal) && policy.Instructions.Contains("普通攻击次数/就绪字段", StringComparison.Ordinal),
                     "The model policy omitted conditional forced-combat branches or their unobserved ordinary counters.");
             }

@@ -29,7 +29,7 @@ public sealed partial class LineEvaluator
             Coverage.Add("cumulative-imbue-advances-for-covered-native-trigger");
         }
 
-        public DrawResolutionOutcome RecordNativeDraw(Entity source)
+        private DrawResolutionState CaptureDirectDrawState()
         {
             var originalDeck = _snapshot.Entities.Values.Where(entity => entity.ControllerId == Local && entity.Zone == "DECK").ToArray();
             var currentDeck = Entities.Values.Where(entity => entity.Controller == Local && entity.Zone == "DECK").ToArray();
@@ -56,12 +56,17 @@ public sealed partial class LineEvaluator
             if (namedImmune is not null || numericImmune is not null)
                 immune = namedImmune is not (null or "0" or "1") || numericImmune is not (null or "0" or "1") ||
                     namedImmune is not null && numericImmune is not null && namedImmune != numericImmune ? null : (namedImmune ?? numericImmune) == "1";
-            var overlay = new DrawResolutionState(_snapshot.MatchId, _snapshot.StateVersion, _snapshot.EventSequence,
+            return new DrawResolutionState(_snapshot.MatchId, _snapshot.StateVersion, _snapshot.EventSequence,
                 ConsistentCount("NUM_CARDS_IN_HAND", "HAND", Entities.Values.Count(entity => entity.Controller == Local && entity.Zone == "HAND")),
                 Alias("MAXHANDSIZE", "28"), ConsistentCount("NUM_CARDS_IN_DECK", "DECK", currentDeck.Length), Alias("FATIGUE", "22"),
                 observedHero?.GetIntTag("HEALTH") is not null && observedHero.GetIntTag("DAMAGE") is not null ? OwnHero?.Health : null,
                 observedHero?.GetIntTag("ARMOR") is not null ? OwnHero?.Armor : null,
                 immune, sameDeck);
+        }
+
+        public DrawResolutionOutcome RecordNativeDraw(Entity source)
+        {
+            var overlay = CaptureDirectDrawState();
             var condition = _currentImbues.HasValue ? _currentImbues.Value >= 2 : (bool?)null;
             var result = DrawResolutionRules.Evaluate(_snapshot, source.Id, _cards, condition, overlay);
             _drawPreviews.Add(result);

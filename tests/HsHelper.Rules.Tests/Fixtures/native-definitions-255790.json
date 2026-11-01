@@ -7,6 +7,15 @@
   "scope": "Fixed complete definitions for identities explicitly used by existing native rules and reviewed contexts. Registration is metadata trust, not implementation of every card effect.",
   "cards": [
     {
+      "cardClass": "HUNTER",
+      "dbfId": 113807,
+      "id": "EDR_100t4e",
+      "name": "心中的恶魔",
+      "set": "EMERALD_DREAM",
+      "text": "<b>亡语：</b>抽两张牌。",
+      "type": "ENCHANTMENT"
+    },
+    {
       "artist": "Matt Dixon",
       "attack": 3,
       "cardClass": "NEUTRAL",

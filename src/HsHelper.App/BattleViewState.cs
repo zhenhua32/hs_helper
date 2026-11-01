@@ -276,6 +276,7 @@ public static class BattleViewBuilder
         ["TAUNT"] = "嘲讽", ["DIVINE_SHIELD"] = "圣盾", ["STEALTH"] = "潜行", ["FROZEN"] = "冻结",
         ["POISONOUS"] = "剧毒", ["LIFESTEAL"] = "吸血", ["RUSH"] = "突袭", ["CHARGE"] = "冲锋",
         ["WINDFURY"] = "风怒", ["DORMANT"] = "休眠", ["IMMUNE"] = "免疫", ["SILENCED"] = "已沉默",
+        ["DEATHRATTLE"] = "亡语",
         ["ELUSIVE"] = "扰魔", ["CANT_BE_TARGETED_BY_SPELLS"] = "法术无法指定",
         ["CANT_BE_TARGETED_BY_ABILITIES"] = "法术无法指定", ["CANT_BE_TARGETED_BY_HERO_POWERS"] = "英雄技能无法指定"
     });

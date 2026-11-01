@@ -75,6 +75,7 @@ public partial class MainWindow
                 "validate_choice" => $"候选合法 {Field("IsLegal")}；仅验证当前选择，不模拟后续效果。",
                 "evaluate_choice" => $"选择直接后果 {Field("Verification")}；来源 {Field("SourceCardId")}；不作为已经发生的局面或后续动作依据。",
                 "evaluate_draw" => $"抽牌直接范围；来源 {Field("SourceCardId")}；不生成新手牌实体，不证明后续动作或斩杀。",
+                "evaluate_deathrattle_draw" => $"单次亡语抽牌直接范围；随从 {Field("SourceEntityId")}；实际附魔 {Field("EnchantmentCardId")}；不证明死亡已发生，不腾出手牌位置或生成新实体，不证明后续动作或斩杀。",
                 "evaluate_generation" => $"随机生成数量范围；来源 {Field("SourceCardId")}；不选择随机身份或创建新实体。",
                 "evaluate_wolf_blessing" => "巨狼祝福随机候选的直接增益分支；不指定实际命中或证明后续动作。",
                 "evaluate_magma_split" => "熔岩猎犬攻击与逐包随机分配的条件分支；区间相关，截断不代表全部结果，不指定命中或证明斩杀。",

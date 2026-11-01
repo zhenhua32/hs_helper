@@ -936,6 +936,8 @@ public sealed partial class PowerLogStateEngine
         "199" => "CLASS", "200" => "CARDRACE", "1635" => "SPELL_SCHOOL", "204" => "STATE", "263" => "ZONE_POSITION", "292" => "ARMOR", "305" => "MULLIGAN_STATE",
         "176" => "MAXRESOURCES", "187" => "DURABILITY", "188" => "SILENCED", "189" => "WINDFURY",
         "190" => "TAUNT", "191" => "STEALTH", "192" => "SPELLPOWER", "194" => "DIVINE_SHIELD", "197" => "CHARGE",
+        "217" => "DEATHRATTLE", "371" => "EXTRA_MINION_DEATHRATTLES_BASE", "882" => "EXTRA_DEATHRATTLES_BASE",
+        "1131" => "EXTRA_DEATHRATTLES_ADDITIONAL", "1831" => "CANT_TRIGGER_DEATHRATTLE",
         "219" => "SECRET", "462" => "QUEST",
         "227" => "CANT_ATTACK", "240" => "IMMUNE", "260" => "FROZEN", "271" => "NUM_TURNS_IN_PLAY",
         "295" => "TEMP_RESOURCES", "297" => "NUM_ATTACKS_THIS_TURN", "313" => "CREATOR", "385" => "DISPLAYED_CREATOR",

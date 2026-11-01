@@ -11,14 +11,17 @@ public sealed record DrawNumberRange(long Minimum, long? Maximum)
 }
 
 /// <summary>
-/// Counts immediately after a successful play has removed its source from hand, before its draw.
+/// Actual counts at the direct draw boundary (after a played card leaves hand, or at a deathrattle).
 /// An overlay belongs to the original observed frame; it never supplies new card identities.
 /// Set DeckCompositionStillMatchesSnapshot=false after an earlier unresolved deck change.
 /// </summary>
 public sealed record DrawResolutionState(string MatchId, long StateVersion, long EventSequence,
     int? HandCountBeforeDraw, int? MaximumHandSize, int? DeckCountBeforeDraw,
     int? FatigueBefore, int? HeroHealthBefore, int? HeroArmorBefore,
-    bool? HeroImmune = false, bool DeckCompositionStillMatchesSnapshot = true);
+    bool? HeroImmune = false, bool DeckCompositionStillMatchesSnapshot = true)
+{
+    public bool PriorResolutionPending { get; init; }
+}
 
 /// <summary>
 /// The isolated direct draw only; ranges are correlated and cannot be combined as independent outcomes.
@@ -36,6 +39,9 @@ public sealed record DrawResolutionOutcome(string MatchId, long StateVersion, lo
 {
     public bool IsDirectEffectOnly => true;
     public bool CanEvaluateFollowupActions => false;
+    public int? TriggerEntityId { get; init; }
+    public int? EnchantmentEntityId { get; init; }
+    public string? EnchantmentCardId { get; init; }
 }
 
 /// <summary>
@@ -46,7 +52,7 @@ public sealed record DrawResolutionOutcome(string MatchId, long StateVersion, lo
 /// A selected-card draw requires an actual selected card in HearthSim/SabberStone DrawCardTask.cs;
 /// this does not establish EDR_226's fixed-client empty-deck fallback, which remains a bounded branch here.
 /// </summary>
-public static class DrawResolutionRules
+public static partial class DrawResolutionRules
 {
     private sealed record Scenario(long Removed, long Added, long Burned, long EmptyAttempts, long Damage,
         long HandAfter, long DeckAfter, long FatigueAfter, long HealthAfter, long ArmorAfter, bool Dead);
@@ -54,23 +60,46 @@ public static class DrawResolutionRules
     public static DrawResolutionOutcome Evaluate(GameSnapshot snapshot, int sourceEntityId,
         IReadOnlyDictionary<string, CardRecord> cards, bool? imbuedTwice = null,
         DrawResolutionState? beforeDraw = null)
+        => EvaluateCore(snapshot, sourceEntityId, cards, imbuedTwice, beforeDraw, deathrattle: false);
+
+    public static DrawResolutionOutcome EvaluateDeathrattle(GameSnapshot snapshot, int sourceEntityId,
+        IReadOnlyDictionary<string, CardRecord> cards, DrawResolutionState? beforeDraw = null)
+        => EvaluateCore(snapshot, sourceEntityId, cards, null, beforeDraw, deathrattle: true);
+
+    private static DrawResolutionOutcome EvaluateCore(GameSnapshot snapshot, int sourceEntityId,
+        IReadOnlyDictionary<string, CardRecord> cards, bool? imbuedTwice,
+        DrawResolutionState? beforeDraw, bool deathrattle)
     {
         ArgumentNullException.ThrowIfNull(snapshot); ArgumentNullException.ThrowIfNull(cards);
         var unknowns = new List<string>(); var assumptions = new List<string>(); var coverage = new List<string>();
-        string? sourceId = null; var kind = "Unknown";
+        string? sourceId = null; var kind = deathrattle ? "DeathrattleOrdinary" : "Unknown";
+        EntitySnapshot? enchantment = null;
         var unknown = new DrawNumberRange(0, null);
         var requested = unknown;
         if (snapshot.Entities.Values.Any(entity => entity is null || entity.Tags is null) ||
             snapshot.Entities.Any(pair => pair.Key != pair.Value.Id) ||
             snapshot.ClientBuild != "255790" || !snapshot.Quality.IsComplete || !snapshot.Quality.IsStable ||
             !snapshot.Quality.HasLocalPerspective || snapshot.Quality.OpenBlockCount != 0 || snapshot.IsSpectating ||
-            snapshot.LocalPlayerId is not (1 or 2) || snapshot.ActivePlayerId != snapshot.LocalPlayerId || snapshot.Phase != GamePhase.Main)
-        { unknowns.Add("需要固定 build 255790、完整稳定且轮到我方的非观战局面，未计算抽牌数量。"); return Unresolved(); }
+            snapshot.LocalPlayerId is not (1 or 2) || snapshot.ActivePlayerId is not (1 or 2) ||
+            !deathrattle && snapshot.ActivePlayerId != snapshot.LocalPlayerId || snapshot.Phase != GamePhase.Main)
+        { unknowns.Add(deathrattle ? "需要固定 build 255790、我方视角下完整稳定的非观战主要阶段局面，未计算亡语抽牌数量。" :
+            "需要固定 build 255790、完整稳定且轮到我方的非观战局面，未计算抽牌数量。"); return Unresolved(); }
         var players = snapshot.Entities.Values.Where(entity => entity.Kind == EntityKind.Player).ToArray();
         if (!players.Select(player => player.GetIntTag("PLAYER_ID")).Order().SequenceEqual(new int?[] { 1, 2 }))
         { unknowns.Add("双方玩家实体未唯一确认，未连接私有牌库或手牌计数。"); return Unresolved(); }
         var player = players.Single(entity => entity.GetIntTag("PLAYER_ID") == snapshot.LocalPlayerId);
-        if (!snapshot.Entities.TryGetValue(sourceEntityId, out var source) || source.Kind != EntityKind.Card ||
+        EntitySnapshot? source;
+        if (deathrattle)
+        {
+            if (!TryDeathrattleSource(snapshot, sourceEntityId, cards, out source, out enchantment, out var reason))
+            { sourceId = source?.CardId; enchantment = null; unknowns.Add(reason); return Unresolved(); }
+            sourceId = source!.CardId;
+            if (beforeDraw?.PriorResolutionPending == true || !DeathrattleDrawContext(snapshot, sourceEntityId, enchantment!.Id, cards, out reason))
+            { unknowns.Add(beforeDraw?.PriorResolutionPending == true ? "死亡、抽牌或其他触发仍有先前未观察的结算，不能把一次直接亡语当作完整后果。" : reason); return Unresolved(); }
+        }
+        else
+        {
+        if (!snapshot.Entities.TryGetValue(sourceEntityId, out source) || source.Kind != EntityKind.Card ||
             source.ControllerId != snapshot.LocalPlayerId || source.CardId is not ("FIR_921" or "EDR_226") ||
             source.Zone != "HAND" && !(beforeDraw is not null && source.Zone == "PLAY") ||
             source.Tags.GetValueOrDefault("CARDTYPE") is { } sourceType && sourceType is not ("MINION" or "4"))
@@ -81,27 +110,37 @@ public static class DrawResolutionRules
         if (!cards.TryGetValue(sourceId, out var sourceCard) || sourceCard is null || sourceCard.Id != sourceId ||
             sourceCard.Type != "MINION" || sourceCard.DbfId != (sourceId == "FIR_921" ? 115648 : 114018) || !AuditedSource(sourceCard))
         { unknowns.Add("缺少与固定来源 ID、DBF 和战吼定义一致的卡牌资料，未按同名或印刷费用猜测牌效。"); return Unresolved(); }
+        }
         if (beforeDraw is not null && (beforeDraw.MatchId != snapshot.MatchId || beforeDraw.StateVersion != snapshot.StateVersion || beforeDraw.EventSequence != snapshot.EventSequence))
         { unknowns.Add("抽牌前计数覆盖不属于当前对局、状态版本和事件序号，未使用过期计数。"); return Unresolved(); }
 
         var silence = Flag(source, "SILENCED", false, "188");
         var battlecry = And(silence.HasValue ? !silence.Value : null, Flag(source, "BATTLECRY", true, "218"));
-        var active = sourceId == "FIR_921" ? And(battlecry, imbuedTwice) : battlecry;
-        var amount = sourceId == "FIR_921" ? 2 : 1;
+        var active = deathrattle ? true : sourceId == "FIR_921" ? And(battlecry, imbuedTwice) : battlecry;
+        var amount = deathrattle || sourceId == "FIR_921" ? 2 : 1;
         requested = active switch { true => new(amount, amount), false => new(0, 0), _ => new(0, amount) };
         if (sourceId == "FIR_921" && imbuedTwice is null && battlecry != false)
             unknowns.Add("累计灌注是否达到两次尚未确认，本次直接抽牌为零或两次；当前英雄技能强度不证明累计次数。");
 
         var hand = beforeDraw is null ? ObservedCount("NUM_CARDS_IN_HAND", "HAND") : Nonnegative(beforeDraw.HandCountBeforeDraw, "抽牌前手牌数");
-        if (beforeDraw is null && source.Zone == "HAND" && hand is { } observedHand) hand = observedHand >= 1 ? observedHand - 1 : null;
+        if (!deathrattle && beforeDraw is null && source.Zone == "HAND" && hand is { } observedHand) hand = observedHand >= 1 ? observedHand - 1 : null;
         var maximum = beforeDraw is null ? Nonnegative(Tag(player, "MAXHANDSIZE", "28"), "手牌上限") : Nonnegative(beforeDraw.MaximumHandSize, "手牌上限");
         var deck = beforeDraw is null ? ObservedCount("NUM_CARDS_IN_DECK", "DECK") : Nonnegative(beforeDraw.DeckCountBeforeDraw, "抽牌前牌库数");
         var fatigue = beforeDraw is null ? Nonnegative(Tag(player, "FATIGUE", "22"), "已有疲劳计数") : Nonnegative(beforeDraw.FatigueBefore, "已有疲劳计数");
         var hero = OwnHero();
         var health = beforeDraw is null ? ObservedHealth(hero) : Nonnegative(beforeDraw.HeroHealthBefore, "英雄当前生命");
-        var armor = beforeDraw is null ? Nonnegative(hero?.GetIntTag("ARMOR"), "英雄护甲") : Nonnegative(beforeDraw.HeroArmorBefore, "英雄护甲");
+        var armor = beforeDraw is null ? Nonnegative(hero is null ? null : deathrattle ? Tag(hero, "ARMOR", "292") : hero.GetIntTag("ARMOR"), "英雄护甲") : Nonnegative(beforeDraw.HeroArmorBefore, "英雄护甲");
         bool? immunity = beforeDraw is not null ? beforeDraw.HeroImmune : hero is not null ? Flag(hero, "IMMUNE", false, "240") : null;
-        var fatiguePrevention = Or(Flag(player, "CANT_BE_FATIGUED", false, "456"), hero is not null ? Flag(hero, "CANT_BE_FATIGUED", false, "456") : null);
+        if (deathrattle && hero is not null)
+        {
+            if (ObservedHealth(hero) is null) health = null;
+            if (Tag(hero, "ARMOR", "292") is null or < 0) armor = null;
+            if (StrictDrawFlag(hero, "IMMUNE", "240") is null) immunity = null;
+            else if (beforeDraw is null) immunity = StrictDrawFlag(hero, "IMMUNE", "240");
+        }
+        var fatiguePrevention = deathrattle
+            ? Or(StrictDrawFlag(player, "CANT_BE_FATIGUED", "456"), hero is not null ? StrictDrawFlag(hero, "CANT_BE_FATIGUED", "456") : null)
+            : Or(Flag(player, "CANT_BE_FATIGUED", false, "456"), hero is not null ? Flag(hero, "CANT_BE_FATIGUED", false, "456") : null);
         if (health == 0) { unknowns.Add("抽牌前我方英雄已无生命，不能预览游戏结束后的抽牌。"); return Unresolved(); }
         var damageModifiers = snapshot.Entities.Values.Any(entity => entity.Zone == "PLAY" || entity.Kind == EntityKind.Player
             ? new[] { "HEALTH_MINIMUM", "MINIMUM_HEALTH", "DAMAGE_CANT_KILL", "INCOMING_DAMAGE_MULTIPLIER", "HERO_CANT_BE_DESTROYED", "MULTIPLY_HERO_DAMAGE" }
@@ -112,11 +151,11 @@ public static class DrawResolutionRules
         if (deck is null) unknowns.Add("牌库总数未知或与实体计数冲突，移出数量与空库尝试保留范围。");
         var beast = kind == "Beast" ? BeastCounts() : null;
         if (kind == "Beast") coverage.Add("EDR_226-counts-without-selected-beast-identity");
-        else coverage.Add("FIR_921-historical-condition-zero-or-two-draws");
+        else coverage.Add(deathrattle ? "EDR_100t4e-one-observed-deathrattle-two-ordinary-draws" : "FIR_921-historical-condition-zero-or-two-draws");
 
         var scenarios = new List<Scenario>();
         var requestValues = active switch { true => new[] { amount }, false => new[] { 0 }, _ => new[] { 0, amount } };
-        var cantDraw = Flag(player, "CANT_DRAW", false, "232");
+        var cantDraw = deathrattle ? StrictDrawFlag(player, "CANT_DRAW", "232") : Flag(player, "CANT_DRAW", false, "232");
         var blockers = cantDraw switch { true => new[] { true }, false => new[] { false }, _ => new[] { false, true } };
         var immunityValues = immunity switch { true => new[] { true }, false => new[] { false }, _ => new[] { false, true } };
         var preventionValues = fatiguePrevention switch { true => new[] { true }, false => new[] { false }, _ => new[] { false, true } };
@@ -141,7 +180,7 @@ public static class DrawResolutionRules
         foreach (var preventFatigue in preventionValues)
         foreach (var fatigueBefore in fatigueValues.Distinct())
         {
-            if (kind == "Ordinary") AddScenario(count, blocked, deckValue, capacity, heroHealth, heroArmor, fatigueBefore, null, false, immune, preventFatigue);
+            if (kind != "Beast") AddScenario(count, blocked, deckValue, capacity, heroHealth, heroArmor, fatigueBefore, null, false, immune, preventFatigue);
             else
             {
                 var canFind = beast is { Minimum: > 0 } ? new[] { true } : beast?.Maximum == 0 || deckValue == 0 ? new[] { false } : new[] { false, true };
@@ -161,9 +200,10 @@ public static class DrawResolutionRules
         var empty = Range(scenarios.Select(value => value.EmptyAttempts));
         if (scenarios.Any(value => value.Damage > 0) && fatigue is null) unknowns.Add("已有疲劳计数未知；只能给直接疲劳伤害下界，不能默认下一次为一点。");
         if (scenarios.Any(value => value.Removed > 0)) unknowns.Add("未选择抽到或满手损失的牌 ID、实体或费用；不得用牌库组成或印刷费用构造新手牌动作。");
-        assumptions.Add("计数指本体成功离手后的一次直接战吼；支付、反制、重复战吼、额外抽牌、施放时抽取、入手及受伤触发未在这里展开。");
+        assumptions.Add(deathrattle ? "仅预览该当前随从死亡后的一次已观察抽牌亡语，不宣称死亡已经发生；手牌数就是触发点实际数量，不为随从离场空出手牌位。新牌身份与后续触发仍待日志观察。" :
+            "计数指本体成功离手后的一次直接战吼；支付、反制、重复战吼、额外抽牌、施放时抽取、入手及受伤触发未在这里展开。");
         assumptions.Add("各字段为同一组直接结算分支的边界，不能将不同字段的最有利端点拼成一条实际序列；未知牌序不会被补为任意实体顺序。");
-        coverage.AddRange(["source-leaves-hand-before-draw", "direct-deck-removal-and-hand-capacity", "ordinary-increasing-fatigue-packets", "stop-direct-draw-at-hero-death"]);
+        coverage.AddRange([deathrattle ? "deathrattle-does-not-free-a-hand-slot" : "source-leaves-hand-before-draw", "direct-deck-removal-and-hand-capacity", "ordinary-increasing-fatigue-packets", "stop-direct-draw-at-hero-death"]);
         var damage = Range(scenarios.Select(value => value.Damage));
         if (fatigue is null && scenarios.Any(value => value.Damage > 0)) damage = damage with { Maximum = null };
         var afterFatigue = Range(scenarios.Select(value => value.FatigueAfter));
@@ -175,7 +215,8 @@ public static class DrawResolutionRules
             deck.HasValue ? Range(scenarios.Select(value => value.DeckAfter)) : new(0, null), afterFatigue,
             health.HasValue ? Range(scenarios.Select(value => value.HealthAfter)) : null,
             armor.HasValue ? Range(scenarios.Select(value => value.ArmorAfter)) : null,
-            scenarios.Any(value => value.Dead), ReadOnly(unknowns), ReadOnly(assumptions), ReadOnly(coverage));
+            scenarios.Any(value => value.Dead), ReadOnly(unknowns), ReadOnly(assumptions), ReadOnly(coverage))
+        { TriggerEntityId = deathrattle ? sourceEntityId : null, EnchantmentEntityId = enchantment?.Id, EnchantmentCardId = enchantment?.CardId };
 
         void AddScenario(int count, bool blocked, long initialDeck, long capacity, long initialHealth,
             long initialArmor, long initialFatigue, bool? targetedFound, bool targetedFatigue, bool immune, bool preventFatigue)
@@ -221,6 +262,12 @@ public static class DrawResolutionRules
         }
         int? ObservedHealth(EntitySnapshot? entity)
         {
+            if (deathrattle)
+            {
+                if (entity is null || Tag(entity, "HEALTH", "45") is not (> 0 and var maximum) ||
+                    Tag(entity, "DAMAGE", "44") is not (>= 0 and var damage) || damage > maximum) return null;
+                return maximum - damage;
+            }
             if (entity?.GetIntTag("HEALTH") is not (> 0 and var maximumHealth) || entity.GetIntTag("DAMAGE") is not (>= 0 and var damageTaken) || damageTaken > maximumHealth) return null;
             return maximumHealth - damageTaken;
         }
@@ -246,7 +293,8 @@ public static class DrawResolutionRules
         }
         DrawResolutionOutcome Unresolved() => new(snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence,
             sourceEntityId, sourceId, kind, false, requested, unknown, unknown, unknown, unknown, unknown,
-            null, null, null, null, null, false, ReadOnly(unknowns), ReadOnly(assumptions), ReadOnly(coverage));
+            null, null, null, null, null, false, ReadOnly(unknowns), ReadOnly(assumptions), ReadOnly(coverage))
+        { TriggerEntityId = deathrattle ? sourceEntityId : null, EnchantmentEntityId = enchantment?.Id, EnchantmentCardId = enchantment?.CardId };
     }
 
     private static DrawNumberRange Range(IEnumerable<long> values)
