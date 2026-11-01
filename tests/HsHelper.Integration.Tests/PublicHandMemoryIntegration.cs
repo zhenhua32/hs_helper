@@ -213,7 +213,7 @@ internal static class PublicHandMemoryIntegration
         var cards = await catalog.GetByIdsBatchedAsync(ids, Build);
         var context = CompactAdviceContextBuilder.Create(item.Frame, Build, task, cards: cards) with { KnowledgeAsOf = item.Point.RecordedAt, AsOf = DateTimeOffset.UtcNow };
         var memory = context.Snapshot["public_hand_memory"];
-        Check((memory?["entries"]?.AsArray().Count ?? 0) == expectedEntries && context.TemplateVersion == (task == AdviceTaskKind.Review ? "hunter-v7/review" : "hunter-v23/turn"),
+        Check((memory?["entries"]?.AsArray().Count ?? 0) == expectedEntries && context.TemplateVersion == (task == AdviceTaskKind.Review ? "hunter-v7/review" : "hunter-v24/turn"),
             "The actual compact projection lost its memory or prompt source boundary.");
         if (expectedEntries > 0)
         {

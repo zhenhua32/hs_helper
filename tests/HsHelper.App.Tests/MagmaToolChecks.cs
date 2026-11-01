@@ -91,7 +91,7 @@ public static class MagmaToolChecks
         foreach (var task in new[] { AdviceTaskKind.Turn, AdviceTaskKind.Choice })
         {
             var policy = AdviceTaskTemplates.Get(task);
-            Check(policy.Version == "hunter-v23/" + task.ToString().ToLowerInvariant() &&
+            Check(policy.Version == "hunter-v24/" + task.ToString().ToLowerInvariant() &&
                 policy.Instructions.Contains("evaluate_magma_split", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("MagmaSplitBoundaryReached", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("AttackIsLegal未知", StringComparison.Ordinal) &&

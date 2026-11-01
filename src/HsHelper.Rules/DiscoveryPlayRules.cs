@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using HsHelper.Cards;
 using HsHelper.Core;
 
@@ -22,6 +23,10 @@ public sealed record DiscoveryPlayOutcome(string MatchId, long StateVersion, lon
     bool? RequiresChoice, int? DeckCountBeforeEffect, int? SideboardCandidateCount, string Scope,
     IReadOnlyList<string> Unknowns, IReadOnlyList<string> Assumptions, IReadOnlyList<string> RuleCoverage)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BattlecryMultiplicityOutcome? BattlecryMultiplicity { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? IsSingleBattlecryActivationPreview { get; init; }
     public bool? RequiresDiscoveryChoice { get; init; }
     public bool? RewindActive { get; init; }
     public bool IsConditionalPreview { get; init; }
@@ -65,6 +70,7 @@ public static class DiscoveryPlayRules
         string? sourceId = null; var kind = "Unknown"; var scope = "来源尚未确认。";
         bool? active = null, choice = null, discovery = null, rewind = false; var resolves = false;
         int? deck = null, sideboard = null;
+        BattlecryMultiplicityOutcome? multiplicity = null;
         var local = ChoiceVisibility.ConfirmedLocalPlayer(snapshot);
         if (snapshot.ClientBuild != "255790" || local is not (1 or 2) || !snapshot.Quality.HasGameStart ||
             !snapshot.Quality.IsComplete || !snapshot.Quality.IsStable || snapshot.Quality.OpenBlockCount != 0 ||
@@ -93,6 +99,7 @@ public static class DiscoveryPlayRules
         if (!cards.TryGetValue(sourceId, out var card) || card is null || !Audited(card, sourceId, definition))
         { unknowns.Add("来源 ID、DBF、类别、完整原生文字或机制与固定定义不一致。"); return Result(); }
         kind = definition.Kind; scope = definition.Scope;
+        if (definition.Type == "MINION") multiplicity = BattlecryMultiplicityRules.Evaluate(snapshot, sourceEntityId, cards);
         coverage.Add("build-255790-native-use:" + sourceId);
 
         if (definition.Type == "SPELL") active = true;
@@ -141,13 +148,16 @@ public static class DiscoveryPlayRules
         if (beforeEffect?.PriorResolutionPending == true)
             unknowns.Add("前序结算尚未确认；本次仅给条件预览，不表示实际效果或选择已经发生。");
         assumptions.Add("以来源已成功使用且只结算一次原生效果为条件；支付、入场、反制、重复战吼和其他触发由完整动作规则核验。");
+        if (multiplicity is { Activations: not (0 or 1) }) assumptions.Add("本预览只描述一个战吼子脚本的选择需求，不生成下一轮候选，也不把已知次数计划当作全部选择已经完成。");
         assumptions.Add("发现/拼装池仅描述范围，实际候选及当前选择以客户端观测为准；不创建新牌或声明最终费用、回溯恢复状态。待选期间需等待新局面。");
         return Result();
 
         DiscoveryPlayOutcome Result() => new(snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence,
             sourceEntityId, sourceId, kind, resolves, active, choice, deck, sideboard, scope,
             Freeze(unknowns), Freeze(assumptions), Freeze(coverage))
-            { RequiresDiscoveryChoice = discovery, RewindActive = rewind, IsConditionalPreview = beforeEffect?.PriorResolutionPending == true };
+            { RequiresDiscoveryChoice = discovery, RewindActive = rewind, IsConditionalPreview = beforeEffect?.PriorResolutionPending == true,
+                BattlecryMultiplicity = multiplicity,
+                IsSingleBattlecryActivationPreview = multiplicity is { Activations: not (0 or 1) } ? true : null };
     }
 
     private static Definition Raptor(int dbf) => new(dbf, "MINION",

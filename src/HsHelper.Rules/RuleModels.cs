@@ -32,6 +32,10 @@ public sealed record AssembledEffectOutcome(string MatchId, long StateVersion, l
 }
 public sealed record SimulatedState(int AvailableMana, IReadOnlyList<SimulatedEntity> Entities)
 {
+    private IReadOnlyList<BattlecryExecutionOutcome>? _battlecryExecutions;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<BattlecryExecutionOutcome>? BattlecryExecutions
+    { get => _battlecryExecutions; init => _battlecryExecutions = value is null ? null : Array.AsReadOnly(value.ToArray()); }
     private IReadOnlyList<AssembledEffectOutcome>? _assembledEffects;
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<AssembledEffectOutcome>? AssembledEffects

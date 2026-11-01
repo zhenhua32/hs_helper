@@ -10,7 +10,7 @@ public sealed partial class LineEvaluator
         private readonly List<GenerationResolutionOutcome> _generationPreviews = [];
         public bool GenerationBoundaryReached { get; private set; }
 
-        public void RecordNativeGeneration(Entity source)
+        public GenerationResolutionOutcome RecordNativeGeneration(Entity source)
         {
             var observedPlayer = Player is not null ? _snapshot.Entities.GetValueOrDefault(Player.Id) : null;
             var originalHandCount = _snapshot.Entities.Values.Count(entity => entity.ControllerId == Local && entity.Zone == "HAND");
@@ -35,6 +35,7 @@ public sealed partial class LineEvaluator
                 GenerationBoundaryReached = true;
                 Conditional("随机生成的直接数量和满手损失见独立预览；未创建新手牌实体，生成及后续触发需要新局面后继续。", "GENERATION_REQUIRES_NEXT_OBSERVATION");
             }
+            return result;
         }
     }
 }

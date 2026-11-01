@@ -70,7 +70,7 @@ public partial class MainWindow
                 "get_cards" => "固定版本卡牌：" + string.Join("、", (json?["cards"] as JsonArray ?? []).Select(c => c?["Id"]?.ToString() ?? c?["id"]?.ToString() ?? "未知")),
                 "get_recent_events" => "仅查询固定序号以前的匿名近期事件。",
                 "calculate_draw_odds" => $"精确条件 {Field("is_exact")}；概率 {Field("probability") ?? "未知"}；{Field("reason")}",
-                "evaluate_line" => $"验证 {Field("Verification")}；合法 {Field("IsLegal")}；确定斩杀 {Field("IsLethal")}；未覆盖 {Field("UnsupportedMechanics")}",
+                "evaluate_line" => $"验证 {Field("Verification")}；合法 {Field("IsLegal")}；确定斩杀 {Field("IsLethal")}；未覆盖 {Field("UnsupportedMechanics")}" + BattlecryExecutionPresentation.EvidenceSummary(json),
                 "find_lethal" => $"已验证斩杀 {Field("VerifiedLethalFound")}；搜索节点 {Field("ExploredNodes")}；{Field("Coverage")}",
                 "validate_choice" => $"候选合法 {Field("IsLegal")}；仅验证当前选择，不模拟后续效果。",
                 "evaluate_choice" => $"选择直接后果 {Field("Verification")}；来源 {Field("SourceCardId")}；不作为已经发生的局面或后续动作依据。",

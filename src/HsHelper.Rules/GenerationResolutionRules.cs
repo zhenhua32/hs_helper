@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using HsHelper.Cards;
 using HsHelper.Core;
 
@@ -24,6 +25,10 @@ public sealed record GenerationResolutionOutcome(string MatchId, long StateVersi
     GenerationNumberRange CardsLostToHandLimit, GenerationNumberRange? HandCountAfter,
     IReadOnlyList<string> Unknowns, IReadOnlyList<string> Assumptions, IReadOnlyList<string> RuleCoverage)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BattlecryMultiplicityOutcome? BattlecryMultiplicity { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? IsSingleBattlecryActivationPreview { get; init; }
     public bool IsDirectEffectOnly => true;
     public bool RequiresChoice => false;
     public bool CanEvaluateFollowupActions => false;
@@ -44,6 +49,7 @@ public static class GenerationResolutionRules
         ArgumentNullException.ThrowIfNull(snapshot); ArgumentNullException.ThrowIfNull(cards);
         var unknowns = new List<string>(); var assumptions = new List<string>(); var coverage = new List<string>();
         string? sourceId = null; var kind = "Unknown";
+        BattlecryMultiplicityOutcome? multiplicity = null;
         var unbounded = new GenerationNumberRange(0, null);
         if (snapshot.Entities.Values.Any(entity => entity is null || entity.Tags is null) ||
             snapshot.Entities.Any(pair => pair.Key != pair.Value.Id) || snapshot.ClientBuild != "255790" ||
@@ -61,6 +67,7 @@ public static class GenerationResolutionRules
             !ObservedMinion(source))
         { unknowns.Add("未确认我方宝石鹦鹉的实体、原生随从类别或使用阶段，场上旧随从不能自行重触发战吼。"); return Unresolved(); }
         sourceId = source.CardId; kind = "RandomBeastToHand";
+        multiplicity = BattlecryMultiplicityRules.Evaluate(snapshot, sourceEntityId, cards);
         if (AssembledCardText.RequiresCustomText(source.Tags))
         { unknowns.Add("来源具有拼装半段、候选标记或冲突标签，不能按基础卡 ID 展开原生生成效果。"); return Unresolved(); }
         if (!cards.TryGetValue(sourceId, out var card) || card is null || card.Id != sourceId || card.DbfId != 97376 ||
@@ -99,18 +106,21 @@ public static class GenerationResolutionRules
         assumptions.Add("本预览以本体已成功离手并进行一次原生战吼为条件；支付、反制、重复战吼及其他生成/入手触发未展开。");
         assumptions.Add("覆盖计数已在来源离手后，不再扣除一次本体；无覆盖时先从当前手牌数扣除本体，再检查容量。");
         assumptions.Add("这是直接置入手牌而非抽牌，不改变牌库计数或产生直接疲劳；未加入手牌只记录数量，不虚构其最终区域。各数量边界关联，不能拼接为一条实际序列。");
+        if (multiplicity is { Activations: not (0 or 1) }) assumptions.Add("以下仅为一个战吼子脚本的数量，不是全部重复战吼总量；遇首个未知新牌/入手触发后不声称后续轮已完成。");
         coverage.AddRange(["CORE_UNG_912-native-random-beast-count-one", "source-leaves-hand-before-generation",
             "observed-hand-capacity-only", "generation-is-not-a-deck-draw", "no-generated-card-identity-or-current-cost"]);
         return new(snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence, sourceEntityId, sourceId, kind, true,
             requested, Range(scenarios.Select(value => value.Added)), Range(scenarios.Select(value => value.Lost)),
             hand.HasValue ? Range(scenarios.Select(value => (long)hand.Value + value.Added)) : null,
-            Freeze(unknowns), Freeze(assumptions), Freeze(coverage));
+            Freeze(unknowns), Freeze(assumptions), Freeze(coverage))
+        { BattlecryMultiplicity = multiplicity, IsSingleBattlecryActivationPreview = multiplicity is { Activations: not (0 or 1) } ? true : null };
 
         int? Nonnegative(int? value, string label)
         { if (value is < 0) { unknowns.Add(label + "为负，按未知处理。"); return null; } return value; }
         GenerationResolutionOutcome Unresolved() => new(snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence,
             sourceEntityId, sourceId, kind, false, unbounded, unbounded, unbounded, null,
-            Freeze(unknowns), Freeze(assumptions), Freeze(coverage));
+            Freeze(unknowns), Freeze(assumptions), Freeze(coverage))
+        { BattlecryMultiplicity = multiplicity, IsSingleBattlecryActivationPreview = multiplicity is { Activations: not (0 or 1) } ? true : null };
     }
 
     private static GenerationNumberRange Range(IEnumerable<long> values)

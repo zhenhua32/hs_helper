@@ -11,7 +11,7 @@ using HsHelper.Storage;
 
 internal static class AssembledScriptIntegration
 {
-    private const string Build = "255790", Template = "hunter-v23/turn", Key = "assembled-script-fake-key";
+    private const string Build = "255790", Template = "hunter-v24/turn", Key = "assembled-script-fake-key";
     private const string Private = "PRIVATE_ASSEMBLED_SCRIPT_PROBE", Complete = "PowerProcessor.EndCurrentTaskList() - complete";
     private const string Script = "Battlecry.HandMinionBuff.1.1.v1";
 
@@ -96,6 +96,12 @@ internal static class AssembledScriptIntegration
         var noExtraMarker = await (await Replay.CreateAsync(directory, catalog, new() { OmitBattlecry = true })).SaveAsync();
         var ordinaryOnce = await PipelineAsync(noExtraMarker, catalog, new() { OmitBattlecry = true }); AssertVerified(ordinaryOnce, true);
         AssertEffect(ordinaryOnce.Line, noExtraMarker, 30, "EDR_102", 0, 121051, "EDR_102", "TIME_100", 1, true);
+        var repeatedSpec = new Spec { RepeatGift = "EDR_100t7e" };
+        var repeated = await (await Replay.CreateAsync(directory, catalog, repeatedSpec)).SaveAsync();
+        var observedTwice = await PipelineAsync(repeated, catalog, repeatedSpec); AssertVerified(observedTwice, true);
+        AssertEffect(observedTwice.Line, repeated, 30, "EDR_102", 0, 121051, "EDR_102", "TIME_100", 2, true);
+        Check(Entity(observedTwice.Line, 31)["Attack"]?.GetValue<int>() == 3 && Entity(observedTwice.Line, 31)["Cost"]?.GetValue<int>() == 1,
+            "The newly audited single repeat attachment failed its actual two buffs or duplicated payment.");
         pass("current cost attack maximum health and damage remain authoritative and reliable Battlecry suppression or silence yields zero executions without restoring the original script");
 
         foreach (var variant in new[] { "base-dbf", "base-text", "donor-dbf", "donor-text", "donor-mechanics", "missing-donor" })
@@ -139,7 +145,7 @@ internal static class AssembledScriptIntegration
         {
             new Spec { Changes = ["TAG_CHANGE Entity=2 tag=EXTRA_BATTLECRIES_BASE value=2"] },
             new Spec { Changes = ["TAG_CHANGE Entity=30 tag=188 value=unknown"] },
-            new Spec { Raptor = true }, new Spec { UnknownGift = true }, new Spec { OpposingSecret = true }
+            new Spec { Raptor = true }, new Spec { RepeatGift = "EDR_100t7e1" }, new Spec { OpposingSecret = true }
         })
         {
             var item = await (await Replay.CreateAsync(directory, catalog, spec)).SaveAsync(); var result = await PipelineAsync(item, catalog, spec);
@@ -184,7 +190,7 @@ internal static class AssembledScriptIntegration
         public bool PlayOnly { get; init; }
         public bool NativeProbe { get; init; }
         public bool Raptor { get; init; }
-        public bool UnknownGift { get; init; }
+        public string? RepeatGift { get; init; }
         public bool OpposingSecret { get; init; }
         public bool PrivateSource { get; init; }
         public bool OmitBattlecry { get; init; }
@@ -226,7 +232,7 @@ internal static class AssembledScriptIntegration
             }
             if (spec.NativeProbe) await replay.CharacterAsync(40, "CORE_CS2_231", 2, "PLAY", "MINION", 1, 20, 0);
             if (spec.Raptor) await replay.CharacterAsync(50, "EDR_849", 1, "PLAY", "MINION", 1, 5, 0);
-            if (spec.UnknownGift) await replay.FeedAsync("FULL_ENTITY - Creating ID=51 CardID=EDR_100t7e", "tag=CONTROLLER value=1", "tag=ZONE value=PLAY", "tag=CARDTYPE value=ENCHANTMENT", "tag=ATTACHED value=30");
+            if (spec.RepeatGift is not null) await replay.FeedAsync("FULL_ENTITY - Creating ID=51 CardID=" + spec.RepeatGift, "tag=CONTROLLER value=1", "tag=ZONE value=PLAY", "tag=CARDTYPE value=ENCHANTMENT", "tag=ATTACHED value=30");
             if (spec.OpposingSecret) await replay.FeedAsync("FULL_ENTITY - Creating ID=52 CardID=" + Private, "tag=CONTROLLER value=2", "tag=ZONE value=SECRET", "tag=CARDTYPE value=SPELL", "tag=SECRET value=1");
             await replay.FeedAsync("FULL_ENTITY - Creating ID=90 CardID=" + Private, "tag=CONTROLLER value=2", "tag=ZONE value=HAND", "tag=CARDTYPE value=MINION", "tag=4572 value=113822", "tag=4573 value=121051",
                 "FULL_ENTITY - Creating ID=91 CardID=EDR_100t13e", "tag=CONTROLLER value=2", "tag=ZONE value=PLAY", "tag=CARDTYPE value=ENCHANTMENT", "tag=ATTACHED value=90");

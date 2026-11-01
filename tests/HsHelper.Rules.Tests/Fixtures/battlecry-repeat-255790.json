@@ -1,0 +1,539 @@
+{
+  "build": "255790",
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "cardDefsSource": "https://api.hearthstonejson.com/v1/255790/CardDefs.base.xml",
+  "cardDefsSha256": "EE72B26D5B90B595EE5DE63E05979BF80195896BA32CF943C6F5FFC8BFBB72A8",
+  "scope": "Complete fixed records for observed single Rude Awakening Battlecry execution and negative/control sources. t7e1 and generic base/additional aggregation remain unaudited; no double Deathrattle claim or generated eligibility.",
+  "cards": [
+    {
+      "artist": "Matt Dixon",
+      "attack": 3,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 128892,
+      "flavor": "\u624B\u624B\u6700\u597D\u7684\u670B\u53CB\u3002",
+      "health": 3,
+      "id": "BE_044",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "F3TCH3R\u5BFB\u56DE\u673A",
+      "race": "BEAST",
+      "races": [
+        "MECHANICAL",
+        "BEAST"
+      ],
+      "rarity": "COMMON",
+      "set": "BE",
+      "text": "\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u003Cb\u003E\u62FC\u88C5\u003C/b\u003E\u4E00\u5F20\u6CD5\u529B\u503C\u6D88\u8017\u4E3A\uFF084\uFF09\u7684\u968F\u4ECE\u724C\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Steve Prescott",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 69565,
+      "faction": "HORDE",
+      "flavor": "\u5A9A\u773C\u5982\u4E1D\uFF0C\u8F7B\u76C8\u5982\u71D5\uFF0C\u81F4\u547D\u5982\u7BAD\u3002",
+      "health": 1,
+      "howToEarn": "\u5B8C\u6210\u6559\u5B66\u540E\u89E3\u9501\u3002",
+      "howToEarnGolden": "\u603B\u8BA1\u8D62\u5F97500\u573A\u5BF9\u6218\u540E\u89E3\u9501\u3002",
+      "id": "CORE_CS2_189",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "\u7CBE\u7075\u5F13\u7BAD\u624B",
+      "rarity": "COMMON",
+      "set": "CORE",
+      "targetingArrowText": "\u9020\u62101\u70B9\u4F24\u5BB3\u3002",
+      "text": "\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u9020\u62101\u70B9\u4F24\u5BB3\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Malcolm Davis",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 0,
+      "countAsCopyOfDbfId": 179,
+      "dbfId": 120970,
+      "flavor": "\u5982\u679C\u4F60\u7528\u8DB3\u591F\u591A\u7684\u5C0F\u7CBE\u7075\u653B\u51FB\u827E\u745E\u8FBE\u9886\u4E3B\u7684\u8BDD\uFF0C\u4ED6\u5C31\u4F1A\u7206\u70B8\u3002\u4F46\u8FD9\u662F\u4E3A\u4EC0\u4E48\u5462\uFF1F",
+      "health": 1,
+      "howToEarn": "\u5B8C\u6210\u6559\u5B66\u540E\u89E3\u9501\u3002",
+      "howToEarnGolden": "\u603B\u8BA1\u8D62\u5F97500\u573A\u5BF9\u6218\u540E\u89E3\u9501\u3002",
+      "id": "CORE_CS2_231",
+      "name": "\u5C0F\u7CBE\u7075",
+      "race": "UNDEAD",
+      "races": [
+        "UNDEAD"
+      ],
+      "rarity": "COMMON",
+      "set": "CORE_HIDDEN",
+      "type": "MINION"
+    },
+    {
+      "artist": "Zoltan Boros",
+      "attack": 4,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 119798,
+      "flavor": "\u8FD9\u5757\u9668\u77F3\u79BB\u6211\u4EEC\u592A\u8FD1\u4E86\u5427\uFF01",
+      "health": 2,
+      "howToEarn": "\u6253\u5F00\u003Ci\u003E\u6DF1\u6697\u9886\u57DF\u003C/i\u003E\u5361\u724C\u5305\u540E\u53EF\u89E3\u9501\u3002",
+      "howToEarnGolden": "\u6253\u5F00\u003Ci\u003E\u6DF1\u6697\u9886\u57DF\u003C/i\u003E\u91D1\u8272\u5305\u540E\u53EF\u89E3\u9501\u3002",
+      "id": "CORE_EDR_004",
+      "mechanics": [
+        "BATTLECRY",
+        "DISCOVER"
+      ],
+      "name": "\u8FC5\u731B\u9F99\u5148\u950B",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "EPIC",
+      "set": "LEGACY",
+      "text": "\u003Cb\u003E\u56DE\u6EAF\u003C/b\u003E\u3002\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u003Cb\u003E\u53D1\u73B0\u003C/b\u003E\u4E00\u5F20\u5177\u6709\u003Cb\u003E\u9ED1\u6697\u4E4B\u8D50\u003C/b\u003E\u7684\u91CE\u517D\u724C\u3002\u003Cb\u003E\u5EF6\u7CFB\uFF1A\u003C/b\u003E\u5176\u6CD5\u529B\u503C\u6D88\u8017\u51CF\u5C11\uFF081\uFF09\u70B9\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Zoltan Boros",
+      "attack": 4,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "countAsCopyOfDbfId": 119798,
+      "dbfId": 131356,
+      "flavor": "\u8FD9\u5757\u9668\u77F3\u79BB\u6211\u4EEC\u592A\u8FD1\u4E86\u5427\uFF01",
+      "health": 2,
+      "howToEarn": "\u5B8C\u6210\u6559\u5B66\u540E\u89E3\u9501\u3002",
+      "howToEarnGolden": "\u603B\u8BA1\u8D62\u5F972500\u573A\u5BF9\u6218\u540E\u89E3\u9501\u3002",
+      "id": "CORE_EDR_004_2026",
+      "mechanics": [
+        "BATTLECRY",
+        "DISCOVER"
+      ],
+      "name": "\u8FC5\u731B\u9F99\u5148\u950B",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "EPIC",
+      "set": "CORE",
+      "text": "\u003Cb\u003E\u56DE\u6EAF\u003C/b\u003E\u3002\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u003Cb\u003E\u53D1\u73B0\u003C/b\u003E\u4E00\u5F20\u5177\u6709\u003Cb\u003E\u9ED1\u6697\u4E4B\u8D50\u003C/b\u003E\u7684\u91CE\u517D\u724C\u3002\u003Cb\u003E\u5EF6\u7CFB\uFF1A\u003C/b\u003E\u5176\u6CD5\u529B\u503C\u6D88\u8017\u51CF\u5C11\uFF081\uFF09\u70B9\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Sam Nielson",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 76312,
+      "elite": true,
+      "flavor": "\u81EA\u4ECE\u94C1\u7089\u5821\u7684\u56FD\u738B\u9EA6\u683C\u5C3C\u534E\u4E3D\u767B\u573A\u540E\uFF0C\u5E03\u83B1\u6069\u4E5F\u60F3\u50CF\u54E5\u54E5\u90A3\u6837\u51FA\u4E00\u5957\u82F1\u96C4\u76AE\u80A4\u3002",
+      "health": 4,
+      "howToEarn": "\u5B8C\u6210\u6559\u5B66\u540E\u89E3\u9501\u3002",
+      "howToEarnGolden": "\u603B\u8BA1\u8D62\u5F975000\u573A\u5BF9\u6218\u540E\u89E3\u9501\u3002",
+      "id": "CORE_LOE_077",
+      "mechanics": [
+        "AURA"
+      ],
+      "name": "\u5E03\u83B1\u6069\u00B7\u94DC\u987B",
+      "rarity": "LEGENDARY",
+      "referencedTags": [
+        "BATTLECRY"
+      ],
+      "set": "CORE_HIDDEN",
+      "text": "\u4F60\u7684\u003Cb\u003E\u6218\u543C\u003C/b\u003E\u4F1A\u89E6\u53D1\n\u4E24\u6B21\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "James Ryman",
+      "attack": 1,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 97376,
+      "flavor": "\u5730\u7CBE\u73E0\u5B9D\u5546\u6155\u540D\u800C\u6765\uFF0C\u5931\u671B\u800C\u5F52\u2026",
+      "health": 2,
+      "howToEarn": "\u4E0E\u730E\u4EBA\u804C\u4E1A\u4E00\u540C\u89E3\u9501\u3002",
+      "howToEarnGolden": "\u4F7F\u7528\u730E\u4EBA\u8D62\u5F9750\u573A\u5BF9\u6218\u540E\u89E3\u9501\u3002",
+      "id": "CORE_UNG_912",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "\u5B9D\u77F3\u9E66\u9E49",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "COMMON",
+      "set": "CORE",
+      "text": "\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u0026\u968F\u673A\u5C06\u4E00\u5F20\u91CE\u517D\u724C\u7F6E\u5165\u4F60\u7684\u624B\u724C\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Howard Lyon",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 648,
+      "flavor": "\u51B3\u6597\u7684\u65F6\u5019\u79BB\u5B83\u4EEC\u8FDC\u70B9\u513F\u3002",
+      "health": 1,
+      "id": "CS2_171",
+      "mechanics": [
+        "CHARGE"
+      ],
+      "name": "\u77F3\u7259\u91CE\u732A",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "text": "\u003Cb\u003E\u51B2\u950B\u003C/b\u003E",
+      "type": "MINION"
+    },
+    {
+      "artist": "Steve Prescott",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 389,
+      "faction": "HORDE",
+      "flavor": "\u5A9A\u773C\u5982\u4E1D\uFF0C\u8F7B\u76C8\u5982\u71D5\uFF0C\u81F4\u547D\u5982\u7BAD\u3002",
+      "health": 1,
+      "id": "CS2_189",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "\u7CBE\u7075\u5F13\u7BAD\u624B",
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "targetingArrowText": "\u9020\u62101\u70B9\u4F24\u5BB3\u3002",
+      "text": "\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u9020\u62101\u70B9\u4F24\u5BB3\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Todd Harris",
+      "attack": 8,
+      "cardClass": "DRUID",
+      "collectible": true,
+      "cost": 8,
+      "dbfId": 118617,
+      "flavor": "\u5730\u96F7\uFF1F\u4EC0\u4E48\u5730\u96F7\uFF1F",
+      "health": 8,
+      "id": "DINO_421",
+      "isMiniSet": true,
+      "mechanics": [
+        "DEATHRATTLE",
+        "ELUSIVE",
+        "TAUNT"
+      ],
+      "name": "\u9707\u5730\u96F7\u9F99",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "set": "THE_LOST_CITY",
+      "text": "\u003Cb\u003E\u5632\u8BBD\u003C/b\u003E\u3002\u003Cb\u003E\u6270\u9B54\u003C/b\u003E\u3002\u003Cb\u003E\u4EA1\u8BED\uFF1A\u003C/b\u003E\u0026\u4F7F\u4F60\u7684\u624B\u724C\u548C\u724C\u5E93\u4E2D\u7684\u6240\u6709\u968F\u4ECE\u724C\u83B7\u5F97\u002B3/\u002B3\u3002",
+      "type": "MINION"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 113882,
+      "hideCost": true,
+      "id": "EDR_100t7",
+      "name": "\u7C97\u66B4\u5524\u9192",
+      "set": "EMERALD_DREAM",
+      "text": "\u672C\u968F\u4ECE\u7684\u003Cb\u003E\u6218\u543C\u003C/b\u003E\u4F1A\u89E6\u53D1\u4E24\u6B21\u3002",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113883,
+      "id": "EDR_100t7e",
+      "name": "\u7C97\u66B4\u5524\u9192",
+      "set": "EMERALD_DREAM",
+      "text": "\u672C\u968F\u4ECE\u7684\u003Cb\u003E\u6218\u543C\u003C/b\u003E\u4F1A\u89E6\u53D1\u4E24\u6B21\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "SHAMAN",
+      "dbfId": 113892,
+      "id": "EDR_100t7e1",
+      "name": "\u626D\u66F2\u53CC\u91CD\u6218\u543C",
+      "set": "EMERALD_DREAM",
+      "text": "\u6240\u9009\u7684\u968F\u4ECE\u4F1A\u89E6\u53D1\u4E24\u6B21\u5176\u6218\u543C\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "artist": "Ivan Fomin",
+      "attack": 2,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 114018,
+      "flavor": "\u201C\u4F60\u597D\u5440\u5C0F\u5BB6\u4F19\uFF01\u591A\u5403\u70B9\u7EFF\u8272\u98DF\u54C1\u5427\uFF0C\u5BF9\u8EAB\u4F53\u597D\u54E6\uFF01\u201D",
+      "health": 2,
+      "id": "EDR_226",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "\u5947\u5F02\u8BAD\u72AC\u5E08",
+      "rarity": "COMMON",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\n\u62BD\u4E00\u5F20\u91CE\u517D\u724C\u3002\u003Cb\u003E\u704C\u6CE8\u003C/b\u003E\u4F60\u7684\u82F1\u96C4\u6280\u80FD\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Patrik Bjorkstrom",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 114020,
+      "flavor": "\u6240\u8C13\u7269\u4EE5\u7C7B\u805A\uFF0C\u90A3\u4E48\u5E7D\u722A\u718A\u8BE5\u548C\u8C01\u4E00\u8D77\u51AC\u7720\uFF1F",
+      "health": 2,
+      "id": "EDR_227",
+      "mechanics": [
+        "DEATHRATTLE",
+        "RUSH"
+      ],
+      "name": "\u5E7D\u722A\u718A",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u7A81\u88AD\u003C/b\u003E\u3002\u003Cb\u003E\u4EA1\u8BED\uFF1A\u003C/b\u003E\u003Cb\u003E\u704C\u6CE8\u003C/b\u003E\u4F60\u7684\u82F1\u96C4\u6280\u80FD\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Alex Horley Orlandelli",
+      "attack": 9,
+      "cardClass": "WARLOCK",
+      "collectible": true,
+      "cost": 10,
+      "dbfId": 115203,
+      "elite": true,
+      "flavor": "\u4ED6\u867D\u5728\u4E0A\u53E4\u4E4B\u6218\u4E2D\u8EAB\u6B92\uFF0C\u4F46\u4ED6\u7684\u9057\u6CFD\u7559\u5728\u4E86\u827E\u6CFD\u62C9\u65AF\uFF0C\u6ECB\u517B\u7740\u5D07\u62DC\u4ED6\u7684\u91CE\u732A\u4EBA\u5404\u90E8\u3002",
+      "health": 9,
+      "id": "EDR_489",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "\u963F\u8FE6\u739B\u7518",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u4F60\u4F7F\u7528\u7684\u4E0B\u4E00\u5F20\u724C\u4F1A\u6D88\u8017\u003Cb\u003E\u5BF9\u624B\u003C/b\u003E\u7684\u751F\u547D\u503C\u800C\u975E\u6CD5\u529B\u503C\u003Ci\u003E\uFF08\u6700\u9AD8\u4E0D\u8D85\u8FC710\u70B9\uFF09\u003C/i\u003E\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Edgar Hidalgo",
+      "attack": 4,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 114006,
+      "flavor": "\u8774\u8776\u632F\u7FC5\u98DE\uFF0C\u5B88\u536B\u6C38\u76F8\u968F\u2014\u2014",
+      "health": 4,
+      "id": "EDR_800",
+      "mechanics": [
+        "BATTLECRY",
+        "DIVINE_SHIELD",
+        "TAUNT"
+      ],
+      "name": "\u632F\u7FC5\u5B88\u536B",
+      "rarity": "COMMON",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u003Cb\u003E\u5632\u8BBD\u003C/b\u003E\u3002\u5723\u76FE\u003C/b\u003E\n\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u003Cb\u003E\u704C\u6CE8\u003C/b\u003E\u4F60\u7684\u82F1\u96C4\u6280\u80FD\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "BOSi Studio",
+      "cardClass": "HUNTER",
+      "collectionText": "\u968F\u673A\u4F7F\u4F60\u624B\u724C\u4E2D\u7684\u4E00\u5F20\u91CE\u517D\u724C\u83B7\u5F97\u002B\u003Cb\u003E",
+      "cost": 2,
+      "dbfId": 114052,
+      "id": "EDR_850p",
+      "name": "\u5DE8\u72FC\u7684\u795D\u798F",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "\u968F\u673A\u4F7F\u4F60\u624B\u724C\u4E2D\u7684\u4E00\u5F20\u91CE\u517D\u724C\u83B7\u5F97\u002B\u003Cb\u003E@\u003C/b\u003E\u653B\u51FB\u529B\uFF0C\u5176\u6CD5\u529B\u503C\u6D88\u8017\u51CF\u5C11\uFF08\u003Cb\u003E@\u003C/b\u003E\uFF09\u70B9\u3002",
+      "type": "HERO_POWER"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 114619,
+      "id": "EDR_850pe1",
+      "name": "\u6208\u5FB7\u6797\u7684\u52C7\u6C14",
+      "set": "EMERALD_DREAM",
+      "text": "\u002B0\u653B\u51FB\u529B\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 114959,
+      "id": "EDR_850pe5",
+      "name": "\u5DE8\u72FC\u7684\u543C\u53EB",
+      "set": "EMERALD_DREAM",
+      "text": "\u6CD5\u529B\u503C\u6D88\u8017\u51CF\u5C11\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "artist": "Stefano Spagnuolo",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 114935,
+      "flavor": "\u9C9C\u82B1\u867D\u7F8E\uFF0C\u5374\u4E5F\u6709\u523A\u3002\u8FD8\u6709\u80E1\u5B50\u3002\u8FD8\u6709\u76FE\u724C\u3002",
+      "health": 3,
+      "id": "EDR_852",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "\u82E6\u82B1\u9A91\u58EB",
+      "rarity": "COMMON",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u003Cb\u003E\u704C\u6CE8\u003C/b\u003E\u4F60\u7684\u82F1\u96C4\u6280\u80FD\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "James Ryman",
+      "attack": 8,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 8,
+      "dbfId": 115186,
+      "elite": true,
+      "flavor": "\u739B\u6D1B\u6069\u662F\u795E\u8BDD\u4F20\u5947\u4E2D\u7684\u5B58\u5728\uFF0C\u6700\u53E4\u8001\u7684\u8352\u91CE\u8BF8\u795E\u4E4B\u4E00\uFF0C\u4E5F\u662F\u585E\u7EB3\u7559\u65AF\u7684\u7236\u4EB2\u3002",
+      "health": 6,
+      "id": "EDR_888",
+      "mechanics": [
+        "BATTLECRY",
+        "DISCOVER"
+      ],
+      "name": "\u62A4\u8DEF\u8005\u739B\u6D1B\u6069",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u003Cb\u003E\u53D1\u73B0\u003C/b\u003E\u4E00\u5F20\u003Cb\u003E\u4F20\u8BF4\u003C/b\u003E\u8352\u91CE\u4E4B\u795E\u3002\u5982\u679C\u4F60\u5DF2\u003Cb\u003E\u704C\u6CE8\u003C/b\u003E\u8FC7\u4F60\u7684\u82F1\u96C4\u6280\u80FD4\u6B21\uFF0C\u5219\u5C06\u53D1\u73B0\u7684\u8352\u91CE\u4E4B\u795E\u7684\u6CD5\u529B\u503C\u6D88\u8017\u53D8\u4E3A\uFF081\uFF09\u70B9\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ursula Dorada",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 115648,
+      "flavor": "\u62A4\u82B1\u662F\u4E3A\u4E86\u62E9\u82B1\u3002\u201C\u5979\u7231\u6211\u2026\u2026\u5979\u4E0D\u7231\u6211\u2026\u2026\u201D",
+      "health": 3,
+      "id": "FIR_921",
+      "isMiniSet": true,
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "\u82B1\u6728\u62A4\u4F8D",
+      "race": "DRAENEI",
+      "races": [
+        "DRAENEI"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u5982\u679C\u4F60\u5DF2\u003Cb\u003E\u704C\u6CE8\u003C/b\u003E\u8FC7\u4F60\u7684\u82F1\u96C4\u6280\u80FD\u4E24\u6B21\uFF0C\u62BD\u4E24\u5F20\u724C\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Matt Dixon",
+      "attack": 6,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 6,
+      "dbfId": 125998,
+      "elite": true,
+      "faction": "HORDE",
+      "flavor": "\u9F20\u738B\u88AB\u7C97\u66B4\u5730\u9010\u51FA\u66B4\u98CE\u57CE\u4E0B\u6C34\u9053\u4E4B\u540E\uFF0C\u53C8\u81EA\u5C01\u4E3A\u8FBE\u62C9\u7136\u4E0B\u6C34\u9053\u7684\u738B\u8005\u3002\u8FD9\u4E0B\u68B5\u59AE\u838E\u548C\u5979\u7684\u56E2\u961F\u6361\u4E86\u4E2A\u4FBF\u5B9C\u2014\u2014\u9F20\u738B\u7684\u79C1\u8FD0\u901A\u9053\u76F4\u901A\u7D2B\u7F57\u5170\u76D1\u72F1\u2026\u2026",
+      "health": 5,
+      "id": "JAIL_831",
+      "mechanics": [
+        "BATTLECRY",
+        "DISCOVER"
+      ],
+      "name": "\u4E0B\u6C34\u9053\u4E4B\u738B",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "ESCAPEFROM_VIOLET_HOLD",
+      "text": "\u6784\u7B51\u5957\u724C\u65F6\uFF0C\u9009\u62E9\u4E09\u5F20\u79C1\u85CF\u7684\u91CE\u517D\u724C\u3002\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u4ECE\u4E2D\u003Cb\u003E\u53D1\u73B0\u003C/b\u003E\u4E00\u5F20\uFF0C\u5176\u6CD5\u529B\u503C\u6D88\u8017\u51CF\u5C11\uFF083\uFF09\u70B9\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Sam Nielson",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 3,
+      "dbfId": 2949,
+      "elite": true,
+      "flavor": "\u81EA\u4ECE\u94C1\u7089\u5821\u7684\u56FD\u738B\u9EA6\u683C\u5C3C\u534E\u4E3D\u767B\u573A\u540E\uFF0C\u5E03\u83B1\u6069\u4E5F\u60F3\u50CF\u54E5\u54E5\u90A3\u6837\u51FA\u4E00\u5957\u82F1\u96C4\u76AE\u80A4\u3002",
+      "health": 4,
+      "howToEarn": "\u52A0\u5165\u201C\u63A2\u9669\u8005\u534F\u4F1A\u201D\u5192\u9669\u6A21\u5F0F\uFF0C\u5728\u5965\u8FBE\u66FC\u4E2D\u89E3\u9501\u3002",
+      "howToEarnGolden": "\u52A0\u5165\u201C\u63A2\u9669\u8005\u534F\u4F1A\u201D\u5192\u9669\u6A21\u5F0F\uFF0C\u5728\u5965\u8FBE\u66FC\u4E2D\u89E3\u9501\u5236\u4F5C\u3002",
+      "id": "LOE_077",
+      "mechanics": [
+        "AURA"
+      ],
+      "name": "\u5E03\u83B1\u6069\u00B7\u94DC\u987B",
+      "rarity": "LEGENDARY",
+      "referencedTags": [
+        "BATTLECRY"
+      ],
+      "set": "LOE",
+      "text": "\u4F60\u7684\u003Cb\u003E\u6218\u543C\u003C/b\u003E\u4F1A\u89E6\u53D1\n\u4E24\u6B21\u3002",
+      "type": "MINION"
+    }
+  ]
+}

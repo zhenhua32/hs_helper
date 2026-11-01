@@ -96,7 +96,7 @@ internal static class TerrorEndTurnIntegration
         var context = CompactAdviceContextBuilder.Create(frame, Build, AdviceTaskKind.Turn);
         var advice = await new AdviceService(http).AnalyzeAsync(new(new Uri("https://terror-fixture.invalid/v1/chat/completions"), "terror-fixture"),
             "terror-fixture-unused-key", context, coach.ExecuteAsync, () => true, capabilities: coach.Capabilities());
-        Check(model.Calls == 2 && model.CheckedBranches && context.TemplateVersion == "hunter-v23/turn" &&
+        Check(model.Calls == 2 && model.CheckedBranches && context.TemplateVersion == "hunter-v24/turn" &&
             advice.Actions.Count == 0 && !advice.VerifiedLethal && advice.Risks.Length > 0 && JsonSerializer.Serialize(frame) == before,
             "The model promoted a favorable terror branch into executable actions or verified lethal.");
         pass("fake HTTP receives correlated terror branches but cannot promote a chosen outcome into executable verified advice");

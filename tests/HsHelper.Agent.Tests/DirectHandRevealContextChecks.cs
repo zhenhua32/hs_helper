@@ -84,7 +84,7 @@ internal static class DirectHandRevealContextChecks
         foreach (var kind in Enum.GetValues<AdviceTaskKind>())
         {
             var policy = AdviceTaskTemplates.Get(kind);
-            Check(policy.Version == (kind is AdviceTaskKind.Turn or AdviceTaskKind.Choice ? "hunter-v23/" : "hunter-v7/") + kind.ToString().ToLowerInvariant() &&
+            Check(policy.Version == (kind is AdviceTaskKind.Turn or AdviceTaskKind.Choice ? "hunter-v24/" : "hunter-v7/") + kind.ToString().ToLowerInvariant() &&
                 policy.Instructions.Contains("kind=history_target", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("不表示该牌回手", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("处理事件锚点", StringComparison.Ordinal) &&

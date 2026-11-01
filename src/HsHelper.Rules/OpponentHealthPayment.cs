@@ -46,6 +46,12 @@ public sealed partial class LineEvaluator
             Coverage.Add("EDR_489-next-card-opponent-health-payment");
         }
 
+        public void DeferRepeatedOpponentHealthPayment()
+        {
+            _nextCardCostsOpponentHealth = null;
+            Conditional("阿迦玛甘重复战吼的多份下一张牌支付效力尚未审计，不能据此增加次数或继续消费。", "REPEATED_OPPONENT_HEALTH_PAYMENT");
+        }
+
         private bool IsObservedOpponentHealthEnchantment(Entity entity) =>
             _nextCardCostsOpponentHealth == true && _observedOpponentHealthEnchantments.Contains(entity.Id);
 

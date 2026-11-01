@@ -216,7 +216,16 @@ internal static class DarkGiftExpandedChecks
     private static void OngoingAndRaptor()
     {
         foreach(var id in new[]{"EDR_100t4e","EDR_100t5e","EDR_100t7e","EDR_100t7e1","EDR_100t9e","EDR_100t10"})
-            Unverified(Add(HandFrame(Specs[3]),Gift(51,id)));
+        {
+            var frame=Add(HandFrame(Specs[3]),Gift(51,id));
+            if(id=="EDR_100t7e")
+            {
+                var harmless=Eval(frame);
+                Check(harmless.Verification==LineVerification.Verified && harmless.RuleCoverage.Contains(Specs[3].Coverage) && harmless.Result.HeroPowerChanges.Count==0,
+                    "A Battlecry-only attachment multiplied a non-Battlecry summon/attack or lost already observed static values.");
+            }
+            else Unverified(frame);
+        }
         var raptor=E(60,"EDR_849","MINION","PLAY",1,("ATK","2"),("HEALTH","3"),("DAMAGE","0"),("EXHAUSTED","1"),("NUM_TURNS_IN_PLAY","1"));
         var result=Eval(Add(HandFrame(Specs[3]),raptor));
         Check(result.Result.RaptorBoundaryReached && result.AppliedActions==1 && !result.IsLethal && result.Verification!=LineVerification.Verified,"Expanded static coverage crossed a real Raptor observation boundary.");

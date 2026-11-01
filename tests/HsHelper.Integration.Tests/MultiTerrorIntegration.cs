@@ -11,7 +11,7 @@ using HsHelper.Storage;
 
 internal static class MultiTerrorIntegration
 {
-    private const string Build = "255790", Template = "hunter-v23/turn";
+    private const string Build = "255790", Template = "hunter-v24/turn";
     private const string PrivateCard = "PRIVATE_MULTI_TERROR_HAND", PrivateGift = "EDR_100t13e";
     private const string Key = "multi-terror-fixture-key", Complete = "PowerProcessor.EndCurrentTaskList() - complete";
 

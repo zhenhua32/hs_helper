@@ -11,7 +11,7 @@ using HsHelper.Storage;
 
 internal static class DarkGiftExpandedIntegration
 {
-    private const string Build = "255790", Template = "hunter-v23/turn";
+    private const string Build = "255790", Template = "hunter-v24/turn";
     private const string Key = "fixture-expanded-gift-key", PrivateCard = "PRIVATE_EXPANDED_GIFT_ID";
     private static readonly IReadOnlyDictionary<string, string> Coverage = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -130,7 +130,15 @@ internal static class DarkGiftExpandedIntegration
             "Multiple fully audited static sources duplicated their aggregated current values or became unknown without cause.");
         pass("Shield Windfury survives shield consumption across two real attacks including original shield zero and two audited same-target gifts without regranting shield or adding aggregated stats twice");
 
-        foreach (var gift in new[] { "EDR_100t4e", "EDR_100t5e", "EDR_100t7e", "EDR_100t7e1", "EDR_100t9e", "EDR_100t10" })
+        var battlecryOnly = Board("EDR_100t7e", 5, 2, 1) with { Search = false };
+        var passive = await CompleteAsync(await CreateAsync(directory, cards, battlecryOnly), battlecryOnly);
+        Check(passive.Line?["Verification"]?.ToString() == "Verified" && passive.Line["IsLethal"]?.GetValue<bool>() == true &&
+            passive.Advice is { Verification: "verified", VerifiedLethal: true } && passive.Archive!.Advice.VerifiedLethal &&
+            passive.Line["Result"]?["BattlecryExecutions"]?.AsArray().Count is null or 0 && passive.Line["Result"]!["HeroPowerChanges"]!.AsArray().Count == 0 &&
+            passive.Line["RuleCoverage"]!.AsArray().Any(value => value?.ToString() == "observed-rude-awakening-attachment") &&
+            Entity(passive.Line, 30)["Attack"]?.GetValue<int>() == 5 && Entity(passive.Line, 30)["MaximumHealth"]?.GetValue<int>() == 2,
+            "An audited Battlecry-only attachment changed the ordinary attack or created activations for a native non-Battlecry Umbraclaw.");
+        foreach (var gift in new[] { "EDR_100t4e", "EDR_100t5e", "EDR_100t7e1", "EDR_100t9e", "EDR_100t10" })
         {
             var ongoing = Board(gift, 5, 2, 1) with { Search = false };
             AssertUnverified(await CompleteAsync(await CreateAsync(directory, cards, ongoing), ongoing), "Ongoing gift was accepted as a static observation: " + gift);
@@ -140,7 +148,7 @@ internal static class DarkGiftExpandedIntegration
         AssertUnverified(mixedResult, "An unknown same-target source was erased by a known static gift.");
         Check(mixedResult.Archive!.Advice.HostUnsupportedMechanics?.Contains("UNMAPPED_ATTACHED_ENCHANTMENT") == true,
             "The partial line's unsupported attachment disappeared from the reopened archive.");
-        pass("ongoing deathrattle copy repeat battlecry reborn and three-hit effects plus mixed unknown attachments remain host limits rather than fabricated executable or lethal advice");
+        pass("an audited Battlecry-only attachment stays passive for a non-Battlecry body while ongoing deathrattle copy unreviewed repeat carriers reborn shields and mixed unknown attachments retain host limits");
 
         foreach (var variant in new[] { "gift-dbf", "gift-text", "gift-raw", "target-dbf", "source-owner", "attached", "source-type", "missing-attack", "missing-health", "missing-damage", "missing-elusive", "malformed-source-flag" })
         {

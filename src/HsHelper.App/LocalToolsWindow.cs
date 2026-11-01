@@ -84,7 +84,7 @@ public sealed class LocalToolsWindow : Window
             _ = RunToolAsync("calculate_draw_odds", new() { ["card_id"] = card.CardId, ["draws"] = draws });
         };
         _add.Click += (_, _) => AddAction();
-        _source.SelectionChanged += (_, _) => RefreshEnabled();
+        _source.SelectionChanged += (_, _) => { RefreshTargets(); RefreshEnabled(); };
         _target.SelectionChanged += (_, _) => RefreshEnabled();
         _trapSource.SelectionChanged += (_, _) => RefreshEnabled();
         _trapAttacker.SelectionChanged += (_, _) => RefreshEnabled();
@@ -252,11 +252,7 @@ public sealed class LocalToolsWindow : Window
             .Select(card => card.CardId).OfType<string>()).Distinct(StringComparer.Ordinal).ToArray();
         _card.ItemsSource = ids.Select(id => new CardOption(id, CardName(id))).OrderBy(option => option.Text, StringComparer.Ordinal).ToArray();
         _card.SelectedItem = _card.Items.OfType<CardOption>().FirstOrDefault(option => option.CardId == oldCard) ?? _card.Items.OfType<CardOption>().FirstOrDefault();
-        var targets = _view.Local.Board.Concat(_view.Opponent.Board).Concat(new[] { _view.Local.Hero, _view.Opponent.Hero }.OfType<BattleCardView>())
-            .Select(card => new EntityOption(card.EntityId, (card.EntityId == _view.Local.Hero?.EntityId || _view.Local.Board.Any(c => c.EntityId == card.EntityId) ? "我方 · " : "对手 · ") + CardLabel(card))).ToList();
-        targets.Insert(0, new(0, "无指定目标"));
-        _target.ItemsSource = targets;
-        _target.SelectedItem = targets.FirstOrDefault(target => target.Id == selectedTarget) ?? targets[0];
+        RefreshTargets(selectedTarget);
         RefreshSources();
         var traps = OwnInstalledTraps(_snapshot).Select(entity => new EntityOption(entity.Id, CardName(entity.CardId) + $" #{entity.Id}")).ToArray();
         _trapSource.ItemsSource = traps;
@@ -309,7 +305,26 @@ public sealed class LocalToolsWindow : Window
             (kind == "attack" && card.Zone == "HAND" ? " · 已编入使用，攻击资格仍由规则验证" : ""))).ToArray();
         _source.SelectedItem = _source.Items.OfType<EntityOption>().FirstOrDefault(option => option.Id == selectedSource) ??
             _source.Items.OfType<EntityOption>().FirstOrDefault();
+        RefreshTargets();
         RefreshEnabled();
+    }
+
+    private void RefreshTargets(int? selectedTarget = null)
+    {
+        if (_view is null) return;
+        selectedTarget ??= (_target.SelectedItem as EntityOption)?.Id;
+        var targets = _view.Local.Board.Concat(_view.Opponent.Board)
+            .Concat(new[] { _view.Local.Hero, _view.Opponent.Hero }.OfType<BattleCardView>())
+            .Select(card => new EntityOption(card.EntityId,
+                (card.EntityId == _view.Local.Hero?.EntityId || _view.Local.Board.Any(own => own.EntityId == card.EntityId) ? "我方 · " : "对手 · ") + CardLabel(card))).ToList();
+        if (_fixedBuild == "255790" && _snapshot.ClientBuild == _fixedBuild && _view.HasLocalPerspective && !_snapshot.IsSpectating &&
+            _kind.SelectedItem is KindOption { Kind: "play" } && _source.SelectedItem is EntityOption selected &&
+            _view.Local.Hand.SingleOrDefault(card => card.EntityId == selected.Id) is { Type: "MINION", IsAssembled: false,
+                CardId: "CS2_189" or "CORE_CS2_189" } source)
+            targets.Add(new(source.EntityId, "我方 · " + CardLabel(source) + " · 本次入场自身，资格仍由规则验证"));
+        targets.Insert(0, new(0, "无指定目标"));
+        _target.ItemsSource = targets;
+        _target.SelectedItem = targets.FirstOrDefault(target => target.Id == selectedTarget) ?? targets[0];
     }
 
     private void AddAction()
@@ -373,7 +388,10 @@ public sealed class LocalToolsWindow : Window
             .Concat(new[] { _view.Local.Hero, _view.Opponent.Hero, _view.Local.HeroPower, _view.Opponent.HeroPower,
                 _view.Local.Weapon, _view.Opponent.Weapon }.OfType<BattleCardView>());
         return cards.FirstOrDefault(card => card.EntityId == id)?.Name ??
-            (OwnInstalledTraps(_snapshot).FirstOrDefault(entity => entity.Id == id) is { } trap ? CardName(trap.CardId) : "实体 #" + id);
+            (OwnInstalledTraps(_snapshot).FirstOrDefault(entity => entity.Id == id) is { } trap ? CardName(trap.CardId) :
+                _snapshot.Entities.TryGetValue(id, out var attachment) && attachment.Kind == EntityKind.Card &&
+                attachment.CardId is not null && attachment.Tags.TryGetValue("CARDTYPE", out var type) && type == "ENCHANTMENT"
+                    ? CardName(attachment.CardId) : "实体 #" + id);
     }
 
     private void RefreshEnabled()
@@ -710,6 +728,9 @@ public static class LocalToolResultFormatter
         Add("失败原因", "Errors"); Add("成立条件", "Assumptions"); Add("未覆盖机制", "UnsupportedMechanics"); Add("已覆盖规则", "RuleCoverage");
         if (evaluation["Result"] is JsonObject state)
         {
+            if (state["BattlecryExecutions"] is JsonArray battlecryExecutions)
+                foreach (var execution in battlecryExecutions.OfType<JsonObject>())
+                    BattlecryExecutionPresentation.Append(lines, execution, entityName, cardName);
             if (state["AssembledEffects"] is JsonArray assembledEffects)
                 foreach (var effect in assembledEffects.OfType<JsonObject>()) AppendAssembledEffect(lines, effect, entityName, cardName);
             if (state["ImbueCountBefore"] is not null || state["ImbueCountAfter"] is not null)
@@ -851,6 +872,7 @@ public static class LocalToolResultFormatter
             if (draw["ResolvesEffects"]?.ToString() == "false") lines.Add("当前来源或触发条件未确认，不能把以下范围当作已结算结果。");
         }
         else lines.Add("抽牌直接后果预览（假设本体成功离手；不证明出牌合法）");
+        BattlecryExecutionPresentation.AppendPreviewScope(lines, draw);
         lines.Add($"抽取次数 {Range(draw["RequestedDraws"])}；牌库移出 {Range(draw["CardsRemovedFromDeck"])}；入手 {Range(draw["CardsAddedToHand"])}；满手损失 {Range(draw["CardsBurned"])}。");
         lines.Add($"空库尝试 {Range(draw["EmptyDeckAttempts"])}；直接疲劳伤害 {Range(draw["FatigueDamage"])}（护甲吸收前，免疫另行计算）。");
         lines.Add($"直接后果手牌数 {Range(draw["HandCountAfter"])} / 牌库数 {Range(draw["DeckCountAfter"])} / 疲劳计数 {Range(draw["FatigueAfter"])}。");
@@ -870,6 +892,7 @@ public static class LocalToolResultFormatter
             return min == max ? min : max is null ? min + "～上界未知" : min + "～" + max;
         }
         lines.Add("随机生成直接后果预览（假设本体成功离手；不证明出牌合法）");
+        BattlecryExecutionPresentation.AppendPreviewScope(lines, generation);
         lines.Add($"生成数量 {Range(generation["RequestedCards"])}；入手 {Range(generation["CardsAddedToHand"])}；满手损失 {Range(generation["CardsLostToHandLimit"])}；直接后果手牌数 {Range(generation["HandCountAfter"])}。");
         foreach (var key in new[] { "Unknowns", "Assumptions" })
             if (generation[key] is JsonArray values) foreach (var value in values) lines.Add("· " + value);
@@ -1137,6 +1160,7 @@ public static class LocalToolResultFormatter
 
     private static void AppendDiscovery(List<string> lines, JsonNode discovery)
     {
+        BattlecryExecutionPresentation.AppendPreviewScope(lines, discovery);
         var kind = discovery["Kind"]?.ToString();
         lines.Add("原生使用入口 · " + (kind switch
         {

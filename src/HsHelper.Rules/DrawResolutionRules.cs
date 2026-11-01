@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using HsHelper.Cards;
 using HsHelper.Core;
 
@@ -37,6 +38,10 @@ public sealed record DrawResolutionOutcome(string MatchId, long StateVersion, lo
     bool MayStopAtHeroDeath, IReadOnlyList<string> Unknowns, IReadOnlyList<string> Assumptions,
     IReadOnlyList<string> RuleCoverage)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BattlecryMultiplicityOutcome? BattlecryMultiplicity { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? IsSingleBattlecryActivationPreview { get; init; }
     public bool IsDirectEffectOnly => true;
     public bool CanEvaluateFollowupActions => false;
     public int? TriggerEntityId { get; init; }
@@ -74,6 +79,7 @@ public static partial class DrawResolutionRules
         var unknowns = new List<string>(); var assumptions = new List<string>(); var coverage = new List<string>();
         string? sourceId = null; var kind = deathrattle ? "DeathrattleOrdinary" : "Unknown";
         EntitySnapshot? enchantment = null;
+        BattlecryMultiplicityOutcome? multiplicity = null;
         var unknown = new DrawNumberRange(0, null);
         var requested = unknown;
         if (snapshot.Entities.Values.Any(entity => entity is null || entity.Tags is null) ||
@@ -88,6 +94,7 @@ public static partial class DrawResolutionRules
         if (!players.Select(player => player.GetIntTag("PLAYER_ID")).Order().SequenceEqual(new int?[] { 1, 2 }))
         { unknowns.Add("双方玩家实体未唯一确认，未连接私有牌库或手牌计数。"); return Unresolved(); }
         var player = players.Single(entity => entity.GetIntTag("PLAYER_ID") == snapshot.LocalPlayerId);
+        if (!deathrattle) multiplicity = BattlecryMultiplicityRules.Evaluate(snapshot, sourceEntityId, cards);
         EntitySnapshot? source;
         if (deathrattle)
         {
@@ -203,6 +210,7 @@ public static partial class DrawResolutionRules
         assumptions.Add(deathrattle ? "仅预览该当前随从死亡后的一次已观察抽牌亡语，不宣称死亡已经发生；手牌数就是触发点实际数量，不为随从离场空出手牌位。新牌身份与后续触发仍待日志观察。" :
             "计数指本体成功离手后的一次直接战吼；支付、反制、重复战吼、额外抽牌、施放时抽取、入手及受伤触发未在这里展开。");
         assumptions.Add("各字段为同一组直接结算分支的边界，不能将不同字段的最有利端点拼成一条实际序列；未知牌序不会被补为任意实体顺序。");
+        if (multiplicity is { Activations: not (0 or 1) }) assumptions.Add("以下数量仅属于一个战吼子脚本，不是全部重复战吼的总量；完整计划与已完成轮数见独立次数/执行证据。");
         coverage.AddRange([deathrattle ? "deathrattle-does-not-free-a-hand-slot" : "source-leaves-hand-before-draw", "direct-deck-removal-and-hand-capacity", "ordinary-increasing-fatigue-packets", "stop-direct-draw-at-hero-death"]);
         var damage = Range(scenarios.Select(value => value.Damage));
         if (fatigue is null && scenarios.Any(value => value.Damage > 0)) damage = damage with { Maximum = null };
@@ -216,7 +224,8 @@ public static partial class DrawResolutionRules
             health.HasValue ? Range(scenarios.Select(value => value.HealthAfter)) : null,
             armor.HasValue ? Range(scenarios.Select(value => value.ArmorAfter)) : null,
             scenarios.Any(value => value.Dead), ReadOnly(unknowns), ReadOnly(assumptions), ReadOnly(coverage))
-        { TriggerEntityId = deathrattle ? sourceEntityId : null, EnchantmentEntityId = enchantment?.Id, EnchantmentCardId = enchantment?.CardId };
+        { TriggerEntityId = deathrattle ? sourceEntityId : null, EnchantmentEntityId = enchantment?.Id, EnchantmentCardId = enchantment?.CardId,
+            BattlecryMultiplicity = multiplicity, IsSingleBattlecryActivationPreview = multiplicity is { Activations: not (0 or 1) } ? true : null };
 
         void AddScenario(int count, bool blocked, long initialDeck, long capacity, long initialHealth,
             long initialArmor, long initialFatigue, bool? targetedFound, bool targetedFatigue, bool immune, bool preventFatigue)
@@ -294,7 +303,8 @@ public static partial class DrawResolutionRules
         DrawResolutionOutcome Unresolved() => new(snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence,
             sourceEntityId, sourceId, kind, false, requested, unknown, unknown, unknown, unknown, unknown,
             null, null, null, null, null, false, ReadOnly(unknowns), ReadOnly(assumptions), ReadOnly(coverage))
-        { TriggerEntityId = deathrattle ? sourceEntityId : null, EnchantmentEntityId = enchantment?.Id, EnchantmentCardId = enchantment?.CardId };
+        { TriggerEntityId = deathrattle ? sourceEntityId : null, EnchantmentEntityId = enchantment?.Id, EnchantmentCardId = enchantment?.CardId,
+            BattlecryMultiplicity = multiplicity, IsSingleBattlecryActivationPreview = multiplicity is { Activations: not (0 or 1) } ? true : null };
     }
 
     private static DrawNumberRange Range(IEnumerable<long> values)

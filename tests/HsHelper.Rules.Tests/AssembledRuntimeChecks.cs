@@ -69,7 +69,7 @@ internal static class AssembledRuntimeChecks
         }
         var conflict = Eval(Tag(Tag(Frame(), 30, "BATTLECRY", "0"), 30, "218", "1"), Play(30));
         Check(conflict.Verification != LineVerification.Verified && Entity(conflict, 30).Zone == "HAND", "Conflicting suppression was chosen favorably.");
-        foreach (var id in new[] { "EDR_100t7e", "EDR_100t7e1" })
+        foreach (var id in new[] { "EDR_100t7e1" })
         {
             var enchantment = Change(Change(Minion(50, id, "PLAY", 0, 1, 0), "CARDTYPE", "ENCHANTMENT"), "ATTACHED", "30");
             var result = Eval(Replace(Frame(), enchantment), Play(30));

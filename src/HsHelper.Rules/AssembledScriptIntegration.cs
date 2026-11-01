@@ -80,15 +80,11 @@ public sealed partial class LineEvaluator
             if (Has(source, "DORMANT") || Has(source, "UNTOUCHABLE"))
             { Unsupported("ASSEMBLED_ENTRY_STATE", "拼装来源当前休眠或不可交互的入场状态未覆盖。"); return; }
             var active = battlecry && !silence;
-            if (active && (Entities.Values.Any(entity => (entity.Type == "PLAYER" || entity.Zone == "PLAY" || entity.Id == source.Id) &&
-                _snapshot.Entities.TryGetValue(entity.Id, out var original) && original.Tags.Any(tag =>
-                    (tag.Key.Contains("BATTLECR", StringComparison.Ordinal) && tag.Key != "BATTLECRY" || tag.Key is "411" or "1112" or "1126") &&
-                    (!int.TryParse(tag.Value, out var value) || value != 0))) ||
-                _snapshot.Entities.Values.Any(entity => entity.Zone != "GRAVEYARD" && entity.CardId is "EDR_100t7e" or "EDR_100t7e1" &&
-                    (entity.GetIntTag("ATTACHED") == source.Id || entity.GetIntTag("40") == source.Id))))
+            var cry = BeginBattlecry(source);
+            if (!cry.Multiplicity.IsResolved)
             {
-                RecordAssembled(source, definition, active, null, [], "战吼次数修正仍未审计，不按一次或重复次数计算，也未支付或入场。");
-                Unsupported("ASSEMBLED_BATTLECRY_MULTIPLIER", "拼装战吼存在未知重复/次数修正，不能将其忽略为普通单次。"); return;
+                RecordAssembled(source, definition, cry.Multiplicity.IsEnabled, null, [], "战吼次数仍未审计，不按一次或任意重复次数计算，也未支付或入场。");
+                RequireKnownBattlecry(cry); return;
             }
             var hand = Entities.Values.Where(entity => entity.Zone == "HAND" && entity.Controller == Local).ToArray();
             if (active && Entities.Values.Any(entity => entity.Zone == "HAND" && entity.Controller is not (1 or 2)))
@@ -111,20 +107,26 @@ public sealed partial class LineEvaluator
                 }
             // Preflight all arithmetic before paying or changing any entity.
             var changes = targets.OrderBy(entity => entity.Id).Select(target =>
-                new AssembledEffectTarget(target.Id, target.Attack!.Value, checked(target.Attack.Value + 1),
-                    target.MaximumHealth!.Value, checked(target.MaximumHealth.Value + 1), target.Health!.Value, checked(target.Health.Value + 1)));
+                new AssembledEffectTarget(target.Id, target.Attack!.Value, checked(target.Attack.Value + cry.Multiplicity.Activations!.Value),
+                    target.MaximumHealth!.Value, checked(target.MaximumHealth.Value + cry.Multiplicity.Activations.Value), target.Health!.Value, checked(target.Health.Value + cry.Multiplicity.Activations.Value)));
             var frozenChanges = changes.ToArray();
             var observedBehavior = source.Flags.Where(pair => pair.Key is "BATTLECRY" or "DEATHRATTLE" or "TRIGGER_VISUAL" or "AURA" or "217" or "218" or "32" or "362").ToArray();
             var profile = AssembledProfile(source)!;
-            if (!CanAffordCard(source) || !Summon(source, profile, observedStatsOnly: true) || OpponentDefeatedByPayment) return;
+            if (!CanAffordCard(source) || !Summon(source, profile, observedStatsOnly: true)) return;
+            if (OpponentDefeatedByPayment) { ExecuteBattlecry(cry, _ => BattlecryStep.Done()); return; }
             foreach (var pair in observedBehavior) source.Flags[pair.Key] = pair.Value;
-            foreach (var change in frozenChanges)
+            ExecuteBattlecry(cry, _ =>
             {
-                var target = Entities[change.EntityId];
-                target.Attack = change.AttackAfter; target.MaximumHealth = change.MaximumHealthAfter; target.Health = change.RemainingHealthAfter;
-            }
-            RecordAssembled(source, definition, active, active ? 1 : 0, frozenChanges,
-                active ? "已审核成品的单次战吼；本体已离手，仅修改当前仍在手牌的随从，保持当前费用及已有损伤，不生成附魔或新实体。" : "当前明确战吼抑制；只支付并入场，不执行增益。保留独立的使用后触发。");
+                var currentTargets = targets.Where(target => target.Zone == "HAND" && target.Controller == Local).OrderBy(target => target.Id).ToArray();
+                foreach (var target in currentTargets)
+                { target.Attack = checked(target.Attack!.Value + 1); target.MaximumHealth = checked(target.MaximumHealth!.Value + 1); target.Health = checked(target.Health!.Value + 1); }
+                return BattlecryStep.Done(currentTargets.Select(target => target.Id).ToArray());
+            });
+            var completeCount = cry.Steps.All(step => step.IsComplete) && !BattlecryBoundaryReached ? (int?)cry.Completed : null;
+            var actualChanges = cry.Completed == 0 ? [] : frozenChanges.Select(change => change with
+            { AttackAfter=Entities[change.EntityId].Attack!.Value, MaximumHealthAfter=Entities[change.EntityId].MaximumHealth!.Value, RemainingHealthAfter=Entities[change.EntityId].Health!.Value }).ToArray();
+            RecordAssembled(source, definition, active, completeCount, actualChanges,
+                active ? "已审核成品的战吼；支付和本体离手一次，各已完成轮仅增益当时仍在手牌的随从，保持当前费用及损伤。逐轮次数见BattlecryExecutions；未完成前缀不是全部结算。" : "当前明确战吼抑制；只支付并入场，不执行增益。保留独立的使用后触发。");
             Coverage.Add("assembled-script:" + definition.ScriptKey);
             ResolveDeaths();
         }

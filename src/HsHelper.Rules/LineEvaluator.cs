@@ -80,6 +80,7 @@ public sealed partial class LineEvaluator
                 if (state.MapFollowupBoundaryReached) { state.Unsupported("AWAIT_MAP_FOLLOWUP_SNAPSHOT", "地图首选实体已在本地顺序中使用，追加选择尚未观察；请等待真实剩余选项，不得跨过该边界继续动作。"); break; }
                 if (state.MagmaSplitBoundaryReached) { state.Unsupported("AWAIT_MAGMA_SPLIT_SNAPSHOT", "熔岩猎犬的实际分配伤害尚未观察；分支不能作为已发生结果，请等待新局面后继续动作。"); break; }
                 if (state.WeaponResolutionBoundaryReached) { state.Unsupported("AWAIT_WEAPON_SNAPSHOT", "武器损毁或替换的后续结算未观察，不能继续使用该投影安排动作。"); break; }
+                if (state.BattlecryBoundaryReached) { state.Unsupported("AWAIT_BATTLECRY_SNAPSHOT", "战吼各轮尚未全部结算，不能跨越未观察的触发继续动作。"); break; }
                 if (state.StopForExistingQuestReward()) break;
                 if (state.TurnEnded) { state.Invalid("己方回合已经结束，不能在未观察下一决策点前继续安排动作。"); break; }
                 if (state.EnemyHero!.Health <= 0 || state.OwnHero!.Health <= 0)
@@ -154,7 +155,7 @@ public sealed partial class LineEvaluator
         {
             if (source.Zone == "PLAY" && source.Type is "HERO" or "MINION" && source.Attack > 0)
                 foreach (var target in targets) yield return new(ActionKind.Attack, source.EntityId, target.EntityId);
-            if (source.Type == "HERO_POWER" && source.Zone == "PLAY" && source.CardId is { } hp && SteadyShot.Contains(hp) && source.Cost <= state.AvailableMana)
+            if (source.Type == "HERO_POWER" && source.Zone == "PLAY" && source.CardId is { } hp && (SteadyShot.Contains(hp) || hp == "EDR_850p") && source.Cost <= state.AvailableMana)
                 yield return new(ActionKind.HeroPower, source.EntityId);
             if (source.Zone != "HAND" || (state.NextCardCostsOpponentHealth != true && source.Cost > state.AvailableMana) ||
                 source.CardId is not { } id || !cards.ContainsKey(id)) continue;
@@ -172,7 +173,7 @@ public sealed partial class LineEvaluator
                 foreach (var target in state.Entities.Where(e => e.IsAlive && e.Zone == "PLAY" && e.Type is "HERO" or "MINION"))
                     yield return new(ActionKind.PlayCard, source.EntityId, target.EntityId);
             }
-            else if (id == "GAME_005" || chargeBody || source.Type == "WEAPON" || SearchableRushBodies.Contains(id) || id is "EDR_489" or "CORE_TTN_866" ||
+            else if (id == "GAME_005" || chargeBody || runtime.SearchableBattlecryEnabler(source.EntityId) || source.Type == "WEAPON" || SearchableRushBodies.Contains(id) || id is "EDR_489" or "CORE_TTN_866" ||
                 (state.NextCardCostsOpponentHealth == true && (AuditedHunterBodies.Contains(id) || DiscoveryPlayRules.SupportsCardId(id))))
                 yield return new(ActionKind.PlayCard, source.EntityId);
         }
@@ -289,12 +290,33 @@ public sealed partial class LineEvaluator
             if (!ElvenArcher.Contains(id) && !state.SimpleProfile(profile))
             { state.Unsupported("UNSUPPORTED_MINION_EFFECT", "该随从的入场或持续效果尚未实现。"); return; }
             Entity? target = null;
+            BattlecryRun? battlecry = null;
             if (ElvenArcher.Contains(id))
-            { target = state.Target(action.TargetEntityId); if (target is null || !state.CanTarget(target, "BATTLECRY")) return; }
+            {
+                if (!state.ValidateArcherBattlecryFlags(source)) return;
+                battlecry = state.BeginBattlecry(source);
+                if (!state.RequireKnownBattlecry(battlecry)) return;
+                if (action.TargetEntityId == source.Id) target = state.PreviewEnteringBattlecryTarget(source, profile);
+                else if (action.TargetEntityId.HasValue || battlecry.Multiplicity.Activations != 0) target = state.Target(action.TargetEntityId);
+                if (battlecry.Multiplicity.Activations != 0 && (target is null || !state.CanTarget(target, "BATTLECRY"))) return;
+                if (state.Stopped) return;
+            }
             else if (action.TargetEntityId is not null) { state.Invalid("该随从不需要目标。"); return; }
             if (!state.Summon(source, profile)) return;
+            if (battlecry is not null)
+            {
+                var targetId = target?.Id;
+                state.ExecuteBattlecry(battlecry, _ =>
+                {
+                    if (targetId is null || !state.Entities.TryGetValue(targetId.Value, out var currentTarget) || !currentTarget.Alive || currentTarget.Zone != "PLAY")
+                        return BattlecryStep.Fizzle("OriginalTargetUnavailable", targetId.HasValue ? [targetId.Value] : []);
+                    var dealt = state.Damage(source, currentTarget, 1, false);
+                    state.HealLifesteal(source, dealt);
+                    state.ResolveDeaths();
+                    return BattlecryStep.Done(currentTarget.Id);
+                });
+            }
             if (state.OpponentDefeatedByPayment) return;
-            if (target is not null) state.Damage(source, target, 1, false);
             state.ResolveDeaths(); state.Coverage.Add(ElvenArcher.Contains(id) ? "elven-archer-battlecry-1" : "simple-minion-summon");
             return;
         }
@@ -410,6 +432,7 @@ public sealed partial class LineEvaluator
                     entity.Health = entity.WeaponDurability.Remaining;
                 }
                 entity.Alive = entity.Health is null || entity.Health > 0;
+                NormalizeCurrentRace(entity, source);
                 if (HasCustomAssembledText(entity)) NormalizeAssembledFlags(entity, source);
                 Entities[entity.Id] = entity;
             }
@@ -496,6 +519,10 @@ public sealed partial class LineEvaluator
             (entity.Type == "HERO" && Weapon(entity.Controller) is { } weapon && WeaponHas(weapon, keyword));
         public bool IsBeast(Entity entity)
         {
+            if (_snapshot.Entities.TryGetValue(entity.Id, out var observed) && !TryObservedCurrentRace(observed, out _))
+            {
+                Conditional("当前种族原值或别名未知/冲突，不能丢掉观察后恢复印刷野兽身份。", "UNKNOWN_CURRENT_RACE"); return false;
+            }
             var profile = Profile(entity);
             if (entity.Int("CARDRACE") is not { } race) return profile?.Races.Overlaps(["BEAST", "ALL"]) == true;
             if (race is 20 or 26) return true;
@@ -527,6 +554,12 @@ public sealed partial class LineEvaluator
             if (target.Controller is null) { Unsupported("UNKNOWN_CONTROLLER", "目标控制者未知。"); return null; }
             return target;
         }
+        public Entity PreviewEnteringBattlecryTarget(Entity source, Profile profile) => new()
+        {
+            Id=source.Id, CardId=source.CardId, Type="MINION", Controller=source.Controller, Zone="PLAY",
+            Attack=source.Attack ?? profile.Attack, MaximumHealth=source.MaximumHealth ?? profile.Health,
+            Health=source.MaximumHealth ?? profile.Health, Cost=source.Cost, Flags=source.Flags.ToDictionary(StringComparer.Ordinal)
+        };
         public bool CanTarget(Entity target, string effect)
         {
             if (Has(target, "DORMANT") || Has(target, "UNTOUCHABLE") || Has(target, "CANT_BE_TARGETED") ||
@@ -602,6 +635,7 @@ public sealed partial class LineEvaluator
             if (unresolvedDeath)
                 Conditional("本次死亡后的亡语或复生尚未展开；后续结果假设这些效果不改变所列动作。", "DEATHRATTLE_OR_REBORN");
             entity.Alive = false; entity.Zone = "GRAVEYARD";
+            CompleteBattlecryAttachmentsAfterDeath(entity);
             if (!unresolvedDeath) CompleteObservedStaticGiftsAfterDeath(entity);
             if (entity.Type == "WEAPON") _removedWeaponIds.Add(entity.Id);
             if (entity.Type == "WEAPON" && (Has(entity, "DEATHRATTLE") || Has(entity, "REBORN"))) MarkWeaponBoundary();
@@ -628,6 +662,8 @@ public sealed partial class LineEvaluator
                     (!int.TryParse(pair.Value, out var flag) || flag != 0)))
                     Conditional("拼装体存在额外当前触发或光环证据，不能把纯战吼脚本当作全部已覆盖。", "ASSEMBLED_EXTRA_TRIGGER");
                 if (entity.Flags.Any(flag => flag.Value != 0 && flag.Key.Length > 0 && flag.Key.All(char.IsDigit) &&
+                    !IsKnownCurrentRaceNumeric(entity, flag.Key) &&
+                    !IsBattlecryEvidenceNumericTag(entity, flag.Key) &&
                     !IsAssembledKnownNumericTag(entity, flag.Key) &&
                     !IsKnownImbueCounter(entity, flag.Key) &&
                     !IsObservedStaticDarkGiftNumericTag(entity, flag.Key) &&
@@ -645,6 +681,7 @@ public sealed partial class LineEvaluator
             }
             foreach (var entity in Entities.Values.Where(e => e.Alive || IsStaticDarkGiftCandidate(e) && e.Zone != "GRAVEYARD"))
             {
+                if (IsAuditedBattlecryAttachment(entity)) { Coverage.Add("observed-rude-awakening-attachment"); continue; }
                 if (entity.CardId == DrawResolutionRules.DeathrattleEnchantmentCardId && entity.Zone != "GRAVEYARD")
                 {
                     if (TryObservedDeathDrawEnchantment(entity)) Coverage.Add("observed-deathrattle-draw-enchantment:EDR_100t4e");
@@ -725,6 +762,7 @@ public sealed partial class LineEvaluator
                 _assumptions.OrderBy(x => x, StringComparer.Ordinal).ToArray(), _unsupported.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
                 Coverage.OrderBy(x => x, StringComparer.Ordinal).ToArray(), new(Mana, Array.AsReadOnly(entities))
                 { HeroPowerChanges = Array.AsReadOnly(_heroPowerChanges.ToArray()),
+                  BattlecryExecutions = _battlecryRuns.Count == 0 ? null : _battlecryRuns.Select(run => run.Build()).ToArray(),
                   AssembledEffects = _assembledEffects.Count == 0 ? null : _assembledEffects,
                   ImbueCountBefore = _initialImbues, ImbueCountAfter = _currentImbues,
                   DrawBoundaryReached = DrawBoundaryReached, DrawPreviews = Array.AsReadOnly(_drawPreviews.ToArray()),

@@ -15,22 +15,49 @@ public sealed partial class LineEvaluator
         if (!state.RequireAuditedBuild()) return true;
         if (profile.Type != "MINION") { state.Unsupported("CARD_DATA_MISMATCH", "固定版本牌效与卡牌类型不一致。"); return true; }
         if (action.TargetEntityId is not null) { state.Invalid("该随从的入场不需要指定目标。"); return true; }
-        var battlecryActive = state.Has(source, "BATTLECRY");
+        var cry = id is "EDR_489" or "EDR_226" or "EDR_852" or "EDR_800" or "FIR_921" or "CORE_UNG_912"
+            ? state.BeginBattlecry(source) : null;
+        if (cry is not null && id is "EDR_489" or "EDR_852" or "EDR_800" && !state.RequireKnownBattlecry(cry)) return true;
         if (!state.Summon(source, profile)) return true;
-        if (state.OpponentDefeatedByPayment) return true;
-        if (battlecryActive && id == "EDR_489") state.ArmOpponentHealthPayment();
-        if (id == "EDR_226")
+        if (state.OpponentDefeatedByPayment)
         {
-            var draw = state.RecordNativeDraw(source);
-            if (!draw.ResolvesEffects || draw.RequestedDraws.Maximum != 0)
-                state.DeferImbueAfterDraw();
+            if (cry is not null) state.ExecuteBattlecry(cry, _ => BattlecryStep.Done());
+            return true;
         }
-        else if (battlecryActive && id is "EDR_852" or "EDR_800") state.ImbueHunter(source.Controller, "battlecry:" + id);
-        if (id == "FIR_921")
-            state.RecordNativeDraw(source);
-        // The direct resolver retains raw alias conflicts even when the runtime flag is zero.
-        if (id == "CORE_UNG_912")
-            state.RecordNativeGeneration(source);
+        if (cry is not null)
+        {
+            if (!cry.Multiplicity.IsResolved || cry.Multiplicity.Activations == 0)
+            {
+                // Preserve zero/uncertain single-operation previews without calling them a complete schedule.
+                if (id is "EDR_226" or "FIR_921")
+                {
+                    var draw = state.RecordNativeDraw(source);
+                    if (id == "EDR_226" && (!draw.ResolvesEffects || draw.RequestedDraws.Maximum != 0)) state.DeferImbueAfterDraw();
+                }
+                if (id == "CORE_UNG_912") state.RecordNativeGeneration(source);
+                state.ExecuteBattlecry(cry, _ => BattlecryStep.Done());
+            }
+            else state.ExecuteBattlecry(cry, activation =>
+            {
+                if (id is "EDR_852" or "EDR_800")
+                { state.ImbueHunter(source.Controller, "battlecry:" + id); return BattlecryStep.Done(); }
+                if (id == "EDR_489")
+                {
+                    if (activation > 1) { state.DeferRepeatedOpponentHealthPayment(); return BattlecryStep.Pending("RepeatedPaymentRequiresObservation"); }
+                    state.ArmOpponentHealthPayment(); return BattlecryStep.Done();
+                }
+                if (id == "CORE_UNG_912")
+                {
+                    var generated = state.RecordNativeGeneration(source);
+                    return generated.ResolvesEffects && generated.RequestedCards.Maximum == 0
+                        ? BattlecryStep.Done() : BattlecryStep.Pending("GenerationRequiresObservation");
+                }
+                var result = state.RecordNativeDraw(source);
+                if (id == "EDR_226" && (!result.ResolvesEffects || result.RequestedDraws.Maximum != 0)) state.DeferImbueAfterDraw();
+                return result.ResolvesEffects && result.RequestedDraws.Maximum == 0
+                    ? BattlecryStep.Done() : BattlecryStep.Pending("DrawRequiresObservation");
+            }, allowUnknownImbueParameters: id is "EDR_852" or "EDR_800");
+        }
         state.Coverage.Add("audited-minion-summon:" + id);
         return true;
     }
@@ -126,8 +153,9 @@ public sealed partial class LineEvaluator
             // Entry resets readiness/counts, not observed restrictions used by Attack. Clearing
             // these would make a manual or searched play->attack line bypass its original state.
             source.Flags = source.Flags.Where(flag => StaticKeywords.Contains(flag.Key) ||
-                flag.Key is "SILENCED" or "FROZEN" or "CANT_ATTACK_HEROES" or "CANNOT_ATTACK_HEROES" or
+                flag.Key is "SILENCED" or "FROZEN" or "CARDRACE" or "200" or "CANT_ATTACK_HEROES" or "CANNOT_ATTACK_HEROES" or
                     "CANT_ATTACK_MINIONS" or "DORMANT" or "UNTOUCHABLE").ToDictionary(StringComparer.Ordinal);
+            RestoreBattlecryBehavior(source);
             source.Flags["NUM_TURNS_IN_PLAY"] = 0;
             source.Flags["EXHAUSTED"] = Has(source, "CHARGE") || Has(source, "RUSH") ? 0 : 1;
             return true;
