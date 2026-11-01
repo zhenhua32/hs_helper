@@ -31,6 +31,7 @@ public sealed class LogSetupWindow : Window
 
     public LogSetupWindow(string configurationPath, string dataDirectory)
     {
+        InputCompatibility.Attach(this);
         Title = "炉石日志设置与恢复"; Width = 760; Height = 650; MinWidth = 500; MinHeight = 400;
         _receiptPath = Path.Combine(Path.GetFullPath(dataDirectory), "log-configuration-receipt.json");
         var root = new Grid { Margin = new Thickness(16) };

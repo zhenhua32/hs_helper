@@ -171,28 +171,42 @@ public partial class MainWindow
 
     private async Task FinishCaptureAsync()
     {
+        // Complete may enumerate recorder dictionaries, so the producer must have stopped first.
+        await _liveReadTask;
         var capture = _capture;
         if (capture is not null) await Task.Run(() => capture.CompleteAsync());
         if (ReferenceEquals(_capture, capture)) _capture = null;
+        _liveWorker = null;
     }
-    private async Task StopRecordingAsync()
+    private Task StopRecordingAsync()
     {
-        BeginSource();
-        var analyses = _analysisTasks.ToArray();
-        try { await Task.WhenAll(analyses); }
-        catch (Exception) { /* Each request keeps usage in its own finally; saving below is still mandatory. */ }
-        var replay = _replayTask;
-        if (replay is not null)
+        if (_stopRecordingTask is { IsCompleted: false } pending) return pending;
+        return _stopRecordingTask = StopRecordingCoreAsync();
+    }
+    private async Task StopRecordingCoreAsync()
+    {
+        _sourceTransitionCount++;
+        try
         {
-            try { await replay; }
-            catch (OperationCanceledException) { }
+            BeginSource();
+            var analyses = _analysisTasks.ToArray();
+            try { await Task.WhenAll(analyses); }
+            catch (Exception) { /* Each request keeps usage in its own finally; saving below is still mandatory. */ }
+            var replay = _replayTask;
+            if (replay is not null)
+            {
+                try { await replay; }
+                catch (OperationCanceledException) { }
+            }
+            await FinishCaptureAsync();
+            if (!_closing && _historyContext is null) RenderSnapshot();
+            if (_traces is not null) await FlushTracesAsync();
+            await FlushAdviceArchivesAsync();
+            await WaitForConfigurationIoAsync();
+            if (_closing && _logSetupWindow is not null) await _logSetupWindow.WaitForPendingWriteAsync();
+            if (_store is not null) await RefreshHistoryAsync();
         }
-        await FinishCaptureAsync();
-        if (_traces is not null) await FlushTracesAsync();
-        await FlushAdviceArchivesAsync();
-        await WaitForConfigurationIoAsync();
-        if (_closing && _logSetupWindow is not null) await _logSetupWindow.WaitForPendingWriteAsync();
-        if (_store is not null) await RefreshHistoryAsync();
+        finally { _sourceTransitionCount--; UpdateConnectionStatus(force: true); }
     }
     private async void WindowClosing(object? sender, CancelEventArgs e)
     {
@@ -410,7 +424,7 @@ public partial class MainWindow
     {
         CancelKnowledgeNavigation();
         _historyRevision++; _historyLoading = false; _historyContext = null; InvalidateAdvice();
-        SessionBuildBox.Text = _engine.Snapshot().ClientBuild ?? "";
+        SessionBuildBox.Text = (_liveFrame ?? _engine.Snapshot()).ClientBuild ?? "";
         RenderSnapshot();
         StatusText.Text = "已返回当前日志局面。";
     }

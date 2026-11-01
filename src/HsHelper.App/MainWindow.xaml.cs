@@ -91,7 +91,7 @@ public partial class MainWindow : Window
     private async void PlayerChanged(object sender, SelectionChangedEventArgs e) => await Run(async () =>
     {
         if (_engine is null || StateText is null) return;
-        if (_timer.IsEnabled) await StopRecordingAsync();
+        if (_timer.IsEnabled || _reading || _sourceTransitionCount > 0) await StopRecordingAsync();
         _engine.SetLocalPlayerId(SelectedPlayer);
         _liveFrame = null; _trackingFrames = null;
         RenderSnapshot();
@@ -105,14 +105,23 @@ public partial class MainWindow : Window
     });
     private async Task ReplayPathAsync(string path)
     {
+        if (_closing) return;
+        if (_sourceTransitionCount > 0) throw new InvalidOperationException("日志来源正在切换，请稍后重试。");
+        _sourceTransitionCount++;
+        try { await ReplayPathCoreAsync(path); }
+        finally { _sourceTransitionCount--; }
+    }
+    private async Task ReplayPathCoreAsync(string path)
+    {
         if (_loadingSource) throw new InvalidOperationException("回放正在进行，请先停止。");
         BeginSource();
+        var generation = _sourceGeneration;
         await FinishCaptureAsync();
+        if (generation != _sourceGeneration || _closing) return;
         _historyContext = null;
         _viewIsFileReplay = true;
         PinSourceDeck();
         ResetConnectionClock();
-        var generation = _sourceGeneration;
         var token = _source.Token;
         _loadingSource = true; PlayerBox.IsEnabled = false; SavedDeckBox.IsEnabled = false;
         var build = ClientBuildMetadata.ReadPowerLogBuild(path);
@@ -167,22 +176,35 @@ public partial class MainWindow : Window
     private async void WatchClicked(object sender, RoutedEventArgs e) => await Run(StartWatchingAsync);
     private async Task StartWatchingAsync()
     {
+        if (_closing) return;
+        if (_sourceTransitionCount > 0) throw new InvalidOperationException("日志来源正在切换，请稍后重试。");
+        _sourceTransitionCount++;
+        try { await StartWatchingCoreAsync(); }
+        finally { _sourceTransitionCount--; }
+    }
+    private async Task StartWatchingCoreAsync()
+    {
         if (_loadingSource) throw new InvalidOperationException("回放正在进行，可先停止后再开始监听。");
         if (string.IsNullOrWhiteSpace(LogPathBox.Text)) { Diagnose(); if (string.IsNullOrWhiteSpace(LogPathBox.Text)) return; }
         if (_reading) throw new InvalidOperationException("日志正在读取，请稍后重试。");
         BeginSource();
+        var generation = _sourceGeneration;
         await FinishCaptureAsync();
+        if (generation != _sourceGeneration || _closing) return;
         _historyContext = null;
         _viewIsFileReplay = false;
         PinSourceDeck();
         _tailer.Dispose(); _tailer = new(64 * 1024);
         _engine = NewEngine();
-        _liveFrame = null; _trackingFrames = null;
+        _liveFrame = _engine.Snapshot(); _trackingFrames = null;
         _sourceLine = 0;
         ResetConnectionClock();
         _liveRoot = LogPathBox.Text;
         _catchingUp = true; _sourceFailed = false;
+        _lastLiveRenderAt = DateTimeOffset.MinValue;
+        StatusText.Text = CatchingUpStatus;
         _timer.Start();
+        UpdateConnectionStatus(force: true);
         await ReadLiveAsync();
     }
     private void BeginSource()
@@ -193,80 +215,12 @@ public partial class MainWindow : Window
         _source.Cancel(); _source.Dispose(); _source = new();
         InvalidateAdvice();
         _localTools?.Invalidate("日志来源或监听状态已变化，请重新绑定本地计算。");
-        UpdateConnectionStatus();
+        UpdateConnectionStatus(force: true);
     }
     private async void StopClicked(object sender, RoutedEventArgs e) => await Run(async () => { await StopRecordingAsync(); StatusText.Text = "已停止监听并保存记录，显示最后一次快照。"; });
     private async void LogPathChanged(object sender, TextChangedEventArgs e)
     {
         if (_timer?.IsEnabled == true) await Run(async () => { await StopRecordingAsync(); StatusText.Text = "日志路径已改变，记录已保存，请重新开始监听。"; });
-    }
-    private async Task ReadLiveAsync()
-    {
-        if (_reading) return;
-        _reading = true;
-        _lastReadAttemptAt = DateTimeOffset.UtcNow;
-        var generation = _sourceGeneration;
-        var token = _source.Token;
-        var engine = _engine;
-        var tailer = _tailer;
-        var catchUp = false;
-        try
-        {
-            var batch = await tailer.ReadAvailableAsync(_liveRoot, token);
-            if (generation != _sourceGeneration) return;
-            if (batch.Path is null) { UpdateConnectionStatus(); return; }
-            _currentLogFile = batch.Path; _currentLogOffset = batch.ByteOffset;
-            _lastSuccessfulReadAt = DateTimeOffset.UtcNow;
-            var fileWrite = File.GetLastWriteTimeUtc(batch.Path);
-            _sourceFileLastWriteAt = fileWrite == DateTime.FromFileTimeUtc(0) ? null : new DateTimeOffset(fileWrite);
-            _catchingUp = batch.HasMoreData; _sourceFailed = false;
-            if (batch.Lines.Count > 0) _lastLogActivityAt = DateTimeOffset.UtcNow;
-            catchUp = batch.HasMoreData;
-            if (batch.ResetReason != LogResetReason.None)
-            {
-                await FinishCaptureAsync();
-                if (generation != _sourceGeneration) return;
-                var build = ClientBuildMetadata.ReadPowerLogBuild(batch.Path);
-                var identity = SourceIdentity(batch.Path);
-                if (batch.ResetReason is LogResetReason.Truncated or LogResetReason.Replaced) identity += "-" + Guid.NewGuid().ToString("N")[..8];
-                engine = _engine = NewEngine(identity);
-                _capture = NewCapture(build);
-                var tracking = await CreateTrackingFramesAsync(build);
-                if (generation != _sourceGeneration) return;
-                _trackingFrames = tracking;
-                _liveFrame = null;
-                _sourceLine = 0;
-                if (_historyContext is null) SessionBuildBox.Text = build ?? "";
-            }
-            var capture = _capture;
-            foreach (var line in batch.Lines)
-            {
-                _sourceLine++;
-                if (engine.ProcessLine(line))
-                {
-                    var frame = engine.Snapshot();
-                    _lastStateObservedAt = DateTimeOffset.UtcNow;
-                    _liveFrame = _trackingFrames?.Observe(frame) ?? frame;
-                    capture?.Observe(_liveFrame, _sourceLine);
-                }
-            }
-            if (_historyContext is null && _liveFrame is { } current &&
-                (current.MatchId != _renderedMatchId || current.StateVersion != _renderedVersion)) InvalidateAdvice();
-            if (capture is not null) await Task.Run(() => capture.FlushAsync(token), token);
-            if (generation != _sourceGeneration) return;
-            if (batch.Lines.Count > 0 || batch.ResetReason != LogResetReason.None) RenderSnapshot();
-            if (batch.Lines.Count > 0) ScheduleAutomaticAdvice(batch.HasMoreData);
-            UpdateConnectionStatus();
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { if (generation == _sourceGeneration) { _sourceFailed = true; _timer.Stop(); StatusText.Text = "日志读取停止：" + ex.Message; } }
-        finally
-        {
-            _reading = false;
-            if (generation == _sourceGeneration) UpdateConnectionStatus();
-            if (catchUp && generation == _sourceGeneration && _timer.IsEnabled)
-                _ = Dispatcher.BeginInvoke(new Action(async () => await ReadLiveAsync()), DispatcherPriority.Background);
-        }
     }
     private void RenderSnapshot()
     {
@@ -290,7 +244,8 @@ public partial class MainWindow : Window
         _revision++;
         _analysis?.Cancel();
         _overlayAdvice = "局面已更新，旧建议已失效。";
-        if (AdviceBox is not null) AdviceBox.Text = "局面或视角已更新。已有建议已失效，可重新请求分析。";
+        const string stale = "局面或视角已更新。已有建议已失效，可重新请求分析。";
+        if (AdviceBox is not null && AdviceBox.Text != stale) AdviceBox.Text = stale;
     }
     private void BuildChanged(object sender, TextChangedEventArgs e)
     {

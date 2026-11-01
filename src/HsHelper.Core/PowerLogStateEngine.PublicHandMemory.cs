@@ -13,6 +13,14 @@ public sealed partial class PowerLogStateEngine
     private void ObservePublicHandMemory()
     {
         var local = MemoryObserver;
+        if (local is not (1 or 2))
+        {
+            // Without an observer the tracker only clears any previous perspective; it never
+            // reads the entity list. Keep that transition without building discarded evidence.
+            _publicHandMemory.Observe(local, MemoryPerspective, _eventSequence,
+                Array.Empty<PublicHandMemoryTracker.Observation>());
+            return;
+        }
         var observations = _entities.Values.Select(entity => new PublicHandMemoryTracker.Observation(entity.Id,
             entity.Kind, IntTag(entity, "CONTROLLER"), entity.Tags.GetValueOrDefault("ZONE"), IsAttachmentEntity(entity),
             ObservedIdentityProof(entity) == EventIdentityVisibility.Public ? entity.CardId : null, entity.Revision)).ToArray();

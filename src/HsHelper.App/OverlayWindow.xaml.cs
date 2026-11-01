@@ -37,6 +37,7 @@ public partial class OverlayWindow : Window
 
     public OverlayWindow()
     {
+        InputCompatibility.Attach(this);
         _windowHook = OverlayWindowProcedure;
         InitializeComponent();
         SourceInitialized += (_, _) =>
@@ -152,6 +153,7 @@ public partial class OverlayWindow : Window
         panel.Children.Add(hide);
         _settings = new Window { Title = "猎人助手悬浮窗设置", Content = panel, Width = 340, SizeToContent = SizeToContent.Height,
             ResizeMode = ResizeMode.CanMinimize, Topmost = true, ShowInTaskbar = true, WindowStartupLocation = WindowStartupLocation.CenterScreen };
+        InputCompatibility.Attach(_settings);
         _settings.Closing += (_, _) => { if (!_closed) SetClickThrough(false); };
         _settings.Closed += (_, _) => { _settings = null; _throughCheck = null; _settingsStatus = null; };
         SynchronizeSettings();

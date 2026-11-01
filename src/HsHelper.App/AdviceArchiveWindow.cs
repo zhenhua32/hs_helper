@@ -69,6 +69,7 @@ public sealed class AdviceArchiveWindow : Window
 
     public AdviceArchiveWindow(AdviceArchiveStore store, AdviceArchiveScope scope)
     {
+        InputCompatibility.Attach(this);
         ArgumentNullException.ThrowIfNull(store); ArgumentNullException.ThrowIfNull(scope);
         if (string.IsNullOrWhiteSpace(scope.MatchId) || !Enum.IsDefined(scope.Kind) ||
             scope.Kind == AdviceArchiveScopeKind.DeckPlan && (string.IsNullOrWhiteSpace(scope.DeckVersionId) || scope.MatchId != "deck-" + scope.DeckVersionId))

@@ -22,6 +22,7 @@ public partial class App : Application
                     baseDirectory = AppContext.BaseDirectory,
                     is64Bit = Environment.Is64BitProcess,
                     dpiManifest = "PerMonitorV2,PerMonitor",
+                    inputCompatibility = options.InputCompatibility,
                     error = options.Error
                 }, new JsonSerializerOptions { WriteIndented = true });
                 if (options.DiagnosticOutput is { } path)
@@ -39,12 +40,18 @@ public partial class App : Application
         }
         if (options.Error is not null)
         {
-            MessageBox.Show("启动参数无效。可使用 --data-dir 指定数据目录，或 --diagnostic-output 生成诊断报告。", "炉石猎人助手");
+            MessageBox.Show("启动参数无效。可使用 --data-dir 指定数据目录、--input-compatibility 启用鼠标兼容模式，或 --diagnostic-output 生成诊断报告。", "炉石猎人助手");
             Shutdown(2); return;
         }
         try
         {
+            if (options.InputCompatibility) InputCompatibility.Enable();
             MainWindow = new MainWindow();
+            if (options.InputCompatibility)
+            {
+                InputCompatibility.Attach(MainWindow);
+                MainWindow.Title += " · 鼠标兼容";
+            }
             MainWindow.Show();
         }
         catch (Exception)

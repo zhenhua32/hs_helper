@@ -3,12 +3,14 @@ using System.IO;
 namespace HsHelper.App;
 
 /// <summary>Resolves startup paths without opening a window, loading configuration, or creating data.</summary>
-public sealed record AppLaunchSettings(string DataDirectory, bool Diagnostic, string? DiagnosticOutput, string? Error)
+public sealed record AppLaunchSettings(string DataDirectory, bool Diagnostic, string? DiagnosticOutput, string? Error,
+    bool InputCompatibility = false)
 {
     public static AppLaunchSettings Parse(IReadOnlyList<string> args)
     {
         var dataDirectory = Environment.GetEnvironmentVariable("HSHELPER_DATA_DIR");
         var diagnostic = args.Contains("--diagnostic") || args.Contains("--diagnostic-output");
+        var inputCompatibility = false;
         string? diagnosticOutput = null;
         string? error = null;
         for (var i = 0; i < args.Count; i++)
@@ -16,6 +18,7 @@ public sealed record AppLaunchSettings(string DataDirectory, bool Diagnostic, st
             switch (args[i])
             {
                 case "--diagnostic": diagnostic = true; break;
+                case "--input-compatibility": inputCompatibility = true; break;
                 case "--data-dir" when i + 1 < args.Count && !args[i + 1].StartsWith("--", StringComparison.Ordinal):
                     dataDirectory = args[++i]; break;
                 case "--diagnostic-output" when i + 1 < args.Count && !args[i + 1].StartsWith("--", StringComparison.Ordinal):
@@ -41,6 +44,6 @@ public sealed record AppLaunchSettings(string DataDirectory, bool Diagnostic, st
             dataDirectory = "";
             diagnosticOutput = null;
         }
-        return new(dataDirectory, diagnostic, diagnosticOutput, error);
+        return new(dataDirectory, diagnostic, diagnosticOutput, error, inputCompatibility);
     }
 }

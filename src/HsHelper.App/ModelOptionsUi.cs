@@ -27,6 +27,7 @@ public partial class MainWindow
         var panel = CreateModelOptionsPanel();
         var dialog = new Window { Owner = this, Title = "模型与预算设置", Width = 470, Height = 650,
             MinWidth = 380, MinHeight = 400, Content = panel, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        InputCompatibility.Attach(dialog);
         panel.Completed += (_, result) => dialog.DialogResult = result.Saved;
         dialog.Closing += (_, closing) => { if (panel.IsBusy) closing.Cancel = true; };
         dialog.ShowDialog();

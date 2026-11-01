@@ -70,6 +70,7 @@ public sealed class LocalToolsWindow : Window
     public LocalToolsWindow(GameSnapshot snapshot, string? fixedBuild, CardCatalog catalog, bool isHistorical = false,
         StartingDeckBinding? startingDeck = null)
     {
+        InputCompatibility.Attach(this);
         ArgumentNullException.ThrowIfNull(snapshot); ArgumentNullException.ThrowIfNull(catalog);
         _snapshot = snapshot; _catalog = catalog;
         Title = "本地计算 · 无需模型"; Width = 950; Height = 820; MinWidth = 640; MinHeight = 460;
