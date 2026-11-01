@@ -16,7 +16,35 @@
 
 在“AI 教练”页填写自己的服务地址、模型和密钥并保存，连接测试由使用者主动执行。Windows 加密配置仅供当前 Windows 用户使用。发行包不含 `.env`、模型密钥、历史数据库或用户日志；本机开发用 `.env` 不应放进解压目录或随包分享。AI 只给建议，不会自动操作游戏。复杂牌效、未知奥秘和随机结果仍会标记限制。
 
-## 当前版本：preview26
+## 当前版本：preview27
+
+2026 年 11 月 1 日，本机已验证 `0.1.0-preview.27` 两种包，均来自干净提交 `9c781a00574aa5a9c6f9fedc262a69991de79345`，`sourceDirty=false`。产物保留在 `.local\publish`，未上传或加入版本控制：
+
+| 部署方式 | ZIP 文件 | ZIP 字节 | 展开文件数／字节 |
+| --- | --- | ---: | ---: |
+| 自包含 | `0.1.0-preview.27-self-contained.zip` | 67,355,110 | 415／151,170,406 |
+| 依赖框架 | `0.1.0-preview.27-framework-dependent.zip` | 2,229,303 | 20／4,845,122 |
+
+- 自包含 ZIP SHA256：`615fe2d0d993c29c5ecb5fd1beb0e1207093f42b5d317d8ca7baacf7dadc62e0`。
+- 依赖框架 ZIP SHA256：`a235c5b8d21d24cf073b2f86f1dc9a012707e6f3eef0f376a27f4bfb07038776`。
+
+本版加入已观察来源的双战吼与双亡语，分别记录计划、开始、完成及未完成轮数；一次出牌只支付、入场和触发使用后效果一次，一次死亡只移除本体一次。支持已审灌注、固定目标伤害和拼装手牌增益的逐轮战吼，以及幽爪熊、震地雷龙原生亡语的完整后续路线；天灾巨魔获得抽牌脚本后仍在首轮未知身份处等待。未知叠加、全局来源、复制／复生和隐藏牌库保持边界，不从当前母牌推造赠福来源。具体见[战吼范围](battlecry-repeat-contract.md)与[亡语范围](deathrattle-repeat-contract.md)。回合／选择模板为`hunter-v25`，其它任务基础版本保持`hunter-v7`。
+
+发行来源通过1493项完整源码回归及27项指南检查。唯一正式双包会话13034真实退出0，第四份产品完整性收据writer也退出0；四份机器收据与日志位于`.local/release-preview27/0.1.0-preview.27-*`，精确终态及收据长度／SHA保存在同目录`terminal-verification.json`。两种包各通过27项安全、3项指南语义、ZIP逐文件及正常用户无窗口诊断；SC Core/Desktop10.0.14的七个关键DLL与官方缓存／nupkg条目一致，两个整归档SHA512匹配。八产品DLL跨模式字节相同；161项实际包构建输入在发布前后逐Gitblob／SHA绑定9c781a0，两次构建默认NuGetAudit、零警告／错误。产品源码、测试和构建输入未因后续文档更新改变。
+
+实际包代码另通过Agent122＋App115共237项检查，十一类隐藏WPF流程各4组，包括双战吼、双亡语、拼装及多恐魔。唯一77524真实退出0，原始收据与终态位于`.local/desktop-preview27-smoke/06f0ab656f9e4112b8ef5497381e9d3a`。仅编hook和测试，实际App八项／Agent六项产品加载路径、版本和SHA均匹配包内DLL副本；三次test-only构建默认NuGetAudit、零警告／错误。15项公开输入为13份CardJSON、App.xaml和包内样本，53份原测试源码及六份附加来源另有哈希；卡牌／样式／测试副本绑定9c的实际Git blob。App十三个真实workspace查找方法加AppContext祖先记录均定位到隔离副本，Agent祖先也定位到该目录；四张新增流程PNG实际生成于副本内，双战吼及双亡语640×460中文结果已检视。fake环境与数据库只在新建合成目录，不读取真实模型配置。
+
+Core177＋Storage122原完整测试另通过299项，唯一88721真实退出0，收据`.local/package27-core-storage-checks/c344084eaccb4a08903b3d095b627f4c/package-core-storage-receipt.json`及`.local/package27-core-storage-checks/terminal-verification.json`保留证据。两个测试入口均为net10.0-windows，Storage122全套使用与SC27同字节的四个SQLite托管依赖及原生DLL；四个产品与SQLite托管模块的实际加载路径、版本、SHA及MVID逐项核对SC/FW两包。原生路径按Windows完整路径大小写语义比较，SHA严格一致；无托管MVID且两边版本元数据均空，保持不适用／空值，不推断SQLite语义版本。三个test-only构建默认NuGetAudit、零警告／错误，无重跑或额外子集计数；已有DirectReveal3＋Recorder1包含在122内，Core177不宣称SQLite功能覆盖。
+
+实际Core/Cards/Rules发布DLL的副本另通过完整Rules618项，唯一74729真实退出0。40份原测试源码、22份全部fixture和365项源码／测试／构建／样本输入逐Gitblob与SHA绑定9c；只编测试与hook，两个构建默认NuGetAudit、零警告／错误。三个实际加载模块的路径、版本、SHA及MVID均核对SC/FW两包，包含全部301拼装主体、双战吼／双亡语和多恐魔原用例。收据`.local/package27-rules-checks/2207385fc2024105aeee96a6093bf774/package-rules-receipt.json`及`.local/package27-rules-checks/terminal-verification.json`保留完整记录。上述237／299／618分别记录，不累加进1493项源码检查；未重编产品或再次运行同字节FW产品。
+
+桌面原终态中的旧smoke字节摘要误记为0，独立只读`post-run-readonly-addendum.json`纠正为422项、37,623,598字节，并再次核对逐项长度／SHA及旧25／26完整基线；原收据保留，未重跑测试。原clean门实际完成于七份文档更新前，之后修改的新driver未执行，补充记录不以新脚本冒充原执行证据。
+
+本版双包、ZIP及旁文件共439项、225,600,152字节，在上述检查前后集合、长度及SHA不变。旧preview26全部发布前缀与发行、桌面抽查、Core/Storage及Rules检查四个完整目录共1022项、307,611,034字节也保持不变，冻结清单`.local/release-preview27/preview26-frozen-files.json`；旧preview25原1016项、337,521,011字节再次验证不变。旧版记录保留各自当时的覆盖范围。
+
+未调用真实模型、操作游戏或上传产物；App ZIP不附仓库CLI。包代码检查使用本机Core10.0.0，WPF另用Desktop10.0.0，从隔离输出加载包的同字节副本；依赖框架诊断也使用本机Core/Desktop10.0.0，SC10.0.14入口另经无窗口验证。这些检查不等于干净Windows、真实多屏／DPI或国服对局验收。
+
+## preview26 保留记录
 
 2026 年 11 月 1 日，本机已验证 `0.1.0-preview.26` 的两种包，均来自干净提交 `fee5771a59752de457fa745ed6d6425175c51b30`，`sourceDirty=false`。产物保留在 `.local\publish`，未上传或加入版本控制：
 

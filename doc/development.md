@@ -449,7 +449,7 @@ preview26之后的源码支持build255790单个实际附着的`EDR_100t7e/113883
 
 `BattlecryExecutions`保存绑定原局面与候选动作的计划、开始、完成和未完成次数，每轮只报告实际开始的模拟前缀。固定目标失效不重选，未知死亡/复生停止，英雄死亡后不启动第二轮；这些不是实际对局历史。抽牌、生成、发现的直接工具以`IsSingleBattlecryActivationPreview`标明只覆盖一轮，首次未知身份或选择不能假设第二轮完成；明确未满足的条件抽牌可完整执行两轮零抽牌。
 
-桌面本地工具、工具依据摘要、建议归档及最终验证共用次数含义，旧结果缺字段保持未知。回合/选择模板升至hunter-v24，其它基础模板仍hunter-v7；preview26原包保持v23/v7，本轮源码尚未打包。离线样本从已观察来源开始，不证明赠福/拼装生成池、真实客户端时序或完整套牌牌效。
+桌面本地工具、工具依据摘要、建议归档及最终验证共用次数含义，旧结果缺字段保持未知。回合/选择模板当时升至hunter-v24，其它基础模板仍hunter-v7；preview26原包保持v23/v7，后随亡语更新以v25/v7进入preview27。离线样本从已观察来源开始，不证明赠福/拼装生成池、真实客户端时序或完整套牌牌效。
 
 最终`scripts/verify.ps1 -ArtifactsPath .local/build-battlecry-repeat-final1`通过1465项源码回归：Core177、Ingestion9、Cards45、Agent120、Configuration37、Storage122、Rules600、App115、Integration240，另27项指南检查；唯一43081退出0，默认NuGetAudit、构建零警告/错误，51项冻结源码/测试前后哈希一致。日志`.local/verify-battlecry-repeat-final1.log`，收据`.local/battlecry-repeat-final-verification.json`。新增共享审核5组、Runtime11组、Agent2组、Integration8组；App115顶层包含4个新增隐藏WPF组，640×460实际界面已检视。旧受影响反控仅将完整已审t7e改为对应正控，t7e1及其它未知来源负控保留；墓地/在场别名冲突的假斩杀反控也包含在最终600项中。检查使用公开固定样本、合成日志、假HTTP和本机隐藏WPF，没有真实对局、模型调用或新版发行包验收。
 
@@ -461,8 +461,22 @@ preview26之后的源码支持build255790单个实际附着的`EDR_100t7e/113883
 
 天灾巨魔可以正常支付入场，不生成原生亡语；原始手牌上完整已审的心中的恶魔只被识别为被动来源。实际候选入场完成后，主机缓存同实体/卡牌/归属的候选PLAY状态，供随后模拟死亡的首轮抽牌预览使用，原快照、真实事件与直接工具资格不变。抽牌仍只预览一轮，不把两轮计划当四抽完成，之后等待新身份及后置观察。
 
-未知当前入场战吼/光环/监听在支付前停止，不因基础文字简单或Summon清标记就丢失；未知手牌/牌库目标监听也不能跨到第二次震地雷龙增益。天灾巨魔原生为零不取消当前来源未知的获得亡语，明确源级抑制则可确认零次。`DeathrattleExecutions`深只读绑定原局面、候选动作、死亡批次集合及效果/倍率来源，`EffectKind=Unknown`不凭false布尔推定原生。桌面、单轮直接预览、工具依据摘要、模型与归档使用同一含义，候选摘要不冒充最终采纳路线或真实死亡事件。当前回合/选择模板为hunter-v25，其它基础模板hunter-v7；preview26原包仍v23/v7，本轮源码尚未打包。
+未知当前入场战吼/光环/监听在支付前停止，不因基础文字简单或Summon清标记就丢失；未知手牌/牌库目标监听也不能跨到第二次震地雷龙增益。天灾巨魔原生为零不取消当前来源未知的获得亡语，明确源级抑制则可确认零次。`DeathrattleExecutions`深只读绑定原局面、候选动作、死亡批次集合及效果/倍率来源，`EffectKind=Unknown`不凭false布尔推定原生。桌面、单轮直接预览、工具依据摘要、模型与归档使用同一含义，候选摘要不冒充最终采纳路线或真实死亡事件。当前回合/选择模板为hunter-v25，其它基础模板hunter-v7，已进入preview27；preview26原包仍v23/v7。
 
 最终`scripts/verify.ps1 -ArtifactsPath .local/build-deathrattle-repeat-final2`通过1493项源码回归：Core177、Ingestion9、Cards45、Agent122、Configuration37、Storage122、Rules618、App115、Integration248，另27项指南检查。唯一71350真实退出0，默认NuGetAudit、构建零警告/错误，52项冻结源码/测试哈希前后一致；日志`.local/verify-deathrattle-repeat-final2.log`，收据`.local/deathrattle-repeat-final-verification.json`。新增Rules18组（共享5＋Runtime13）、Agent2组、Integration8组；App115顶层内新增4个隐藏WPF组，640×460实际中文布局已检查。覆盖原生完整manual/search/host链、手牌入场、敌方控制者、同批可交换性与未知前缀、全部计划加成溢出、未知获得脚本及当前监听/入场反例、归档与历史/私有身份隔离。
 
-首次统一52640在前八套全部通过后，因旧Integration仍把未触发的t4e一概判未知而退出1。原日志/52项输入清单保留，仅把该精确已审来源的HAND与PLAY存活场景补为正控，并强断无抽牌/亡语执行、属性不重加及无静态赠福授权；其它ongoing、未审载体与混合负控原样保留。第二次fresh全量覆盖全部最新源；这些均为公开固定样本、合成日志、假HTTP与本机隐藏WPF检查，没有真实模型/对局或新版发行包验收。preview26双ZIP及旧25冻结1016项已另核保持原字节。
+首次统一52640在前八套全部通过后，因旧Integration仍把未触发的t4e一概判未知而退出1。原日志/52项输入清单保留，仅把该精确已审来源的HAND与PLAY存活场景补为正控，并强断无抽牌/亡语执行、属性不重加及无静态赠福授权；其它ongoing、未审载体与混合负控原样保留。第二次fresh全量覆盖全部最新源；这些均为公开固定样本、合成日志、假HTTP与本机隐藏WPF检查，当时未做真实模型/对局或新版发行包验收。preview26双ZIP及旧25冻结1016项已另核保持原字节。
+
+## preview27 发行验证
+
+2026-11-01从干净`9c781a00574aa5a9c6f9fedc262a69991de79345`发布preview27两种包，纳入已观察来源的双战吼／双亡语，回合与选择策略v25、其它基础v7。两manifest均sourceDirty=false；SC ZIP67,355,110字节、415文件展开151,170,406字节，SHA256`615fe2d0d993c29c5ecb5fd1beb0e1207093f42b5d317d8ca7baacf7dadc62e0`；FW ZIP2,229,303字节、20文件展开4,845,122字节，SHA256`a235c5b8d21d24cf073b2f86f1dc9a012707e6f3eef0f376a27f4bfb07038776`。唯一正式13034真实退出0，第四writer也退出0，四份收据与精确终态在`.local/release-preview27`。各包27安全＋3指南语义、27指南生成、ZIP逐文件、正常用户headless及SC10.0.14官方七DLL／nupkg／两整档SHA512均过，八产品DLL跨模式字节一致；161打包输入前后绑定9c，默认Audit、零警告／错误。
+
+实际Agent122＋App115共237项另过，唯一77524退出0；十一类隐藏WPF各4组，三次仅hook/tests构建默认Audit、零警告／错误，App八项／Agent六项实际产品加载路径、版本、SHA与包一致。15项公开输入为13CardJSON＋App.xaml＋包内样本，53份原测试源码及六项附加来源有独立哈希；副本卡牌／样式／测试来自9c实际Git blob，App十三个真实workspace方法与祖先记录、Agent祖先均实际指向隔离副本。四张新流程PNG在该副本内生成，双战吼／双亡语640×460中文布局已检视；fake env／data均为新建合成目录。原始收据`.local/desktop-preview27-smoke/06f0ab656f9e4112b8ef5497381e9d3a/package-code-smoke-receipt.json`和同目录终态保留。
+
+Core177＋Storage122原整套另过299，唯一88721退出0，收据`.local/package27-core-storage-checks/c344084eaccb4a08903b3d095b627f4c/package-core-storage-receipt.json`。两个Windows测试入口、四个产品及Storage全122实际Windows SQLite依赖的加载路径／版本／SHA均严格核对，托管MVID另与SC/FW两包PE实际值逐项匹配；原生路径按OrdinalIgnoreCase、版本元数据两边为空，MVID不适用，不推断SQLite语义版本。三个test-only构建0警告／错误、默认Audit，无旧版case-only比较故障或重跑。已有DirectReveal3＋Recorder1包含在122内，不另计子集；Core177不提供SQLite执行覆盖。
+
+实际Core/Cards/Rules副本完整618项另过，唯一74729退出0；40份原CS、22全部fixture与365源码／测试／构建／样本输入绑定9c，三个产品实际路径／版本／SHA／MVID核对SC/FW，两个仅test/hook构建0警告／错误、默认Audit。原全部301主体、双战吼／双亡语及多恐魔检查均包含，收据`.local/package27-rules-checks/2207385fc2024105aeee96a6093bf774/package-rules-receipt.json`；两套根目录`.local/package27-core-storage-checks/terminal-verification.json`与`.local/package27-rules-checks/terminal-verification.json`记录实际退出码和收据SHA。237／299／618分项记录，不累加到1493源码检查，也不把预载产品身份当额外用例。
+
+桌面原终态的旧smoke字节摘要错误为0，同目录独立只读`post-run-readonly-addendum.json`实际累加纠正为422文件、37,623,598字节，逐项长度／SHA及独立旧25／26整树均再次核对；原收据未覆盖、237未重跑。原fullclean终态先于七份文档写入，随后修改的新docs-aware driver未执行；原执行脚本哈希未预存，补充记录明确不以当前脚本哈希冒充原始证据。
+
+439个双包／ZIP／旁文件共225,600,152字节在检查前后集合、长度、SHA不变，旧26整个发行／桌面／Core-Storage／Rules及全部发布前缀1022项、307,611,034字节不变；旧25原1016项、337,521,011字节再次Verify通过。包代码使用本机Core10.0.0，WPF另Desktop10.0.0，SC10.0.14入口另由正式headless验证；不重编产品、不重复执行同字节FW，不等于真实客户端、多屏／DPI或干净Windows验收。未调用真实模型、操作游戏或上传，App ZIP不附CLI。后续七份发行文档更新不改变已发布产品／测试／构建／指南正文／样本输入，具体文件与范围见[Windows发行说明](windows-release.md#当前版本preview27)。
