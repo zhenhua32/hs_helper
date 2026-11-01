@@ -39,6 +39,8 @@ checks.AddRange(ConversationArchiveChecks.Cases(database));
 checks.AddRange(ChoiceHistoryStorageChecks.Cases(database));
 checks.AddRange(TurnHistoryStorageChecks.Cases(database));
 checks.AddRange(PublicHandMemoryStorageChecks.Cases(database));
+checks.AddRange(DirectHandRevealStorageChecks.Cases(database));
+checks.AddRange(RecorderEventIndexChecks.Cases(database));
 checks.AddRange(SessionPagingChecks.Cases(database));
 checks.AddRange(KnowledgePagingChecks.Cases(database));
 checks.AddRange(ArchivePagingChecks.Cases(database));

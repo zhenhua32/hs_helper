@@ -87,7 +87,7 @@ public static class CompactAdviceContextBuilder
             .Concat(choice?.Options.Select(option => option.CardId).OfType<string>() ?? [])
             .Concat(choiceSourceCardId is null ? [] : new[] { choiceSourceCardId })
             .Concat(plays.Select(play => play.CardId).OfType<string>())
-            .Concat(handMemory?.Entries.Select(entry => entry.CardId) ?? [])
+            .Concat(PublicHandMemoryVisibility.KnownCardIds(snapshot))
             .Concat(tracking?.KnownRemaining.Keys ?? []).ToHashSet(StringComparer.Ordinal);
         var dbfIds = (deck?.Cards.Select(card => card.DbfId) ?? [])
             .Concat(deck?.Sideboards.SelectMany(board => board.Cards.Select(card => card.DbfId)) ?? []).ToHashSet();
@@ -167,10 +167,23 @@ public static class CompactAdviceContextBuilder
                 entries = handMemory.Entries.Select(entry => new
                 {
                     entity_id = entry.EntityId, card_id = entry.CardId, controller = entry.ControllerId,
+                    kind = entry.DirectReveal is null ? "public_return" : "history_target",
                     from = entry.FromZone, public_at_sequence = entry.PublicAtSequence,
-                    entered_hand_at_sequence = entry.EnteredHandAtSequence
+                    entered_hand_at_sequence = entry.EnteredHandAtSequence,
+                    direct_reveal = entry.DirectReveal is not { } direct ? null : new
+                    {
+                        client_build = direct.ClientBuild, show_at_sequence = direct.ShowAtSequence,
+                        history_target_at_sequence = direct.HistoryTargetAtSequence,
+                        block_started_at_sequence = direct.BlockStartedAtSequence,
+                        confirmed_at_sequence = direct.ConfirmedAtSequence,
+                        source_entity_id = direct.SourceEntityId, source_card_id = direct.SourceCardId,
+                        source_controller = direct.SourceControllerId, source_card_type = direct.SourceCardType,
+                        source_zone = direct.SourceZone, block_type = direct.BlockType,
+                        source_public_at_sequence = direct.SourcePublicAtSequence,
+                        scope = "同一实际实体的历史展示在相关结算块闭合后确认；SHOW及HISTORY_TARGET序号是处理事件锚点，不表示当时已获公开资格。来源为当时公开的基础身份，不是当前效果或动作证明。"
+                    }
                 }).ToArray(),
-                scope = "同一实体曾公开并连续追踪到当前对手手牌的基础身份；不是当前可见实体或完整手牌。当前费用、增益、效果和位置未知，cards仅为固定版本基础定义；缺口后的新可靠记录不补齐遗漏或回填较早局面。"
+                scope = "同一实体曾公开并连续追踪到当前对手手牌的基础身份；public_return表示公开回手，history_target表示历史展示经闭块确认，不表示回手。不是当前可见实体或完整手牌；当前费用、增益、效果和位置未知，cards仅为固定版本基础定义。确认后的身份不回填较早局面。"
             },
             recent_events = events, cards = definitions,
             limitations = "未显示字段保持未知；卡库为基础定义，当前动态属性以实体tags为准；完整本地规则验证结果另由工具提供。"

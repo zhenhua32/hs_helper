@@ -168,7 +168,7 @@ static async Task<int> MainAsync(string[] args)
                 var relevantCards = (await catalog.GetByIdsBatchedAsync(AttachmentVisibility.Project(snapshot).Entities.Values
                     .Where(e => e.Zone == "PLAY" || e.ControllerId == snapshot.LocalPlayerId && e.Zone is "HAND" or "SECRET")
                     .Select(e => e.CardId).OfType<string>()
-                    .Concat(PublicHandMemoryVisibility.Confirmed(snapshot)?.Entries.Select(entry => entry.CardId) ?? [])
+                    .Concat(PublicHandMemoryVisibility.KnownCardIds(snapshot))
                     .Concat(snapshot.Choice?.Options.Select(o => o.CardId).OfType<string>() ?? []).Distinct(), build)).ToDictionary(c => c.Id);
                 if (deck is not null)
                     foreach (var card in await catalog.GetByDbfIdsBatchedAsync(deck.Definition.Cards.Select(c => c.DbfId)

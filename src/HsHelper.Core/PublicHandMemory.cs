@@ -4,7 +4,17 @@ namespace HsHelper.Core;
 
 /// <summary>A historical public identity on the same entity, never its hidden current attributes or position.</summary>
 public sealed record PublicHandMemoryEntry(int EntityId, string CardId, int ControllerId, string FromZone,
-    long PublicAtSequence, long EnteredHandAtSequence);
+    long PublicAtSequence, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? EnteredHandAtSequence)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicHandDirectRevealEvidence? DirectReveal { get; init; }
+}
+
+/// <summary>Closed history-display evidence, distinct from an observed public-zone return.</summary>
+public sealed record PublicHandDirectRevealEvidence(string ClientBuild, long ShowAtSequence,
+    long HistoryTargetAtSequence, long BlockStartedAtSequence, long ConfirmedAtSequence,
+    int SourceEntityId, string SourceCardId, int SourceControllerId, string SourceCardType,
+    string SourceZone, string BlockType, long SourcePublicAtSequence = 0);
 
 public sealed record PublicHandMemorySnapshot
 {
@@ -39,6 +49,11 @@ public static class PublicHandMemoryVisibility
     public const string CurrentContinuityPolicy = "input-gaps-v2";
     private static readonly HashSet<string> SafePrivateTags = ["ZONE", "CONTROLLER", "ENTITY_ID", "ZONE_POSITION"];
 
+    public static IReadOnlyList<string> KnownCardIds(GameSnapshot snapshot) => Array.AsReadOnly(
+        (Confirmed(snapshot)?.Entries.SelectMany(entry => entry.DirectReveal is { } direct
+            ? new[] { entry.CardId, direct.SourceCardId } : new[] { entry.CardId }) ?? [])
+        .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
+
     public static PublicHandMemorySnapshot? Confirmed(GameSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -59,9 +74,7 @@ public static class PublicHandMemoryVisibility
         foreach (var entry in memory.Entries)
         {
             if (entry.EntityId <= 0 || !CardToken(entry.CardId) || entry.ControllerId is not (1 or 2) ||
-                entry.ControllerId == memory.LocalPlayerId || entry.FromZone is not ("PLAY" or "GRAVEYARD") ||
-                entry.PublicAtSequence <= 0 || entry.PublicAtSequence > entry.EnteredHandAtSequence ||
-                entry.EnteredHandAtSequence > snapshot.EventSequence ||
+                entry.ControllerId == memory.LocalPlayerId || !ValidEvidence(snapshot, entry) ||
                 !snapshot.Entities.TryGetValue(entry.EntityId, out var entity) || entity.Id != entry.EntityId ||
                 entity.Kind != EntityKind.Card || entity.Zone != "HAND" || entity.ControllerId != entry.ControllerId ||
                 entity.CardId is not null || entity.Tags.Keys.Any(tag => !SafePrivateTags.Contains(tag)) ||
@@ -76,6 +89,26 @@ public static class PublicHandMemoryVisibility
 
     internal static bool CardToken(string? value) => value is { Length: > 0 and <= 200 } &&
         value.All(character => character is >= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9' or '_');
+
+    private static bool ValidEvidence(GameSnapshot snapshot, PublicHandMemoryEntry entry)
+    {
+        if (entry.DirectReveal is not { } direct)
+            return entry.FromZone is "PLAY" or "GRAVEYARD" && entry.EnteredHandAtSequence is { } entered &&
+                entry.PublicAtSequence > 0 && entry.PublicAtSequence <= entered && entered <= snapshot.EventSequence;
+        return entry.FromZone == "HAND" && entry.EnteredHandAtSequence is null && entry.CardId != "TIME_875t" &&
+            snapshot.ClientBuild == "255790" && direct.ClientBuild == snapshot.ClientBuild &&
+            direct.BlockStartedAtSequence > 0 && direct.ShowAtSequence > direct.BlockStartedAtSequence &&
+            direct.HistoryTargetAtSequence >= direct.BlockStartedAtSequence &&
+            direct.ConfirmedAtSequence > Math.Max(direct.ShowAtSequence, direct.HistoryTargetAtSequence) &&
+            direct.ConfirmedAtSequence == entry.PublicAtSequence && direct.ConfirmedAtSequence <= snapshot.EventSequence &&
+            direct.SourcePublicAtSequence >= direct.BlockStartedAtSequence && direct.SourcePublicAtSequence < direct.ConfirmedAtSequence &&
+            direct.SourceEntityId > 0 && direct.SourceEntityId != entry.EntityId && CardToken(direct.SourceCardId) &&
+            direct.SourceControllerId is 1 or 2 && OrdinaryType(direct.SourceCardType) &&
+            direct.SourceZone is "PLAY" or "GRAVEYARD" && direct.BlockType is "PLAY" or "POWER" or "TRIGGER";
+    }
+
+    internal static bool OrdinaryType(string? type) => type is "HERO" or "MINION" or "SPELL" or "WEAPON" or "HERO_POWER" or
+        "LOCATION" or "ITEM" or "TOKEN" or "3" or "4" or "5" or "7" or "8" or "9" or "10" or "39";
 }
 
 /// <summary>Raw-engine observer. Only public identities enter this state, never private CardID values.</summary>
@@ -99,6 +132,8 @@ internal sealed class PublicHandMemoryTracker
     { _public.Remove(entityId); _hand.Remove(entityId); }
     public void IdentityObserved(int entityId)
     { Invalidate(entityId); _freshIdentity.Add(entityId); }
+    public bool HasContinuousIdentity(int entityId) => !_needsFreshIdentity || _freshIdentity.Contains(entityId);
+    public void ConfirmDirect(PublicHandMemoryEntry entry) => _hand.TryAdd(entry.EntityId, entry);
     public void PerspectiveChanged()
     { _public.Clear(); _hand.Clear(); _freshIdentity.Clear(); _local = null; _perspective = null; _needsFreshIdentity = _historyLost; }
 

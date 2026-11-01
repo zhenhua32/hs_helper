@@ -127,6 +127,7 @@ public sealed partial class PowerLogStateEngine
         var manual = playerId.HasValue;
         var resolved = manual ? playerId : _autoDetectPerspective && !_isSpectating ? _provenInitialPlayerId : null;
         if (_localPlayerId == resolved && _manualPerspective == manual) return;
+        InvalidateHistoryScopes();
         _publicHandMemory.PerspectiveChanged();
         _localPlayerId = resolved;
         _manualPerspective = manual;
@@ -147,9 +148,12 @@ public sealed partial class PowerLogStateEngine
     public void MarkDataGap(string reason = "日志存在缺口")
     {
         _publicHandMemory.Gap();
+        InvalidateHistoryScopes();
         _hasGap = true;
         _taskComplete = false;
-        if (_warnings.Add(reason)) _version++;
+        _warnings.Add(reason);
+        // Even a repeated reason can clear newly recovered evidence and invalidate an old binding.
+        _version++;
     }
 
     /// <returns>True when the state or its quality changed. Unrelated log lines return false.</returns>
@@ -160,9 +164,12 @@ public sealed partial class PowerLogStateEngine
         {
             var beforeVersion = _version;
             ObservePublicHandMemory();
+            ObserveHistorySources();
             var changed = ProcessLineCore(line);
+            RefreshHistoryCategories();
             var perspectiveChanged = TryAutoDetectPerspective();
             ObservePublicHandMemory();
+            ObserveHistorySources();
             return perspectiveChanged || changed || _version != beforeVersion;
         }
         catch (Exception ex) when (ex is OverflowException or RegexMatchTimeoutException)
@@ -179,6 +186,7 @@ public sealed partial class PowerLogStateEngine
         if (line.Contains("Begin Spectating", StringComparison.Ordinal) || line.Contains("Start Spectator", StringComparison.Ordinal))
         {
             _isSpectating = true;
+            InvalidateHistoryScopes();
             _provenInitialPlayerId = null;
             if (!_manualPerspective) _localPlayerId = null;
             _version++;
@@ -187,7 +195,10 @@ public sealed partial class PowerLogStateEngine
         if (line.Contains("End Spectator", StringComparison.Ordinal)) { _isSpectating = false; return false; }
         if (line.Contains("GameState.DebugPrintEntityChoices", StringComparison.Ordinal) ||
             line.Contains("GameState.DebugPrintEntitiesChosen", StringComparison.Ordinal))
+        {
+            InvalidateHistoryScopes();
             return ProcessChoiceLine(line);
+        }
         FlushChoice();
         if (line.Contains("GameState.DebugPrintGame", StringComparison.Ordinal))
         {
@@ -235,6 +246,7 @@ public sealed partial class PowerLogStateEngine
             content = line.Trim(); // Also accepts extracted payloads for replay and diagnostics.
         }
 
+        HistoryBoundary(content);
         if (content == "CREATE_GAME")
         {
             // GameState's player descriptors precede PowerTaskList's CREATE_GAME in current client logs.
@@ -268,6 +280,7 @@ public sealed partial class PowerLogStateEngine
             _eventSequence++;
             _currentEntity = ParseId(match.Groups[1].Value);
             _gameEntity = _currentEntity;
+            InvalidateHistoryEntity(_currentEntity.Value);
             GetEntity(_currentEntity.Value).Kind = EntityKind.Game;
             GetEntity(_currentEntity.Value).Revision++;
             return Changed();
@@ -278,6 +291,7 @@ public sealed partial class PowerLogStateEngine
             _eventSequence++;
             _currentEntity = ParseId(match.Groups[1].Value);
             var entity = GetEntity(_currentEntity.Value);
+            InvalidateHistoryEntity(entity.Id);
             entity.Kind = EntityKind.Player;
             entity.Tags["PLAYER_ID"] = match.Groups[2].Value;
             entity.Revision++;
@@ -288,13 +302,13 @@ public sealed partial class PowerLogStateEngine
         {
             _eventSequence++;
             _currentEntity = ParseId(match.Groups[1].Value);
-            var entity = GetEntity(_currentEntity.Value);
+            // Creating is a new observation epoch even when a damaged/rebuilt stream reuses an ID.
+            // No old pose, attributes or cached projections can authorize this definition.
+            var entity = new Entity(_currentEntity.Value);
+            InvalidateHistoryEntity(entity.Id);
             _publicHandMemory.IdentityObserved(entity.Id);
-            var cardId = NullIfEmpty(match.Groups[2].Value);
-            if (entity.CardId is not null && entity.CardId != cardId)
-                foreach (var tag in entity.Tags.Keys.Where(tag => !HiddenSafeTags.Contains(tag)).ToArray()) entity.Tags.Remove(tag);
-            entity.CardId = cardId;
-            entity.Hidden = false;
+            _entities[entity.Id] = entity;
+            entity.CardId = NullIfEmpty(match.Groups[2].Value);
             entity.Revision++;
             AddEvent("EntityCreated", entity, null, null, "创建卡牌实体");
             return Changed();
@@ -306,16 +320,24 @@ public sealed partial class PowerLogStateEngine
             _currentEntity = ResolveReference(match.Groups[2].Value);
             if (_currentEntity is not { } id) return Unresolved();
             var entity = GetEntity(id);
+            var incomingCard = NullIfEmpty(match.Groups[3].Value);
+            var definitionChanged = entity.CardId is not null && entity.CardId != incomingCard;
+            PrepareHistoryIdentity(entity, incomingCard, match.Groups[1].Value == "SHOW_ENTITY");
             _publicHandMemory.IdentityObserved(entity.Id);
-            if (match.Groups[1].Value is "CHANGE_ENTITY" or "FULL_ENTITY")
+            if (match.Groups[1].Value is "CHANGE_ENTITY" or "FULL_ENTITY" || definitionChanged)
             {
                 // A new card definition must not inherit old observed attack/cost/health.
                 foreach (var tag in entity.Tags.Keys.Where(t => !HiddenSafeTags.Contains(t)).ToArray())
                     entity.Tags.Remove(tag);
             }
-            entity.CardId = NullIfEmpty(match.Groups[3].Value);
+            var oldZone = entity.Tags.GetValueOrDefault("ZONE");
+            ApplyIdentityHeaderPose(entity, match.Groups[2].Value);
+            entity.CardId = incomingCard;
             entity.Hidden = false;
             entity.Revision++;
+            if (match.Groups[1].Value == "SHOW_ENTITY") ObserveHistoryShow(entity);
+            if (entity.Tags.GetValueOrDefault("ZONE") is { } actualZone && oldZone != actualZone)
+                AddEvent("ZoneChanged", entity, oldZone, actualZone, "卡牌区域由身份记录确认");
             AddEvent(match.Groups[1].Value == "CHANGE_ENTITY" ? "CardChanged" : "CardRevealed", entity,
                 null, null, match.Groups[1].Value == "CHANGE_ENTITY" ? "卡牌发生变形或替换" : "卡牌身份已公开");
             // Following continuation tags belong to this revealed/transformed entity.
@@ -362,6 +384,7 @@ public sealed partial class PowerLogStateEngine
             _currentEntity = null;
             _blockCount++;
             ObserveTurnBlockStart(content);
+            StartHistoryBlock(content);
             return Changed();
         }
         if (content == "BLOCK_END")
@@ -374,16 +397,14 @@ public sealed partial class PowerLogStateEngine
             {
                 var beforeGapVersion = _version;
                 MarkDataGap("结算块结束缺少对应开始");
-                // MarkDataGap advances the first warning; repeated underflows still advance once.
+                // MarkDataGap advances the gap; do not advance this one input event twice.
                 return _version != beforeGapVersion || Changed();
             }
+            EndHistoryBlock();
             return Changed();
         }
-        if (content.StartsWith("META_DATA", StringComparison.Ordinal))
-        {
-            _currentEntity = null;
-            return false;
-        }
+        if (content.StartsWith("META_DATA", StringComparison.Ordinal) || content.StartsWith("Info[", StringComparison.Ordinal))
+            return ProcessHistoryMeta(content);
         match = DormantPattern.Match(content);
         if (match.Success)
         {
@@ -530,7 +551,15 @@ public sealed partial class PowerLogStateEngine
         var fromZone = entity.Tags.GetValueOrDefault("ZONE");
         var oldProof = ObservedIdentityProof(entity);
         var oldCard = IsIdentityVisible(entity) ? entity.CardId : null;
-        if (tag is "CONTROLLER" or "CARDTYPE" or "ATTACHED") _publicHandMemory.Invalidate(entity.Id);
+        if (tag is "CONTROLLER" or "CARDTYPE" or "ATTACHED")
+        {
+            _publicHandMemory.Invalidate(entity.Id);
+            if (!(tag == "CARDTYPE" && !entity.Tags.ContainsKey(tag) && PublicHandMemoryVisibility.OrdinaryType(value)) &&
+                !(tag == "ATTACHED" && value == "0" && !entity.Tags.ContainsKey(tag))) InvalidateHistoryEntity(entity.Id);
+        }
+        if (entity.Id == _gameEntity && (tag == "STEP" && !value.StartsWith("MAIN_", StringComparison.Ordinal) || tag == "STATE" && value != "RUNNING"))
+            InvalidateHistoryScopes();
+        if (tag == "ZONE" && fromZone == "HAND" && value != "HAND") InvalidateHistoryEntity(entity.Id, keepSource: true);
         entity.Tags[tag] = value;
         entity.Revision++;
         ObserveTurnTag(entity, tag, value);
@@ -920,6 +949,7 @@ public sealed partial class PowerLogStateEngine
     private void ClearGame()
     {
         _publicHandMemory.Reset();
+        _historyBlocks.Clear(); _historyMeta = null;
         _entities.Clear(); _warnings.Clear();
         ClearTurnHistory();
         _choices.Clear(); _currentChoice = null; _readingChosen = false; _recentEvents.Clear();

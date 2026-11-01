@@ -14,6 +14,7 @@ public sealed class SessionRecorder
     private readonly List<PendingObservation> _pending = [];
     private GameSnapshot? _previous;
     private long _previousSourceLine;
+    private int _nextEventIndex;
 
     public SessionRecorder(SessionStore store, SessionBinding binding)
     {
@@ -48,8 +49,14 @@ public sealed class SessionRecorder
                 (snapshot.Phase == GamePhase.Complete && previous.Phase != GamePhase.Complete) || qualityChanged ||
                 SettledPublicHandMemoryChanged(previous, snapshot);
             var storedObservation = saveSnapshot ? snapshot : MetadataOnly(snapshot);
+            // Metadata observations can advance state without advancing the power-event sequence.
+            // Allocate their indexes here so separate flushes and retries retain one immutable order.
+            var eventIndex = previous?.EventSequence == snapshot.EventSequence ? _nextEventIndex : 0;
+            var events = BuildEvents(previous, snapshot, sourceLineNumber, eventIndex);
+            var nextEventIndex = checked(eventIndex + events.Count);
             _pending.Add(new(storedObservation, sourceLineNumber, DateTimeOffset.UtcNow,
-                BuildEvents(previous, snapshot, sourceLineNumber), saveSnapshot));
+                events, saveSnapshot));
+            _nextEventIndex = nextEventIndex;
             _previous = snapshot;
             _previousSourceLine = sourceLineNumber;
         }
@@ -122,7 +129,7 @@ public sealed class SessionRecorder
         };
     }
 
-    private static IReadOnlyList<SessionEvent> BuildEvents(GameSnapshot? previous, GameSnapshot current, long sourceLine)
+    private static IReadOnlyList<SessionEvent> BuildEvents(GameSnapshot? previous, GameSnapshot current, long sourceLine, int firstEventIndex)
     {
         var events = new List<SessionEvent>();
         void Add(string kind, int? id, string? cardId, string? from, string? to, string summary, object data)
@@ -135,7 +142,7 @@ public sealed class SessionRecorder
                 node["IdentityVisibility"] = AttachmentVisibility.IdentityAt(current, entityId).ToString();
                 json = node.ToJsonString();
             }
-            events.Add(new(current.EventSequence, events.Count, sourceLine, kind, id, cardId, from, to, summary, json));
+            events.Add(new(current.EventSequence, checked(firstEventIndex + events.Count), sourceLine, kind, id, cardId, from, to, summary, json));
         }
         if (previous is null)
             Add("SessionObserved", null, null, null, null, current.Quality.HasGameStart ? "观察到对局开始" : "从不完整日志开始记录", new { current.Quality });

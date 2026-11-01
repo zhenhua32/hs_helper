@@ -151,7 +151,7 @@ internal static class PublicHandMemoryIntegration
         Check(early.Payloads.All(payload => !DataPayload(payload).Contains(RememberedCard, StringComparison.Ordinal)),
             "The actual historical model request learned a later public card identity.");
         var later = await PipelineAsync(returned, catalog, expectedEntries: 1, task: AdviceTaskKind.Review);
-        Check(early.Archive!.Advice.PromptTemplateVersion == "hunter-v6/review" && later.Archive!.Advice.PromptTemplateVersion == "hunter-v6/review" &&
+        Check(early.Archive!.Advice.PromptTemplateVersion == "hunter-v7/review" && later.Archive!.Advice.PromptTemplateVersion == "hunter-v7/review" &&
             old.Point.EventSequence < returned.Point.EventSequence, "Review lost its exact event or current base template boundary.");
         pass("the same session reopened before and after the return retains separate immutable as-of memory and real historical HTTP never receives the later identity");
 
@@ -213,13 +213,14 @@ internal static class PublicHandMemoryIntegration
         var cards = await catalog.GetByIdsBatchedAsync(ids, Build);
         var context = CompactAdviceContextBuilder.Create(item.Frame, Build, task, cards: cards) with { KnowledgeAsOf = item.Point.RecordedAt, AsOf = DateTimeOffset.UtcNow };
         var memory = context.Snapshot["public_hand_memory"];
-        Check((memory?["entries"]?.AsArray().Count ?? 0) == expectedEntries && context.TemplateVersion == (task == AdviceTaskKind.Review ? "hunter-v6/review" : "hunter-v20/turn"),
+        Check((memory?["entries"]?.AsArray().Count ?? 0) == expectedEntries && context.TemplateVersion == (task == AdviceTaskKind.Review ? "hunter-v7/review" : "hunter-v21/turn"),
             "The actual compact projection lost its memory or prompt source boundary.");
         if (expectedEntries > 0)
         {
             var entry = memory!["entries"]!.AsArray().Single()!;
             Check(entry["entity_id"]?.GetValue<int>() == 41 && entry["card_id"]?.ToString() == RememberedCard &&
-                entry is JsonObject row && row.All(pair => pair.Key is "entity_id" or "card_id" or "controller" or "from" or "public_at_sequence" or "entered_hand_at_sequence"),
+                entry["kind"]?.ToString() == "public_return" && entry["direct_reveal"] is null &&
+                entry is JsonObject row && row.All(pair => pair.Key is "entity_id" or "card_id" or "controller" or "from" or "public_at_sequence" or "entered_hand_at_sequence" or "kind"),
                 "The compact memory exposed current stats effects or unreviewed raw fields.");
         }
         var observations = new List<CoachToolObservation>(); var usages = new List<ModelUsage>(); var budget = new AnalysisBudget();

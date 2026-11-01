@@ -18,6 +18,7 @@ public static class PublicHandMemoryChecks
         yield return ("public hand memory clears old observers spectator transitions and new games", Observers);
         yield return ("a changed or newly confirmed observer can reobserve a still-public body without another SHOW", PublicAfterPerspectiveChange);
         yield return ("public hand memory clears gap facts but accepts newly observed public identities after settlement", Gaps);
+        yield return ("repeated external gaps with the same warning advance the binding and clear recovered public memory", RepeatedGapBinding);
         yield return ("unmatched block end clears existing hand memory and preserves the gap warning and version transition", BlockUnderflowMemory);
         yield return ("unmatched block end invalidates public sources before a later ordinary update and return", BlockUnderflowSource);
         yield return ("new actual public identity after block underflow can establish incomplete hand memory", BlockUnderflowRecovery);
@@ -172,6 +173,27 @@ public static class PublicHandMemoryChecks
         Feed(engine, "SHOW_ENTITY - Updating Entity=30 CardID=NEW_PUBLIC", "tag=CARDTYPE value=MINION", "tag=ZONE value=PLAY"); Bounce(engine);
         Check(Memory(engine).Entries.Single().CardId == "NEW_PUBLIC", "Actual new public identity failed to reanchor after a gap.");
     }
+    private static void RepeatedGapBinding()
+    {
+        var engine = Start(); Card(engine); Bounce(engine);
+        var initial = engine.Snapshot(); engine.MarkDataGap("same"); var firstGap = engine.Snapshot();
+        Check(firstGap.StateVersion == initial.StateVersion + 1 && firstGap.EventSequence == initial.EventSequence,
+            "An external input gap did not advance the binding exactly once without manufacturing an input event.");
+        Complete(engine); Card(engine, card: "RECOVERED_PUBLIC"); Bounce(engine);
+        var recovered = engine.Snapshot(); var proof = Memory(engine);
+        Check(!proof.IsComplete && proof.Entries.Single().CardId == "RECOVERED_PUBLIC", "Fixture did not recover independently proven partial hand memory.");
+        var original = JsonSerializer.Serialize(recovered);
+        engine.MarkDataGap("same"); var repeatedGap = engine.Snapshot();
+        Check(repeatedGap.StateVersion == recovered.StateVersion + 1 && repeatedGap.EventSequence == recovered.EventSequence,
+            "A repeated same-reason gap cleared recovered memory without changing its snapshot binding.");
+        Check(repeatedGap.PublicHandMemory!.Entries.Count == 0 && !repeatedGap.PublicHandMemory.IsSettled &&
+            PublicHandMemoryVisibility.Confirmed(repeatedGap) is null &&
+            PublicHandMemoryVisibility.Confirmed(repeatedGap with { PublicHandMemory = proof }) is null,
+            "The repeated gap retained current evidence or allowed an old bound ledger to authorize advice.");
+        Check(repeatedGap.Quality.Warnings.Count(warning => warning == "same") == 1 && JsonSerializer.Serialize(recovered) == original,
+            "A repeated warning duplicated evidence or rewrote an earlier immutable frame.");
+        Complete(engine); Empty(engine);
+    }
     private static void BlockUnderflowMemory()
     {
         var engine = Start(); Card(engine); Bounce(engine); var before = engine.Snapshot();
@@ -194,7 +216,7 @@ public static class PublicHandMemoryChecks
     }
     private static void BlockUnderflowRecovery()
     {
-        var engine = Start(); Card(engine); Feed(engine, "BLOCK_END", "SHOW_ENTITY - Updating Entity=30 CardID=NEW_PUBLIC_AFTER_UNDERFLOW"); Bounce(engine);
+        var engine = Start(); Card(engine); Feed(engine, "BLOCK_END", "SHOW_ENTITY - Updating Entity=30 CardID=NEW_PUBLIC_AFTER_UNDERFLOW", "tag=CARDTYPE value=MINION"); Bounce(engine);
         var memory = Memory(engine);
         Check(!memory.IsComplete && memory.IsSettled && memory.Warnings.Count > 0 &&
             memory.Entries.Single().CardId == "NEW_PUBLIC_AFTER_UNDERFLOW" &&

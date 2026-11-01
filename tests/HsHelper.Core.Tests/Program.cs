@@ -45,7 +45,7 @@ var cases = new (string Name, Action Run)[]
     ("public play gaps remain incomplete and cannot correlate across lost events", PublicPlayGaps),
     ("public play records reset across matches and reject rewinds", PublicPlayMatches),
     ("public play snapshots freeze source lists and survive JSON serialization", PublicPlaySerialization),
-}.Concat(ChoiceHistoryRegression.Cases()).Concat(TurnHistoryRegression.Cases()).Concat(AssembledTagRegression.Cases()).Concat(QuestTagRegression.Cases()).Concat(SecretSlotPrivacyChecks.Cases()).Concat(WeaponDurabilityChecks.Cases()).Concat(ProjectedChoiceEntityChecks.Cases()).Concat(ElusiveTagChecks.Cases()).Concat(AttachmentPrivacyChecks.Cases()).Concat(DeathrattleTagChecks.Cases()).Concat(PublicHandMemoryChecks.Cases()).ToArray();
+}.Concat(ChoiceHistoryRegression.Cases()).Concat(TurnHistoryRegression.Cases()).Concat(AssembledTagRegression.Cases()).Concat(QuestTagRegression.Cases()).Concat(SecretSlotPrivacyChecks.Cases()).Concat(WeaponDurabilityChecks.Cases()).Concat(ProjectedChoiceEntityChecks.Cases()).Concat(ElusiveTagChecks.Cases()).Concat(AttachmentPrivacyChecks.Cases()).Concat(DeathrattleTagChecks.Cases()).Concat(PublicHandMemoryChecks.Cases()).Concat(DirectHandRevealChecks.Cases()).ToArray();
 var failures = 0;
 foreach (var test in cases)
 {
@@ -115,6 +115,7 @@ static void RevealTransformHide()
 {
     var engine = Replay();
     engine.ProcessLine("SHOW_ENTITY - Updating Entity=[entityName=UNKNOWN id=20 zone=HAND zonePos=1 player=2] CardID=REVEALED");
+    engine.ProcessLine("tag=CARDTYPE value=MINION");
     engine.ProcessLine("tag=ZONE value=PLAY");
     Assert(engine.Snapshot().Entities[20].CardId == "REVEALED", "Show entity lost");
     engine.ProcessLine("CHANGE_ENTITY - Updating Entity=20 CardID=TRANSFORMED");
@@ -474,6 +475,7 @@ static void PublicPlayPrivacy()
     var tracker = new PublicPlayTracker();
     tracker.Observe(engine.Snapshot());
     engine.ProcessLine("SHOW_ENTITY - Updating Entity=20 CardID=PUBLIC_A");
+    engine.ProcessLine("tag=CARDTYPE value=MINION");
     Assert(!engine.Snapshot().RecentEvents.Any(value => value.CardId == "PUBLIC_A"), "An unplayed opponent hand reveal leaked");
     tracker.Observe(engine.Snapshot());
     engine.ProcessLine("TAG_CHANGE Entity=20 tag=ZONE value=PLAY");

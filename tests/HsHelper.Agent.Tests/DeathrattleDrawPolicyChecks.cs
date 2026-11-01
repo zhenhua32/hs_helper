@@ -35,7 +35,7 @@ internal static class DeathrattleDrawPolicyChecks
         foreach (var kind in new[] { AdviceTaskKind.Turn, AdviceTaskKind.Choice })
         {
             var policy = AdviceTaskTemplates.Get(kind);
-            Check(policy.Version == "hunter-v20/" + kind.ToString().ToLowerInvariant() &&
+            Check(policy.Version == "hunter-v21/" + kind.ToString().ToLowerInvariant() &&
                 policy.Instructions.Contains("evaluate_deathrattle_draw", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("EDR_100t4e", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("不证明死亡已经发生", StringComparison.Ordinal) &&
@@ -44,8 +44,8 @@ internal static class DeathrattleDrawPolicyChecks
                 policy.Instructions.Contains("不能据此认证完整结算或已验证斩杀", StringComparison.Ordinal),
                 "A task presented a conditional deathrattle count as an observed death, empty hand slot or executable followup.");
         }
-        Check(AdviceTaskTemplates.Version == "hunter-v6" && new[] { AdviceTaskKind.Mulligan, AdviceTaskKind.Review, AdviceTaskKind.DeckPlan }
-            .All(kind => AdviceTaskTemplates.Get(kind).Version == "hunter-v6/" + kind.ToString().ToLowerInvariant()),
+        Check(AdviceTaskTemplates.Version == "hunter-v7" && new[] { AdviceTaskKind.Mulligan, AdviceTaskKind.Review, AdviceTaskKind.DeckPlan }
+            .All(kind => AdviceTaskTemplates.Get(kind).Version == "hunter-v7/" + kind.ToString().ToLowerInvariant()),
             "The shared public-hand-memory policy lost its base task version.");
     }
 

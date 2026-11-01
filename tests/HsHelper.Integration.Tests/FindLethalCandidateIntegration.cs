@@ -13,7 +13,7 @@ internal static class FindLethalCandidateIntegration
 {
     private const string Build = "255790", Key = "fixture-find-lethal-key", PrivateCard = "PRIVATE_LETHAL_IDENTITY";
     private const string ChargeGift = "EDR_100t6e", UnknownGift = "EDR_100t5e";
-    private const string Template = "hunter-v20/turn";
+    private const string Template = "hunter-v21/turn";
 
     public static async Task RunAsync(string root, Action<string> pass)
     {
