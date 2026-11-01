@@ -90,7 +90,7 @@ Test-GuideCase 'generating guides leaves the public template byte-for-byte uncha
     Assert-GuideCheck ((Get-FileHash -LiteralPath $taskTemplate -Algorithm SHA256).Hash -eq $taskTemplateBefore) 'The generator rewrote its source template.'
 }
 Test-GuideCase 'upgrade and data-location operations survive generation' {
-    Assert-UserSteps @('%LOCALAPPDATA%\HsHelper', '备份', 'schema 3', '回退', '--data-dir', 'HSHELPER_DATA_DIR', '完整解压', 'HsHelper.App.exe') 'upgrade/data-location'
+    Assert-UserSteps @('%LOCALAPPDATA%\HsHelper', '备份', '卡库会升级到格式 4（schema 4）', '历史库会升级到格式 3（schema 3）', '回退', '--data-dir', 'HSHELPER_DATA_DIR', '完整解压', 'HsHelper.App.exe') 'upgrade/data-location'
 }
 Test-GuideCase 'safe log setup remains an explicit user workflow' {
     Assert-UserSteps @('Power.log', '日志配置预览', '备份并启用日志', '自行重启炉石', '恢复上次原配置') 'log setup/recovery'

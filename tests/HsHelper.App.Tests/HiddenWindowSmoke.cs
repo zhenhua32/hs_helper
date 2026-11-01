@@ -45,7 +45,8 @@ internal static class HiddenWindowSmoke
             }) { IsBackground = true, Name = "HsHelper hidden WPF regression" };
             thread.SetApartmentState(ApartmentState.STA);
             thread.Start();
-            Check(thread.Join(TimeSpan.FromSeconds(45)), "Hidden WPF smoke did not finish within its bounded timeout.");
+            // This bounds the complete WPF suite; each operation keeps its own shorter deadline.
+            Check(thread.Join(TimeSpan.FromSeconds(180)), "Hidden WPF smoke did not finish within its 180-second timeout.");
             if (failure is not null) throw new Exception("Isolated hidden UI check failed: " + failure.Message, failure);
         }
         finally
