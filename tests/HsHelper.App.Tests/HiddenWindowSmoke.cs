@@ -154,6 +154,7 @@ internal static class HiddenWindowSmoke
             PublicHandMemoryUiChecks.RunOnDispatcher(window);
             DirectRevealHandMemoryUiChecks.RunOnDispatcher(window);
             JointTerrorEndTurnUiChecks.RunOnDispatcher(window);
+            AssembledScriptUiChecks.RunOnDispatcher(window);
             AssertPassive(window);
             Check(unhandled is null, "Dispatcher initialization or a routed action raised an unhandled exception.");
         }

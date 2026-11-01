@@ -31,7 +31,7 @@ public sealed partial class LineEvaluator
                 _observedOpponentHealthEnchantments.Add(active[0].Id);
                 Coverage.Add("EDR_489-observed-player-or-hero-enchantment");
             }
-            else if (candidates.Length > 0 || Entities.Values.Any(e => e.CardId == "EDR_489" &&
+            else if (candidates.Length > 0 || Entities.Values.Any(e => e.CardId == "EDR_489" && !HasCustomAssembledText(e) &&
                 e.Controller == Local && e.Zone is not ("HAND" or "DECK")))
             {
                 // A battlecry survives its body's death or silence, but may already have been spent.

@@ -12,6 +12,7 @@ public static class AdviceTaskTemplates
     private const string TerrorInstructions = "evaluate_line中end_turn的TerrorEndTurnPreviews列出神秘恐魔回合末有限相关分支。SourceEntityIds是联合预览的全部来源集合，不是触发顺序；每个分支的SourceOrder只是一条已开始阶段的见证前缀，Stages按FirstCombatIndex及CombatCount引用同一Combats列表，不补出尚未开始的来源或战斗。多个来源共享该分支中已经消耗的圣盾、存活、生命及累计吸血，后一个来源可再次迫使仍存活的敌方随从攻击；不得把各来源独立计算后拼接。每个分支的见证战斗顺序、英雄生命、吸血与随从存活须一起比较，不能将不同分支的有利数值拼成一个局面；见证顺序不表示实际发生或等概率。单个恐魔死亡只结束该来源阶段，未知亡语、复生或攻击后效果会停止整个联合分支，不能把已开始阶段或一次来源完成当作全部来源已结算。IsEnumerationComplete只覆盖本次计算范围。BranchProjection出现时，TotalBranches是摘要前已计算并保留的分支数量，ShownBranches才是当前展示数；AllBranchesIncluded为false时未展示分支的结果和优劣未知，不从已展示的8条推导全局上下界或唯一最优。截断或未展开触发不证明其他结果不存在；不把分支、前缀或保留的普通攻击次数/就绪字段当作权威后继状态，不继续跨回合动作或据此宣称已验证斩杀。旧结果缺少联合字段时，不从实体编号或战斗目标猜出联合来源顺序。";
     private const string WeaponInstructions = "当前武器以entity.current_weapon或计算结果WeaponDurability为准，只有已知的现代HEALTH-DAMAGE才是可用剩余耐久；缺DAMAGE不补零，印刷durability和旧DURABILITY不能覆盖当前值。最后一次攻击会损毁武器并移除其攻击贡献，不能继续使用旧武器攻击或风怒。简单装备也须使用当前费用、攻击和最大耐久；手牌武器的战吼、过载或使用效果未覆盖时，不能声称已经合法装备。WeaponResolutionBoundaryReached表示损毁亡语、替换或风怒来源仍待真实结算，不把条件中间状态作为后续动作或斩杀依据。";
     private const string EntityEffectInstructions = "实体存在拼装标记时，按entity.effect或get_entity_effect读取该实体文字；cards/get_cards是固定版本基础定义，不能覆盖拼装文字。同CardId的不同实体也可能效果不同。候选的触发/效果半段不是供体整牌，不代表新增手牌；主目标未绑定时不合成完整效果。文字重建不表示自定义脚本已被规则模拟，缺失供体或未知文字不得回退原牌效，更不能据此宣称动作或斩杀已验证。";
+    private const string AssembledScriptInstructions = "evaluate_line对固定版本、完整定义和当前属性均已核对的已观察成品，可执行纯战吼给手牌随从+1/+1的脚本；AssembledEffects记录此候选序列的模拟来源、触发次数及逐实体属性变化，不是对局中已发生的事实，也不证明候选生成池或其他组合已覆盖。仅完整序列Verified可支持确定结果；缺失供体、额外触发或其它未覆盖交互保持未知，不执行基础牌已被替换的效果。";
     private const string RandomEffectInstructions = "evaluate_generation只预览已覆盖来源成功离手后的随机生成数量与满手损失，不抽走牌库卡牌，不提供生成牌身份、费用或新实体；GenerationBoundaryReached之后等待新局面，不能继续出牌。evaluate_wolf_blessing列出巨狼祝福各候选直接增益，只能比较分支，不能指定随机命中，也不能把不同分支的有利后果拼成一个结果；WolfBlessingBoundaryReached后等待新局面。直接预览不证明支付和使用合法，候选动作仍须调用evaluate_line。";
     private const string DeathrattleDrawInstructions = "evaluate_deathrattle_draw只接收当前我方场上随从的source_entity_id，条件预览实际已观察且审核通过的EDR_100t4e心中的恶魔在其死亡后单次抽两张的直接入手、爆牌和疲劳。工具不会杀死随从，不证明死亡已经发生；该随从原在场，不会因本次预览从手牌离开或腾出手牌位置。以各字段相关范围和未知项为准，不把其它亡语、复生、重复或入手触发视为已经展开。evaluate_line中的DrawPreviews若为DeathrattleOrdinary，只是该已覆盖交换后的直接抽牌预览；DrawBoundaryReached后等待真实新局面，不生成新牌身份、费用或后续动作，不能据此认证完整结算或已验证斩杀。";
     private const string MapInstructions = "evaluate_choice的Map只使用当前实际提供的选项及绑定的实际已选、原己方回合HAND使用记录；同名牌或创建者不能证明新实体就是原首选。MapPlayPreviews只是本地模拟使用后的条件请求，不是实际PLAY历史或已经出现的追加选项；MapFollowupBoundaryReached后等待真实追加选择，不创建第二张手牌或继续后续动作，也不证明斩杀。";
@@ -31,7 +32,7 @@ public static class AdviceTaskTemplates
     };
 
     public static AdviceTaskTemplate Get(AdviceTaskKind task) => new(task,
-        task is AdviceTaskKind.Choice or AdviceTaskKind.Turn ? "hunter-v22/" + task.ToString().ToLowerInvariant() : Version + "/" + task.ToString().ToLowerInvariant(), task switch
+        task is AdviceTaskKind.Choice or AdviceTaskKind.Turn ? "hunter-v23/" + task.ToString().ToLowerInvariant() : Version + "/" + task.ToString().ToLowerInvariant(), task switch
     {
         AdviceTaskKind.Mulligan => "当前任务：开局留牌。逐张解释已确认我方起手牌的保留或替换理由，结合先后手、已知对手职业和导入套牌计划。先后手、职业或牌效未知时明确说明；不把未知牌或未来抽牌当作事实。留牌未结束时不提供出牌顺序或确定概率。",
         AdviceTaskKind.Turn => "当前任务：回合建议。先指出目标、当前资源和取舍，再给出简短方案。动态费用、攻击、生命和状态以本次tags为准，不用印刷值覆盖。候选动作调用evaluate_line核验；evaluate_draw仅假设本体成功使用后预览直接抽牌、满手损失和疲劳范围，不能证明出牌合法。DrawBoundaryReached之后实体投影只到抽牌前，不生成新手牌或继续安排动作；训犬师抽牌后的灌注须等待新局面。结束回合用end_turn，来源必须是我方PLAYER实体且不带目标，不能在结束后继续己方动作。回合末结果不代表对手起手。未完整覆盖时只给条件性策略，不宣布确定斩杀或胜率。",
@@ -39,5 +40,5 @@ public static class AdviceTaskTemplates
         AdviceTaskKind.Review => "当前任务：当时局面复盘。严格以event_sequence及以前的局面、公开出牌和事件为界，解释当时可见信息下的决策与备选。不得引用后续抽牌、最终胜负、未来公开身份或事后信息。信息不完整时保留不确定性；本地规则未覆盖的动作不标为已验证。",
         AdviceTaskKind.DeckPlan => "当前任务：赛前套牌分析。没有实时局面时，仅依据已导入的套牌、已核对的卡牌效果及主机提供的用户笔记解释胜利条件、留牌方向、资源分配和对局计划。缺少卡库或笔记就说明缺失，不虚构实时手牌、对手套牌、当前胜率、天梯统计或确定操作。",
         _ => throw new ArgumentOutOfRangeException(nameof(task))
-    } + EntityEffectInstructions + PublicHandMemoryInstructions + (task is AdviceTaskKind.Turn or AdviceTaskKind.Choice ? RandomEffectInstructions + DeathrattleDrawInstructions + PlayTriggerInstructions + ObservedDarkGiftInstructions + MapInstructions + MagmaInstructions + ExplosiveTrapInstructions + WeaponInstructions + TerrorInstructions : ""));
+    } + EntityEffectInstructions + PublicHandMemoryInstructions + (task is AdviceTaskKind.Turn or AdviceTaskKind.Choice ? AssembledScriptInstructions + RandomEffectInstructions + DeathrattleDrawInstructions + PlayTriggerInstructions + ObservedDarkGiftInstructions + MapInstructions + MagmaInstructions + ExplosiveTrapInstructions + WeaponInstructions + TerrorInstructions : ""));
 }

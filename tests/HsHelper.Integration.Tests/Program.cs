@@ -241,6 +241,7 @@ await FindLethalCandidateIntegration.RunAsync(temp, Pass);
 await MultiStageChoiceIntegration.RunAsync(temp, Pass);
 await HunterHistoryIntegration.RunAsync(temp, Pass);
 await AssembledEffectIntegration.RunAsync(temp, Pass);
+await AssembledScriptIntegration.RunAsync(temp, Pass);
 await HunterRandomEffectIntegration.RunAsync(temp, Pass);
 await HunterPlayTriggerIntegration.RunAsync(temp, Pass);
 await NativeDiscoveryIntegration.RunAsync(temp, Pass);

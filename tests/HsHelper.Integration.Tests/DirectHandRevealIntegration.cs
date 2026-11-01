@@ -219,7 +219,7 @@ internal static class DirectHandRevealIntegration
         var known = point.Frame.Entities.Values.Select(entity => entity.CardId).OfType<string>().Concat(PublicHandMemoryVisibility.KnownCardIds(point.Frame));
         var cards = await catalog.GetByIdsBatchedAsync(known, Build);
         var context = CompactAdviceContextBuilder.Create(point.Frame, Build, task, cards: cards) with { KnowledgeAsOf = point.Point.RecordedAt, AsOf = DateTimeOffset.UtcNow };
-        Check(context.TemplateVersion == (task == AdviceTaskKind.Review ? "hunter-v7/review" : "hunter-v22/turn") &&
+        Check(context.TemplateVersion == (task == AdviceTaskKind.Review ? "hunter-v7/review" : "hunter-v23/turn") &&
             (context.Snapshot["public_hand_memory"]?["entries"]?.AsArray().Count ?? 0) == count, "The fixed current template or confirmed memory count changed.");
         foreach (var raw in context.Snapshot["public_hand_memory"]?["entries"]?.AsArray() ?? [])
         {

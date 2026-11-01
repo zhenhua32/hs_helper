@@ -158,6 +158,11 @@ public sealed partial class LineEvaluator
                 yield return new(ActionKind.HeroPower, source.EntityId);
             if (source.Zone != "HAND" || (state.NextCardCostsOpponentHealth != true && source.Cost > state.AvailableMana) ||
                 source.CardId is not { } id || !cards.ContainsKey(id)) continue;
+            if (runtime.HasCustomAssembledTextById(source.EntityId))
+            {
+                if (runtime.SearchableAssembledBody(source.EntityId)) yield return new(ActionKind.PlayCard, source.EntityId);
+                continue;
+            }
             if (ArcaneShot.Contains(id) || KillCommand.Contains(id) || HuntersMark.Contains(id))
                 foreach (var target in targets.Where(e => !HuntersMark.Contains(id) || e.Type == "MINION"))
                     yield return new(ActionKind.PlayCard, source.EntityId, target.EntityId);
@@ -255,7 +260,7 @@ public sealed partial class LineEvaluator
     {
         var source = state.Source(action.SourceEntityId, "HAND"); if (source is null) return;
         if (state.HasCustomAssembledText(source))
-        { state.Unsupported("CUSTOM_ASSEMBLED_SOURCE", "拼装牌的自定义文字尚未模拟，不能按原卡ID结算。"); return; }
+        { PlayAssembled(state, action, source); return; }
         if (!state.RequireNativeDefinition(source)) return;
         if (state.Has(source, "CANT_PLAY")) { state.Invalid("该手牌当前不能使用。"); return; }
         var profile = state.Profile(source);
@@ -405,6 +410,7 @@ public sealed partial class LineEvaluator
                     entity.Health = entity.WeaponDurability.Remaining;
                 }
                 entity.Alive = entity.Health is null || entity.Health > 0;
+                if (HasCustomAssembledText(entity)) NormalizeAssembledFlags(entity, source);
                 Entities[entity.Id] = entity;
             }
             Player = Entities.Values.FirstOrDefault(e => e.Type == "PLAYER" && e.Int("PLAYER_ID") == Local);
@@ -435,6 +441,7 @@ public sealed partial class LineEvaluator
         public Entity? Weapon(int? controller) => Entities.Values.Where(e => e.Alive && e.Type == "WEAPON" && e.Controller == controller && e.Zone == "PLAY").Take(2).ToArray() is [var only] ? only : null;
         public Profile? Profile(Entity entity)
         {
+            if (HasCustomAssembledText(entity)) return AssembledProfile(entity);
             if (entity.CardId is null) return null;
             if (_profiles.TryGetValue(entity.CardId, out var cached)) return cached;
             if (!_cards.TryGetValue(entity.CardId, out var card)) return _profiles[entity.CardId] = null;
@@ -560,7 +567,7 @@ public sealed partial class LineEvaluator
         {
             if (IsBeast(source))
             {
-                var godSources = Entities.Values.Where(e => e.Alive && e.Zone == "PLAY" && e.Controller == source.Controller && e.CardId == "EDR_480" && !Silenced(e) && !Has(e, "DORMANT")).ToArray();
+                var godSources = Entities.Values.Where(e => e.Alive && e.Zone == "PLAY" && e.Controller == source.Controller && e.CardId == "EDR_480" && !HasCustomAssembledText(e) && !Silenced(e) && !Has(e, "DORMANT")).ToArray();
                 if (godSources.Any(god => !RequireNativeDefinition(god))) return 0;
                 var gods = godSources.Length;
                 if (gods > 0 && _snapshot.ClientBuild != "255790")
@@ -601,20 +608,27 @@ public sealed partial class LineEvaluator
         }
         public void InspectInteractions(PlannedAction action)
         {
-            if (Entities.TryGetValue(action.SourceEntityId, out var selectedSource) && HasCustomAssembledText(selectedSource))
+            if (Entities.TryGetValue(action.SourceEntityId, out var selectedSource) && HasCustomAssembledText(selectedSource) && AssembledDefinition(selectedSource) is null)
             { Unsupported("CUSTOM_ASSEMBLED_SOURCE", "拼装牌的自定义文字尚未模拟，不能按原卡ID结算。"); return; }
             if (!InspectNativeDefinitions(action)) return;
             foreach (var entity in Entities.Values.Where(e => e.Alive && (e.Zone is "PLAY" or "HAND" || e.Type == "PLAYER" ||
                 (e.Type == "ENCHANTMENT" && e.Int("ATTACHED") is > 0 && e.Zone != "GRAVEYARD"))))
             {
-                if (HasCustomAssembledText(entity))
+                if (HasCustomAssembledText(entity) && AssembledDefinition(entity) is null)
                 {
                     if (entity.Zone == "PLAY")
                     { Unsupported("CUSTOM_ASSEMBLED_ACTIVE", "场上拼装文字可能改变光环或触发，不能按原牌效验证动作。"); return; }
                     Conditional("存在未覆盖的拼装文字，手牌或附加触发可能改变后果。", "CUSTOM_ASSEMBLED_HAND");
                     continue;
                 }
+                if (AssembledDefinition(entity) is not null && !ValidAssembledFlags(entity))
+                { Unsupported("ASSEMBLED_CURRENT_FLAGS", "拼装体当前布尔标签含非法值或别名冲突，不能以有效脚本覆盖原始反证。"); return; }
+                if (AssembledDefinition(entity) is not null && !Silenced(entity) && _snapshot.Entities[entity.Id].Tags.Any(pair =>
+                    pair.Key is "AURA" or "362" or "DEATHRATTLE" or "217" or "REBORN" or "1085" or "TRIGGER_VISUAL" or "32" &&
+                    (!int.TryParse(pair.Value, out var flag) || flag != 0)))
+                    Conditional("拼装体存在额外当前触发或光环证据，不能把纯战吼脚本当作全部已覆盖。", "ASSEMBLED_EXTRA_TRIGGER");
                 if (entity.Flags.Any(flag => flag.Value != 0 && flag.Key.Length > 0 && flag.Key.All(char.IsDigit) &&
+                    !IsAssembledKnownNumericTag(entity, flag.Key) &&
                     !IsKnownImbueCounter(entity, flag.Key) &&
                     !IsObservedStaticDarkGiftNumericTag(entity, flag.Key) &&
                     !IsObservedDeathDrawNumericTag(entity, flag.Key) &&
@@ -662,6 +676,10 @@ public sealed partial class LineEvaluator
                 if (entity.Zone != "PLAY" || entity.Type is "GAME" or "PLAYER" or "HERO_POWER") continue;
                 if (entity.Type == "HERO" && entity.CardId?.StartsWith("HERO_", StringComparison.Ordinal) == true) continue;
                 if (Silenced(entity) || Has(entity, "DORMANT") || Has(entity, "UNTOUCHABLE")) continue;
+                if (AssembledDefinition(entity) is not null)
+                {
+                    Coverage.Add("assembled-battlecry-only-passive-body"); continue;
+                }
                 var profile = Profile(entity);
                 if (profile is null) { Conditional("场上存在缺少卡牌效果资料的实体，可能影响动作。", "UNKNOWN_BOARD_CARD"); continue; }
                 if (entity.Type == "WEAPON" && SupportedWeaponAttackProfile(entity)) { Coverage.Add("weapon-passive-attack-profile"); continue; }
@@ -707,6 +725,7 @@ public sealed partial class LineEvaluator
                 _assumptions.OrderBy(x => x, StringComparer.Ordinal).ToArray(), _unsupported.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
                 Coverage.OrderBy(x => x, StringComparer.Ordinal).ToArray(), new(Mana, Array.AsReadOnly(entities))
                 { HeroPowerChanges = Array.AsReadOnly(_heroPowerChanges.ToArray()),
+                  AssembledEffects = _assembledEffects.Count == 0 ? null : _assembledEffects,
                   ImbueCountBefore = _initialImbues, ImbueCountAfter = _currentImbues,
                   DrawBoundaryReached = DrawBoundaryReached, DrawPreviews = Array.AsReadOnly(_drawPreviews.ToArray()),
                   GenerationBoundaryReached = GenerationBoundaryReached, GenerationPreviews = Array.AsReadOnly(_generationPreviews.ToArray()),

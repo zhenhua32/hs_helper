@@ -11,7 +11,7 @@ using HsHelper.Storage;
 
 internal static class DarkGiftExpandedIntegration
 {
-    private const string Build = "255790", Template = "hunter-v22/turn";
+    private const string Build = "255790", Template = "hunter-v23/turn";
     private const string Key = "fixture-expanded-gift-key", PrivateCard = "PRIVATE_EXPANDED_GIFT_ID";
     private static readonly IReadOnlyDictionary<string, string> Coverage = new Dictionary<string, string>(StringComparer.Ordinal)
     {

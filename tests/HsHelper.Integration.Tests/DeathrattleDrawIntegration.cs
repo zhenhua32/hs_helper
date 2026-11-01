@@ -11,7 +11,7 @@ using HsHelper.Storage;
 
 internal static class DeathrattleDrawIntegration
 {
-    private const string Build = "255790", Gift = "EDR_100t4e", Template = "hunter-v22/turn";
+    private const string Build = "255790", Gift = "EDR_100t4e", Template = "hunter-v23/turn";
     private const string Key = "fixture-deathrattle-draw-key", PrivateCard = "PRIVATE_DEATHRATTLE_DRAW_CARD";
 
     public static async Task RunAsync(string root, Action<string> pass)

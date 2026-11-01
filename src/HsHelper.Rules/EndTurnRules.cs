@@ -63,7 +63,7 @@ public sealed partial class LineEvaluator
                 Conditional("存在额外回合末触发次数修正，当前未展开重复触发。", "END_TURN_TRIGGER_MULTIPLIER");
 
             var triggers = Entities.Values.Where(e => e.Alive && e.Zone == "PLAY" && e.Controller == Local &&
-                e.CardId == "CORE_TTN_866" && !Silenced(e) && !Has(e, "DORMANT")).ToArray();
+                e.CardId == "CORE_TTN_866" && !HasCustomAssembledText(e) && !Silenced(e) && !Has(e, "DORMANT")).ToArray();
             foreach (var terror in triggers)
             {
                 var attackers = Entities.Values.Where(e => e.Alive && e.Zone == "PLAY" && e.Type == "MINION" &&

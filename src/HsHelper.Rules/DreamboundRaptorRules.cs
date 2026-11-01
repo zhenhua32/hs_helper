@@ -141,7 +141,7 @@ public static class DreamboundRaptorRules
 
         // Whether a just-played Raptor registers for its own PLAY event is not established by the printed trigger.
         // Keep it as a separate possible source rather than asserting a buff or silently excluding it.
-        if (targetCardId == "EDR_849")
+        if (targetCardId == "EDR_849" && !AssembledCardText.RequiresCustomText(before.Tags))
         {
             if (!NativeRaptor(before, cards) || after is not null && !NativeRaptor(after, cards))
             { unknowns.Add("本次使用牌的迅猛龙基础身份带有自定义文字或类别冲突，不能据此增加原生自身触发。"); return Unresolved(); }

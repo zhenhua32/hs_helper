@@ -416,3 +416,15 @@ preview24 已从干净修复提交 `b9f587c112a23b3af66183b9995a6cc984709af4` �
 最终通过 `scripts/verify.ps1 -ArtifactsPath .local/build-multi-terror-final1` 的1416项完整回归：Core177、Ingestion9、Cards45、Agent115、Configuration37、Storage122、Rules572、App115、Integration224，另27项指南生成；默认NuGetAudit，构建零警告／错误。唯一最终会话91177已退出0，日志 `.local/verify-multi-terror-final1.log`，汇总 `.local/multi-terror-final-verification.json`，32个冻结的本轮源码／测试哈希保持一致。Rules新增9组含18个独立完整排列oracle子例、3–7源及反选入口；Agent新增2组真实高分支与调用来源生命周期，Integration新增7组真实Parser→SQLite精确历史→工具→假HTTP→最终主机／归档，App在115顶层内新增4组并保留旧Terror4组。
 
 最终集成测得本地256分支工具JSON1,050,423 UTF8字节，模型八条摘要46,490字节，下一HTTP80,955字节；保留分支的阶段／战斗／场面／治疗与本地同ID结果逐项一致。原传输失败日志 `.local/hunter-multi-terror-integration/run3.log` 保留；新UI实际640×460样式可滚到256分支摘要最后一行，局面切换、关闭与迟到结果有反控。没有调用真实模型或操作游戏，未改preview25产物，不证明实际客户端队列、概率、多屏／DPI或干净Windows验收。
+
+## 已观察拼装成品的确定脚本
+
+2026-11-01 后续源码为已观察成品实现独立的纯战吼→手牌随从+1/+1脚本。固定301条主体、62条纯战吼供体和5条增益供体的306份完整定义逐项审核，显式零按对应角色保留主体半段，候选一、缺半段、重复DBF、全文或版本冲突不回退原效果。此集合只表示精确语义审核，不证明任意组合的生成资格；官方能力替换规则、固定HDT协议与卡面含义的组合解释也不冒充客户端私有脚本或实际组合实验，见[范围合同](assembled-script-contract.md)。
+
+Runtime按实体保存有效Profile与配方，移除被替换的原发现、关键词、死亡、攻击后及回合末处理。支付前审核当前费用、属性、完整手牌分类和全部增益算术；本体只支付/入场一次，离手后强化其余手牌随从，保留费用及已有损伤，不生成身份或附魔实体。手工动作、有限搜索、模型工具和最终主机共享同一执行路径，规则查卡按安全可见半段DBF补载供体。任务、迅猛龙及未知交互仍保留原边界。
+
+`AssembledEffects`冻结保存原局面绑定、主体与实际半段、脚本、启用状态、可缺省的执行次数及逐目标属性变化；缺失旧字段保持缺失。桌面以“战吼是否启用”区分是否被抑制和本次模拟次数，不将未支付的未知重复记录为已执行一次；普通完整脚本不产生等待选择边界。回合/选择模板升至hunter-v23，其它基础模板仍hunter-v7，preview25仍保持原v21与原产物。
+
+实际红控发现了未附聚合计数的t7e/t7e1被当作普通单次，以及手牌当前类型与固定卡面冲突时被漏掉的目标；现均在支付前停止，次数未知不补成一。其余覆盖包含全部301主体的完整出牌→冲锋→攻击链、双同ID不同配方、当前值/抑制、整手异常/溢出、旧原生能力隔离和原生使用后边界。两次全量的桌面失败是新启用状态与文字断言未同步，日志保留在`.local/verify-assembled-final1.log`及`final2.log`；对齐后最终桌面4/4专项通过，唯一8310退出0，`.local/assembled-ui-final.log`。640×460来源段与末行均实际渲染可读，未进行真实国服或模型调用。
+
+最终通过`scripts/verify.ps1 -ArtifactsPath .local/build-assembled-final3`的1439项完整回归：Core177、Ingestion9、Cards45、Agent118、Configuration37、Storage122、Rules584、App115、Integration232，另27项指南生成检查。唯一69703已退出0，默认NuGetAudit、构建零警告/错误；日志`.local/verify-assembled-final3.log`，收据`.local/assembled-final-verification.json`，43项冻结源码/测试哈希前后一致。新增Rules12组（共享定义3＋Runtime9，含全部301主体）、Agent3组、Integration8组，App在115顶层中新增4隐藏组；最终全套覆盖最后的次数/类型修正与启用状态文案。源码尚未打包；完整复杂牌效、特殊构筑及真实客户端/多屏/DPI/干净Windows验收仍未完成。

@@ -62,7 +62,7 @@ public sealed partial class LineEvaluator
 
         public void ResolveMagmaHoundAfterAttack(Entity source, Entity target)
         {
-            if (source.CardId != "FIR_953" || target.Type != "MINION") return;
+            if (source.CardId != "FIR_953" || HasCustomAssembledText(source) || target.Type != "MINION") return;
             var preview = PreviewMagmaSplit(source, target);
             if (_previewMagmaOnly || !preview.SingleHeroStateAudited)
             {
@@ -112,11 +112,12 @@ public sealed partial class LineEvaluator
             };
         }
 
-        public bool Summon(Entity source, Profile profile)
+        public bool Summon(Entity source, Profile profile, bool observedStatsOnly = false)
         {
             if (Entities.Values.Count(e => e.Alive && e.Type == "MINION" && e.Zone == "PLAY" && e.Controller == source.Controller) >= 7)
             { Invalid("我方随从区已满。"); return false; }
-            if (profile.Attack is null || profile.Health is null) { Unsupported("UNKNOWN_BASE_STATS", "入场随从的基础属性缺失。"); return false; }
+            if (observedStatsOnly ? source.Attack is null || source.MaximumHealth is null : profile.Attack is null || profile.Health is null)
+            { Unsupported("UNKNOWN_BASE_STATS", "入场随从的必要属性缺失。"); return false; }
             if (!Pay(source)) return false;
             if (OpponentDefeatedByPayment) return true;
             if (source.MaximumHealth.HasValue) _summonedWithObservedHealth.Add(source.Id);
@@ -183,7 +184,7 @@ public sealed partial class LineEvaluator
 
         private bool TryResolveBeastHunterDeath(Entity entity)
         {
-            if (_snapshot.ClientBuild != AuditedBuild || Silenced(entity) || !Has(entity, "DEATHRATTLE")) return false;
+            if (_snapshot.ClientBuild != AuditedBuild || HasCustomAssembledText(entity) || Silenced(entity) || !Has(entity, "DEATHRATTLE")) return false;
             if (entity.CardId is "EDR_227" or "DINO_421" && !RequireNativeDefinition(entity)) return false;
             if (entity.CardId == "EDR_227")
             {

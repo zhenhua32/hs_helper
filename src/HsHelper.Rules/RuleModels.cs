@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using System.Text.Json.Serialization;
 
 namespace HsHelper.Rules;
 
@@ -19,8 +20,22 @@ public sealed record ForcedAttackResult(int TriggerEntityId, int SourceEntityId,
     int DamageToTarget, int DamageToSource, bool SourceSurvived, bool TargetSurvived);
 public sealed record PendingForcedAttack(int TriggerEntityId, int TargetEntityId,
     IReadOnlyList<int> CandidateSourceEntityIds, string Reason);
+public sealed record AssembledEffectTarget(int EntityId, int AttackBefore, int AttackAfter,
+    int MaximumHealthBefore, int MaximumHealthAfter, int RemainingHealthBefore, int RemainingHealthAfter);
+public sealed record AssembledEffectOutcome(string MatchId, long StateVersion, long EventSequence,
+    string CardBuild, int SourceEntityId, string BaseCardId, int FirstHalfDbfId, int SecondHalfDbfId,
+    string TriggerCardId, string EffectCardId, string ScriptKey, bool? IsTriggerActive, int? ExecutedCount,
+    IReadOnlyList<AssembledEffectTarget> Targets, string Scope)
+{
+    private IReadOnlyList<AssembledEffectTarget> _targets = Array.AsReadOnly(Targets.ToArray());
+    public IReadOnlyList<AssembledEffectTarget> Targets { get => _targets; init => _targets = Array.AsReadOnly(value.ToArray()); }
+}
 public sealed record SimulatedState(int AvailableMana, IReadOnlyList<SimulatedEntity> Entities)
 {
+    private IReadOnlyList<AssembledEffectOutcome>? _assembledEffects;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<AssembledEffectOutcome>? AssembledEffects
+    { get => _assembledEffects; init => _assembledEffects = value is null ? null : Array.AsReadOnly(value.ToArray()); }
     public IReadOnlyList<HeroPowerChange> HeroPowerChanges { get; init; } = [];
     public bool? NextCardCostsOpponentHealth { get; init; }
     /// <summary>Resolution stopped at lethal payment; the submitted card retains its last observed state.</summary>

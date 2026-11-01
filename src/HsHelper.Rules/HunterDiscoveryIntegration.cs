@@ -34,7 +34,7 @@ public sealed partial class LineEvaluator
         private bool HasUnresolvedNativeResolution => DrawBoundaryReached || GenerationBoundaryReached || WolfBlessingBoundaryReached ||
             DiscoveryBoundaryReached || MapFollowupBoundaryReached || MagmaSplitBoundaryReached || _unsupported.Overlaps(["DEATHRATTLE_OR_REBORN", "BATTLECRY_OR_DEATHRATTLE_MODIFIER",
                 "UNKNOWN_MYTHICAL_TERROR_EXTRA_EFFECT", "UNKNOWN_TRIGGER", "UNKNOWN_AURA", "UNMAPPED_BOARD_TEXT",
-                "UNMAPPED_ATTACHED_ENCHANTMENT", "OPPONENT_SECRET", "FRIENDLY_SECRET_OR_QUEST", "CUSTOM_ASSEMBLED_HAND"]);
+                "UNMAPPED_ATTACHED_ENCHANTMENT", "OPPONENT_SECRET", "FRIENDLY_SECRET_OR_QUEST", "CUSTOM_ASSEMBLED_HAND", "ASSEMBLED_EXTRA_TRIGGER"]);
 
         public DiscoveryPlayOutcome InspectNativeDiscovery(Entity source) => DiscoveryPlayRules.Evaluate(_snapshot, source.Id, _cards);
 

@@ -710,6 +710,8 @@ public static class LocalToolResultFormatter
         Add("失败原因", "Errors"); Add("成立条件", "Assumptions"); Add("未覆盖机制", "UnsupportedMechanics"); Add("已覆盖规则", "RuleCoverage");
         if (evaluation["Result"] is JsonObject state)
         {
+            if (state["AssembledEffects"] is JsonArray assembledEffects)
+                foreach (var effect in assembledEffects.OfType<JsonObject>()) AppendAssembledEffect(lines, effect, entityName, cardName);
             if (state["ImbueCountBefore"] is not null || state["ImbueCountAfter"] is not null)
                 lines.Add($"累计灌注预览：{state["ImbueCountBefore"]?.ToString() ?? "未知"} → {state["ImbueCountAfter"]?.ToString() ?? "未知或有后置灌注待确认"}");
             if (state["DrawBoundaryReached"]?.ToString() == "true") lines.Add("实体和资源投影停在抽牌前；抽牌直接后果列于下方，后续动作须等待新局面。");
@@ -792,6 +794,40 @@ public static class LocalToolResultFormatter
         {
             if (evaluation[key] is JsonArray array && array.Count > 0) lines.Add(label + "：\n" + string.Join("\n", array.Select(item => "· " + item)));
         }
+    }
+
+    private static void AppendAssembledEffect(List<string> lines, JsonObject effect, Func<int, string> entityName,
+        Func<string, string> cardName)
+    {
+        var source = effect["SourceEntityId"] is JsonValue value && value.TryGetValue<int>(out var sourceId)
+            ? entityName(sourceId) + " #" + sourceId : "来源实体未知";
+        lines.Add("已观察拼装成品 · 本次模拟结算：" + source);
+        lines.Add("固定卡库 " + (effect["CardBuild"]?.ToString() ?? "未知") + "；基础身份 " +
+            (effect["BaseCardId"] is { } baseCard ? cardName(baseCard.ToString()) : "未知") + "。");
+        Half("触发半段", "TriggerCardId", "FirstHalfDbfId"); Half("效果半段", "EffectCardId", "SecondHalfDbfId");
+        lines.Add("计算效果：" + (effect["ScriptKey"]?.ToString() == "Battlecry.HandMinionBuff.1.1.v1"
+            ? "战吼：每次使其他仍在手牌中的随从获得 +1/+1。" : "脚本类别未识别，仅保留本地提供的结果字段。"));
+        lines.Add("战吼是否启用：" + (effect["IsTriggerActive"]?.ToString() switch
+            { "true" => "是", "false" => "否", _ => "未知" }) + "；本次模拟执行次数 " + (effect["ExecutedCount"]?.ToString() ?? "未知") + "。");
+        if (effect["Targets"] is JsonArray targets)
+        {
+            foreach (var target in targets.OfType<JsonObject>())
+                if (target["EntityId"] is JsonValue id && id.TryGetValue<int>(out var targetId))
+                    lines.Add($"· {entityName(targetId)} #{targetId}：攻击 {Number(target, "AttackBefore")} → {Number(target, "AttackAfter")}；" +
+                        $"当前生命 {Number(target, "RemainingHealthBefore")} → {Number(target, "RemainingHealthAfter")}；生命上限 {Number(target, "MaximumHealthBefore")} → {Number(target, "MaximumHealthAfter")}。");
+            if (targets.Count == 0) lines.Add("本条执行证据未列出属性变化目标。");
+        }
+        else lines.Add("本条执行证据的目标变化尚未提供。");
+        if (effect["Scope"] is { } scope) lines.Add(scope.ToString());
+        lines.Add("以上为候选序列的模拟结果，不会操作游戏或生成新实体；完整序列的合法性以本次验证结果为准。");
+
+        void Half(string label, string cardKey, string dbfKey)
+        {
+            var name = effect[cardKey] is { } card ? cardName(card.ToString()) : "身份未知";
+            var reference = effect[dbfKey]?.ToString() switch { "0" => "保留本体半段", null => "半段编号未知", var dbf => "供体 DBF " + dbf };
+            lines.Add(label + "：" + name + "（" + reference + "）。");
+        }
+        static string Number(JsonNode target, string key) => target[key]?.ToString() ?? "未知";
     }
 
     private static void AppendDraw(List<string> lines, JsonNode draw, Func<int, string> entityName,

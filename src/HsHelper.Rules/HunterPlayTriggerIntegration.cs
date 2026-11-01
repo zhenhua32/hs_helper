@@ -25,7 +25,7 @@ public sealed partial class LineEvaluator
             return new(FreezeForPlayTriggers(source),
                 Array.AsReadOnly(Entities.Values.Where(entity => entity.Controller == Local && entity.Zone == "SECRET" && entity.CardId == "TLC_EVENT_400")
                     .Select(entity => entity.Id).Order().ToArray()),
-                Array.AsReadOnly(Entities.Values.Where(entity => entity.Controller == Local && entity.Zone == "PLAY" && entity.CardId == "EDR_849")
+                Array.AsReadOnly(Entities.Values.Where(entity => entity.Controller == Local && entity.Zone == "PLAY" && entity.CardId == "EDR_849" && !HasCustomAssembledText(entity))
                     .OrderBy(entity => entity.Id).Select(FreezeForPlayTriggers).ToArray()), CaptureMapPlayTriggers(source));
         }
 
@@ -65,9 +65,9 @@ public sealed partial class LineEvaluator
 
         private bool RecordRaptorTriggers(PlayTriggerFrame before, Entity played, bool pending)
         {
-            if (played.Type != "MINION" || before.RaptorsBefore.Count == 0 && before.PlayedBefore.CardId != "EDR_849") return false;
+            if (played.Type != "MINION" || before.RaptorsBefore.Count == 0 && (before.PlayedBefore.CardId != "EDR_849" || HasCustomAssembledText(played))) return false;
             var afterSources = before.RaptorsBefore.Select(source => Entities[source.Id]).ToList();
-            if (played.CardId == "EDR_849" && afterSources.All(source => source.Id != played.Id)) afterSources.Add(played);
+            if (played.CardId == "EDR_849" && !HasCustomAssembledText(played) && afterSources.All(source => source.Id != played.Id)) afterSources.Add(played);
             var after = new DreamboundRaptorState(_snapshot.MatchId, _snapshot.StateVersion, _snapshot.EventSequence,
                 before.PlayedBefore, FreezeForPlayTriggers(played), before.RaptorsBefore,
                 Array.AsReadOnly(afterSources.Select(FreezeForPlayTriggers).ToArray())) { PriorResolutionPending = pending };

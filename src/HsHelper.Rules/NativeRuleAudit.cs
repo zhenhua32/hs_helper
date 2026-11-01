@@ -6,6 +6,11 @@ public sealed partial class LineEvaluator
     {
         public bool RequireNativeDefinition(Entity entity)
         {
+            if (HasCustomAssembledText(entity))
+            {
+                if (AssembledDefinition(entity) is not null) { Coverage.Add("fixed-assembled-script-definition:" + entity.CardId); return true; }
+                Unsupported("UNAUDITED_ASSEMBLED_DEFINITION", "拼装实体未通过独立完整定义审核，不能回退原生牌效。"); return false;
+            }
             if (!NativeCardDefinitions.IsRegistered(entity.CardId)) return true;
             if (!RequireAuditedBuild()) return false;
             if (entity.CardId == "GAME_005" && !AuditedCoinSource(entity)) return false;

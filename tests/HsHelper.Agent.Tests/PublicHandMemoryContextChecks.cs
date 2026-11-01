@@ -106,7 +106,7 @@ internal static class PublicHandMemoryContextChecks
             Check(policy.Instructions.Contains("public_hand_memory", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("当前费用、增益、效果或手牌位置", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("不得从后来公开信息回填较早复盘", StringComparison.Ordinal) &&
-                policy.Version == (kind is AdviceTaskKind.Turn or AdviceTaskKind.Choice ? "hunter-v22/" : "hunter-v7/") + kind.ToString().ToLowerInvariant(),
+                policy.Version == (kind is AdviceTaskKind.Turn or AdviceTaskKind.Choice ? "hunter-v23/" : "hunter-v7/") + kind.ToString().ToLowerInvariant(),
                 "A task treats memory as a current dynamic fact or unbounded hindsight: " + kind);
         }
     }

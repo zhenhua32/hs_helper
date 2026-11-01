@@ -90,8 +90,9 @@ public static class QuestProgressRules
         var played = cards[playedFromHand.CardId!];
         if (NativeCardDefinitions.IsRegistered(played.Id) && !NativeCardDefinitions.IsAudited(snapshot.ClientBuild, played.Id, played))
         { unknowns.Add("参与任务条件判断的原生牌固定定义不一致，未借原ID分类或递增。"); return Result(); }
-        if (AssembledCardText.RequiresCustomText(playedFromHand.Tags) ||
-            snapshot.Entities.TryGetValue(playedFromHand.Id, out var original) && AssembledCardText.RequiresCustomText(original.Tags))
+        if ((AssembledCardText.RequiresCustomText(playedFromHand.Tags) && AssembledScriptAudit.Resolve(snapshot.ClientBuild, playedFromHand.CardId, playedFromHand.Tags, cards) is null) ||
+            snapshot.Entities.TryGetValue(playedFromHand.Id, out var original) && AssembledCardText.RequiresCustomText(original.Tags) &&
+            AssembledScriptAudit.Resolve(snapshot.ClientBuild, original.CardId, original.Tags, cards) is null)
         { unknowns.Add("被使用牌带拼装/半段标记，未按基础卡推导任务增量。"); return Result(); }
         if (!Profile(played, out var native, out var races, out _))
         { unknowns.Add("被使用牌的固定种族定义缺失或冲突。"); return Result(); }

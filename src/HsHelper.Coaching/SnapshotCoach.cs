@@ -337,7 +337,7 @@ public sealed class SnapshotCoach
                 cards.TryAdd(card.Id, card);
         var related = cards.Values.SelectMany(c => c.Entourage).Distinct().Where(id => !cards.ContainsKey(id)).Take(200).ToArray();
         foreach (var card in await _catalog.GetByIdsBatchedAsync(related, _build!, cancellationToken: token)) cards.TryAdd(card.Id, card);
-        return cards;
+        return await SnapshotCardEffects.LoadDonorsAsync(_snapshot, _build, _catalog, cards.Values, token);
     }
 
     private async Task<ActionValidationResult> ValidateActionsAsync(IReadOnlyList<AdviceAction> actions, CancellationToken token)
