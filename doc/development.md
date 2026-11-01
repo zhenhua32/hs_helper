@@ -496,3 +496,11 @@ preview27之后的源码接入固定build255790的`JAIL_430/126055`20张和`REV_
 第二轮97725全1521项及27指南通过，独立审查随后发现保存版本build未知时，赛前入口仍借用活动卡库。现与套牌页一致保留未知，不加载其他build资料或授权20／40要求；同一隐藏WPF组新增真实未知版本保存→激活255790→实际HTTP／归档的反控，原牌码／版本／build保持不变。第二轮日志和34项输入保留为修复前记录，没有把其绿色结果当作最后补丁的验证。
 
 最终`./scripts/verify.ps1 -ArtifactsPath .local/build-main-deck-size-final3`通过1521项完整回归：Core177、Ingestion9、Cards60、Agent127、Configuration37、Storage122、Rules618、App115、Integration256，另27项指南检查。唯一1574真实退出0，构建零警告／错误，18份项目assets均为默认NuGetAudit true/all/low；34项冻结源码／测试哈希在验证前后完全一致。日志`.local/verify-main-deck-size-final3.log`、冻结清单`.local/main-deck-size-final3-frozen-inputs.json`及汇总`.local/main-deck-size-final-verification.json`保留证据。新增15组Cards、5组Agent、8组Integration，App115内含新增四个隐藏组，完整覆盖本轮最终时点／来源／上限与布局修复。
+
+## 桌面自动化连接与鼠标卡顿排查
+
+2026-11-01，preview28 首次打开、尚未监听时，用户报告鼠标在窗口内几乎无法移动。原进程采样 5066 毫秒消耗 5031 毫秒 CPU。软件绘制测试在后台静置时曾显示零 CPU，但前台再次出现持续开销，用户确认鼠标仍卡；不能用后台静置结果替代真实前台输入验收。
+
+托管线程栈显示界面线程停在正常消息循环，原生热点线程采样落在 `UIAutomationCore.dll`。断开本次 `computer-use` 的 `sky` 诊断连接（重置其 Node 会话）后，同一批测试进程五秒采样均为零 CPU，用户随即确认鼠标恢复流畅；重新打开未修改的 preview28 后五秒 CPU 也为零，窗口正常响应。此记录指向本次外部 UI Automation 连接的干扰，不将其归因为日志监听或模型请求，也不据此断言所有辅助功能客户端都有问题。
+
+软件绘制及关闭触控／笔支持仅用于隔离测试，未解决该鼠标问题；产品源码已恢复原渲染／输入行为，仍使用 preview28，保留正常无障碍支持及原发行包。后续桌面验收结束应断开自动化连接，并让用户在无诊断连接时验证真实鼠标移动。诊断工具和合成数据只保留在忽略的 `.local` 目录，未读取真实对局或调用模型；清理只关闭合成测试进程，个人数据保留，随后重新打开正式 preview28。
