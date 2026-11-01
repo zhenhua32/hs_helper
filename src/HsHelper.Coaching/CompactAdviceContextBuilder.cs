@@ -75,6 +75,9 @@ public static class CompactAdviceContextBuilder
         if (snapshot.PublicPlays is not null && playTracking is null)
             contextLimits.Add("公开出牌附加信息不属于当前对局和局面版本，已省略其身份与计数。");
         var plays = playTracking?.Plays.Where(play => play.Sequence <= snapshot.EventSequence).ToArray() ?? [];
+        var handMemory = PublicHandMemoryVisibility.Confirmed(snapshot);
+        if (snapshot.PublicHandMemory is not null && handMemory is null)
+            contextLimits.Add("公开手牌记忆未通过当前对局、局面、事件和观察者核对，已省略其身份；不能从旧记忆推定当前持牌。");
         var tracking = local.HasValue && snapshot.DeckTracking is { } deckTracking && deckTracking.MatchId == snapshot.MatchId &&
             deckTracking.StateVersion == snapshot.StateVersion && build is not (null or "" or "unknown") && deckTracking.CardBuild == build
             ? deckTracking : null;
@@ -84,6 +87,7 @@ public static class CompactAdviceContextBuilder
             .Concat(choice?.Options.Select(option => option.CardId).OfType<string>() ?? [])
             .Concat(choiceSourceCardId is null ? [] : new[] { choiceSourceCardId })
             .Concat(plays.Select(play => play.CardId).OfType<string>())
+            .Concat(handMemory?.Entries.Select(entry => entry.CardId) ?? [])
             .Concat(tracking?.KnownRemaining.Keys ?? []).ToHashSet(StringComparer.Ordinal);
         var dbfIds = (deck?.Cards.Select(card => card.DbfId) ?? [])
             .Concat(deck?.Sideboards.SelectMany(board => board.Cards.Select(card => card.DbfId)) ?? []).ToHashSet();
@@ -156,6 +160,17 @@ public static class CompactAdviceContextBuilder
                     .Select(group => new { controller = group.Key.ControllerId, card_id = group.Key.CardId, count = group.Count() }).ToArray(),
                 recent = plays.OrderBy(play => play.Sequence).TakeLast(8).Select(play => new { sequence = play.Sequence,
                     entity_id = play.EntityId, card_id = play.CardId, controller = play.ControllerId }).ToArray()
+            },
+            public_hand_memory = handMemory is null ? null : new
+            {
+                complete = handMemory.IsComplete, warnings = handMemory.Warnings,
+                entries = handMemory.Entries.Select(entry => new
+                {
+                    entity_id = entry.EntityId, card_id = entry.CardId, controller = entry.ControllerId,
+                    from = entry.FromZone, public_at_sequence = entry.PublicAtSequence,
+                    entered_hand_at_sequence = entry.EnteredHandAtSequence
+                }).ToArray(),
+                scope = "同一实体曾公开并连续追踪到当前对手手牌的基础身份；不是当前可见实体或完整手牌。当前费用、增益、效果和位置未知，cards仅为固定版本基础定义；缺口后的新可靠记录不补齐遗漏或回填较早局面。"
             },
             recent_events = events, cards = definitions,
             limitations = "未显示字段保持未知；卡库为基础定义，当前动态属性以实体tags为准；完整本地规则验证结果另由工具提供。"

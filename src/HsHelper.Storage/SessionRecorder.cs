@@ -45,7 +45,8 @@ public sealed class SessionRecorder
                 AddFinalCheckpoint();
             var qualityChanged = previous is null || !SamePersistentQuality(previous.Quality, snapshot.Quality);
             var saveSnapshot = previous is null || snapshot.Quality.IsStable ||
-                (snapshot.Phase == GamePhase.Complete && previous.Phase != GamePhase.Complete) || qualityChanged;
+                (snapshot.Phase == GamePhase.Complete && previous.Phase != GamePhase.Complete) || qualityChanged ||
+                SettledPublicHandMemoryChanged(previous, snapshot);
             var storedObservation = saveSnapshot ? snapshot : MetadataOnly(snapshot);
             _pending.Add(new(storedObservation, sourceLineNumber, DateTimeOffset.UtcNow,
                 BuildEvents(previous, snapshot, sourceLineNumber), saveSnapshot));
@@ -97,6 +98,18 @@ public sealed class SessionRecorder
            && PersistentWarnings(a).SequenceEqual(PersistentWarnings(b));
     private static IEnumerable<string> PersistentWarnings(SnapshotQuality quality)
         => quality.Warnings.Where(w => w is not ("尚未观察到当前任务列表结算完成" or "当前选择详情尚未完整读取"));
+
+    private static bool SettledPublicHandMemoryChanged(GameSnapshot? previous, GameSnapshot current)
+    {
+        // Global quality stays incomplete after a gap. Independently proven new public facts
+        // still deserve an exact partial checkpoint, without becoming a stable decision.
+        if (PublicHandMemoryVisibility.Confirmed(current) is not { } memory) return false;
+        var prior = previous is null ? null : PublicHandMemoryVisibility.Confirmed(previous);
+        return prior is null || memory.LocalPlayerId != prior.LocalPlayerId || memory.PerspectiveSource != prior.PerspectiveSource ||
+            memory.IsComplete != prior.IsComplete || !memory.Entries.SequenceEqual(prior.Entries) ||
+            !memory.Warnings.SequenceEqual(prior.Warnings);
+    }
+
     private static GameSnapshot MetadataOnly(GameSnapshot snapshot)
     {
         var heroIds = snapshot.Entities.Values.Where(e => e.Kind == EntityKind.Player)
@@ -105,7 +118,7 @@ public sealed class SessionRecorder
         {
             Entities = snapshot.Entities.Where(pair => pair.Value.Kind != EntityKind.Card || heroIds.Contains(pair.Key))
                 .ToFrozenDictionary(pair => pair.Key, pair => pair.Value),
-            Choice = null, ChoiceHistory = null, TurnHistory = null, RecentEvents = [], DeckTracking = null
+            Choice = null, ChoiceHistory = null, TurnHistory = null, PublicHandMemory = null, RecentEvents = [], DeckTracking = null
         };
     }
 

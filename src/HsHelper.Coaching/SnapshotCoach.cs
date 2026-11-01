@@ -46,11 +46,17 @@ public sealed class SnapshotCoach
     {
         ArgumentNullException.ThrowIfNull(snapshot); ArgumentNullException.ThrowIfNull(context); ArgumentNullException.ThrowIfNull(catalog);
         _snapshot = AttachmentVisibility.Project(snapshot);
-        _context = (JsonObject)context.DeepClone();
         _catalog = catalog;
         _build = cardBuild is null or "" or "unknown" ? null : cardBuild;
         if (_build is not null && snapshot.ClientBuild is { } observed && _build != observed)
             throw new ArgumentException("局面与卡库版本不一致。");
+        _context = context.Count == 0 ? CompactAdviceContextBuilder.Build(_snapshot, _build) : (JsonObject)context.DeepClone();
+        if (!ContextMatchesSnapshot(_context, _snapshot, _build))
+            throw new ArgumentException("模型上下文必须绑定同一对局、局面、事件、观察者与卡库版本。", nameof(context));
+        // A supplied context cannot promote a stale ledger into a host-confirmed current fact.
+        var memory = CompactAdviceContextBuilder.Build(_snapshot, _build)["public_hand_memory"];
+        if (memory is null) _context.Remove("public_hand_memory");
+        else _context["public_hand_memory"] = memory.DeepClone();
         _toolObserved = toolObserved;
         _library = library;
         _toolCompleted = toolCompleted;
@@ -61,6 +67,18 @@ public sealed class SnapshotCoach
             library.Binding.StateVersion != snapshot.StateVersion || library.Binding.CardBuild != cardBuild ||
             (library.Binding.EventSequence is { } sequence && sequence != snapshot.EventSequence)))
             throw new ArgumentException("个人资料查询必须使用同一局面与卡库版本。");
+    }
+
+    private static bool ContextMatchesSnapshot(JsonObject context, GameSnapshot snapshot, string? build)
+    {
+        var local = ChoiceVisibility.ConfirmedLocalPlayer(snapshot);
+        return context["schema"]?.ToString() == CompactAdviceContextBuilder.SchemaVersion &&
+            context["match_id"] is JsonValue match && match.TryGetValue<string>(out var matchId) && matchId == snapshot.MatchId &&
+            context["state_version"] is JsonValue state && state.TryGetValue<long>(out var version) && version == snapshot.StateVersion &&
+            context["event_sequence"] is JsonValue events && events.TryGetValue<long>(out var sequence) && sequence == snapshot.EventSequence &&
+            (context["local_player_id"] is null && local is null ||
+                context["local_player_id"] is JsonValue player && player.TryGetValue<int>(out var id) && id == local) &&
+            context["card_build"]?.ToString() == build;
     }
 
     public AgentCapabilities Capabilities(AnalysisBudget? budget = null, Action<ModelUsage>? onUsage = null) => new()
@@ -125,6 +143,7 @@ public sealed class SnapshotCoach
             match_id = _snapshot.MatchId, state_version = _snapshot.StateVersion,
             events = _context["recent_events"]?.DeepClone() ?? CompactAdviceContextBuilder.Build(_snapshot, _build)["recent_events"]?.DeepClone(),
             public_plays = _context["public_plays"]?.DeepClone() ?? CompactAdviceContextBuilder.Build(_snapshot, _build)["public_plays"]?.DeepClone(),
+            public_hand_memory = _context["public_hand_memory"]?.DeepClone(),
             history_truncated_through = _snapshot.EventHistoryTruncatedThrough
         });
         if (name == "validate_choice") return Node(_rules.ValidateChoice(_snapshot,

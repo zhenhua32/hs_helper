@@ -93,13 +93,16 @@ public sealed record BattleViewState
         "剩余组成不完整；以下为已知剩余下限，不能给出精确概率。";
     public BattleChoiceView? Choice { get; }
     public string ChoiceStatus { get; }
+    public IReadOnlyList<BattleHandMemoryView> OpponentHandMemory { get; }
+    public string OpponentHandMemoryStatus { get; }
     public string QualitySummary => $"我方视角：{(HasLocalPerspective ? "已确认" : "尚未确认")} · 日志：{(IsComplete ? "完整" : "存在缺口")} · 局面：{(IsStable ? "稳定" : "结算中或尚未确认")}";
     public bool PublicPlaysComplete { get; }
     public IReadOnlyList<string> Warnings { get; }
 
     internal BattleViewState(GameSnapshot snapshot, bool hasPerspective, BattlePlayerView local,
         BattlePlayerView opponent, IEnumerable<BattleDeckCardView> remaining, bool hasDeckTracking, bool deckExact,
-        int? unknownDeckCards, BattleChoiceView? choice, string choiceStatus, bool publicPlaysComplete, IEnumerable<string> warnings)
+        int? unknownDeckCards, BattleChoiceView? choice, string choiceStatus, bool publicPlaysComplete, IEnumerable<string> warnings,
+        PublicHandMemoryPresentation handMemory)
     {
         MatchId = snapshot.MatchId; StateVersion = snapshot.StateVersion; EventSequence = snapshot.EventSequence;
         Turn = snapshot.Turn; Phase = snapshot.Phase; ActivePlayerId = snapshot.ActivePlayerId;
@@ -107,6 +110,7 @@ public sealed record BattleViewState
         Local = local; Opponent = opponent; RemainingDeck = Array.AsReadOnly(remaining.ToArray());
         HasDeckTracking = hasDeckTracking; DeckIsExact = deckExact; UnknownDeckCards = unknownDeckCards;
         Choice = choice; ChoiceStatus = choiceStatus; PublicPlaysComplete = publicPlaysComplete;
+        OpponentHandMemory = handMemory.Entries; OpponentHandMemoryStatus = handMemory.Status;
         Warnings = Array.AsReadOnly(warnings.Distinct(StringComparer.Ordinal).ToArray());
     }
 }
@@ -218,8 +222,10 @@ public static class BattleViewBuilder
         var choiceStatus = choice is not null ? $"当前我方选择 #{choice.Id}，选择 {choice.CountMin}～{choice.CountMax} 个。这里只展示候选，不模拟选择后效果。" :
             snapshot.Phase is GamePhase.Choice or GamePhase.Mulligan ? "我方选择尚未确认或候选未完整读取；暂不展示候选身份。" :
             "当前未处于留牌或选择阶段。";
+        var handMemory = PublicHandMemoryPresentation.Create(snapshot, id => PublicHandMemoryPresentation.HasMatchingBuild(snapshot, fixedBuild)
+            ? Name(id) : "卡名版本未确认（" + id + "）");
         return new(snapshot, local.HasValue, Player(local, true), Player(opponent, false), remaining, tracking is not null, exact,
-            tracking?.UnknownCount, choice, choiceStatus, publicLedger?.IsComplete == true, warnings);
+            tracking?.UnknownCount, choice, choiceStatus, publicLedger?.IsComplete == true, warnings, handMemory);
     }
 
     public static bool MatchesDeckBinding(GameSnapshot snapshot, string? fixedBuild = null) => snapshot.DeckTracking is { } tracking &&
@@ -240,6 +246,7 @@ public static class BattleViewBuilder
         if (ConfirmedChoice(snapshot, local) is { } choice)
             ids = ids.Concat(choice.Options.Select(o => o.CardId).OfType<string>());
         if (MatchesDeckBinding(snapshot, fixedBuild)) ids = ids.Concat(snapshot.DeckTracking!.KnownRemaining.Keys);
+        ids = ids.Concat(PublicHandMemoryPresentation.CardIds(snapshot, fixedBuild));
         return Array.AsReadOnly(ids.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
     }
 

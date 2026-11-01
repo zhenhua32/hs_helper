@@ -58,9 +58,12 @@ public partial class MainWindow
         var sourceDeck = _sourceDeckVersion;
         var token = _source.Token;
         var readCompleted = _aggregatedCardReadCompleted;
+        var handMemory = PublicHandMemoryVisibility.Confirmed(AttachmentVisibility.Project(snapshot));
         bool Current() => !_closing && !token.IsCancellationRequested && revision == _battleRenderRevision &&
             DisplaySnapshot.MatchId == snapshot.MatchId && DisplaySnapshot.StateVersion == snapshot.StateVersion &&
             DisplaySnapshot.EventSequence == snapshot.EventSequence && DisplaySnapshot.LocalPlayerId == snapshot.LocalPlayerId &&
+            DisplaySnapshot.PerspectiveSource == snapshot.PerspectiveSource && DisplaySnapshot.IsSpectating == snapshot.IsSpectating &&
+            PublicHandMemoryPresentation.SameEvidence(DisplaySnapshot, handMemory) &&
             ReferenceEquals(history, _historyContext) && ReferenceEquals(sourceDeck, _sourceDeckVersion) &&
             (_historyContext?.CardBuild ?? DisplaySnapshot.ClientBuild ?? SessionBuildBox.Text.Trim()) == build;
         try

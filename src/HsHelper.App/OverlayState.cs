@@ -9,18 +9,23 @@ public sealed record OverlayState
     public IReadOnlyList<string> Hand { get; }
     public IReadOnlyList<string> Remaining { get; }
     public IReadOnlyList<string> OpponentPlayed { get; }
+    public IReadOnlyList<string> OpponentHandMemory { get; }
+    public string OpponentHandMemoryStatus { get; }
     public string Advice { get; }
     public string Quality { get; }
     public bool IsComplete { get; }
     public bool IsStable { get; }
 
     public OverlayState(string title, IEnumerable<string> hand, IEnumerable<string> remaining,
-        IEnumerable<string> opponentPlayed, string advice, string quality, bool isComplete, bool isStable)
+        IEnumerable<string> opponentPlayed, string advice, string quality, bool isComplete, bool isStable,
+        IEnumerable<string>? opponentHandMemory = null, string? opponentHandMemoryStatus = null)
     {
         Title = Text(title, 120);
         Hand = Copy(hand, 80);
         Remaining = Copy(remaining, 120);
         OpponentPlayed = Copy(opponentPlayed, 100);
+        OpponentHandMemory = Copy(opponentHandMemory, 100);
+        OpponentHandMemoryStatus = Text(opponentHandMemoryStatus ?? "公开手牌记忆尚未确认。", 300);
         Advice = Text(advice, 500);
         Quality = Text(quality, 600);
         IsComplete = isComplete;

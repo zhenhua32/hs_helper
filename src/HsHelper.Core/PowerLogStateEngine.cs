@@ -127,6 +127,7 @@ public sealed partial class PowerLogStateEngine
         var manual = playerId.HasValue;
         var resolved = manual ? playerId : _autoDetectPerspective && !_isSpectating ? _provenInitialPlayerId : null;
         if (_localPlayerId == resolved && _manualPerspective == manual) return;
+        _publicHandMemory.PerspectiveChanged();
         _localPlayerId = resolved;
         _manualPerspective = manual;
         _version++;
@@ -145,6 +146,7 @@ public sealed partial class PowerLogStateEngine
     /// <summary>Marks input loss, e.g. a truncated file. Completeness cannot recover until the next game.</summary>
     public void MarkDataGap(string reason = "日志存在缺口")
     {
+        _publicHandMemory.Gap();
         _hasGap = true;
         _taskComplete = false;
         if (_warnings.Add(reason)) _version++;
@@ -157,8 +159,11 @@ public sealed partial class PowerLogStateEngine
         try
         {
             var beforeVersion = _version;
+            ObservePublicHandMemory();
             var changed = ProcessLineCore(line);
-            return TryAutoDetectPerspective() || changed || _version != beforeVersion;
+            var perspectiveChanged = TryAutoDetectPerspective();
+            ObservePublicHandMemory();
+            return perspectiveChanged || changed || _version != beforeVersion;
         }
         catch (Exception ex) when (ex is OverflowException or RegexMatchTimeoutException)
         {
@@ -284,6 +289,7 @@ public sealed partial class PowerLogStateEngine
             _eventSequence++;
             _currentEntity = ParseId(match.Groups[1].Value);
             var entity = GetEntity(_currentEntity.Value);
+            _publicHandMemory.IdentityObserved(entity.Id);
             var cardId = NullIfEmpty(match.Groups[2].Value);
             if (entity.CardId is not null && entity.CardId != cardId)
                 foreach (var tag in entity.Tags.Keys.Where(tag => !HiddenSafeTags.Contains(tag)).ToArray()) entity.Tags.Remove(tag);
@@ -300,6 +306,7 @@ public sealed partial class PowerLogStateEngine
             _currentEntity = ResolveReference(match.Groups[2].Value);
             if (_currentEntity is not { } id) return Unresolved();
             var entity = GetEntity(id);
+            _publicHandMemory.IdentityObserved(entity.Id);
             if (match.Groups[1].Value is "CHANGE_ENTITY" or "FULL_ENTITY")
             {
                 // A new card definition must not inherit old observed attack/cost/health.
@@ -405,6 +412,7 @@ public sealed partial class PowerLogStateEngine
 
     public GameSnapshot Snapshot()
     {
+        ObservePublicHandMemory();
         var warnings = new SortedSet<string>(_warnings, StringComparer.Ordinal);
         if (!_sawStart) warnings.Add("未观察到 CREATE_GAME，局面可能从中途开始");
         var players = _entities.Values.Where(e => e.Kind == EntityKind.Player).ToArray();
@@ -452,6 +460,9 @@ public sealed partial class PowerLogStateEngine
             ClientBuild = _clientBuild,
             GameType = _gameType,
             PerspectiveSource = hasPerspective ? (_manualPerspective ? "manual" : "initial_private_hand") : "unconfirmed",
+            PublicHandMemory = _publicHandMemory.Snapshot($"{_sessionId}-{_matchNumber:D4}", _version, _eventSequence,
+                hasPerspective ? _localPlayerId : null, MemoryPerspective, isComplete,
+                _blockCount == 0 && (choiceReady || _taskComplete && ownChoice is null && decisionPhase)),
             IsSpectating = _isSpectating
         };
         return AttachmentVisibility.Project(snapshot);
@@ -513,6 +524,7 @@ public sealed partial class PowerLogStateEngine
         var fromZone = entity.Tags.GetValueOrDefault("ZONE");
         var oldProof = ObservedIdentityProof(entity);
         var oldCard = IsIdentityVisible(entity) ? entity.CardId : null;
+        if (tag is "CONTROLLER" or "CARDTYPE" or "ATTACHED") _publicHandMemory.Invalidate(entity.Id);
         entity.Tags[tag] = value;
         entity.Revision++;
         ObserveTurnTag(entity, tag, value);
@@ -901,6 +913,7 @@ public sealed partial class PowerLogStateEngine
 
     private void ClearGame()
     {
+        _publicHandMemory.Reset();
         _entities.Clear(); _warnings.Clear();
         ClearTurnHistory();
         _choices.Clear(); _currentChoice = null; _readingChosen = false; _recentEvents.Clear();

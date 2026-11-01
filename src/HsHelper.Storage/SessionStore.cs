@@ -470,6 +470,9 @@ public sealed class SessionStore
                     throw new InvalidDataException("回合出牌历史缺少当时实体证据。");
                 foreach (var play in turn.Plays) ValidateEntity(play.AtPlay);
             }
+        if (snapshot.PublicHandMemory is { } memory && (memory.Entries.Any(entry => entry is null) ||
+            memory.Warnings.Any(warning => warning is null)))
+            throw new InvalidDataException("公开手牌记忆缺少必要记录。");
         if (inspectEntities) foreach (var entity in snapshot.Entities.Values) ValidateEntity(entity);
     }
 

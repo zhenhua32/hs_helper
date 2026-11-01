@@ -25,10 +25,11 @@
   </Window.Resources>
   <Border x:Name="ContentRoot" Background="#E81A2B21" BorderBrush="#AF6F9277" BorderThickness="1"
           CornerRadius="10" Padding="12" ClipToBounds="True">
-    <Grid>
+    <ScrollViewer x:Name="OverlayContentScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <Grid MinHeight="580" Height="{Binding ViewportHeight, ElementName=OverlayContentScroll}">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-        <RowDefinition Height="2*"/><RowDefinition Height="3*"/><RowDefinition Height="2*"/>
+        <RowDefinition Height="2*" MinHeight="60"/><RowDefinition Height="3*" MinHeight="80"/><RowDefinition Height="2*" MinHeight="60"/><RowDefinition Height="2*" MinHeight="95"/>
         <RowDefinition Height="Auto"/>
       </Grid.RowDefinitions>
       <Grid Background="Transparent" MouseLeftButtonDown="HeaderMouseDown" Margin="0,0,0,7">
@@ -37,7 +38,7 @@
         <Button Grid.Column="1" Content="设置" Click="SettingsClicked" Padding="8,3" Margin="6,0,0,0"
                 Background="#365442" Foreground="White" BorderBrush="#6B8F75" ToolTip="位置、缩放和鼠标穿透"/>
       </Grid>
-      <TextBlock Grid.Row="1" x:Name="QualityText" Text="尚未连接日志" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,8"/>
+      <TextBlock Grid.Row="1" x:Name="QualityText" Text="尚未连接日志" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,8" MaxHeight="72" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
       <Border Grid.Row="2" Background="#703D5E46" Padding="8" CornerRadius="5" Margin="0,0,0,8">
         <TextBlock x:Name="AdviceText" Text="等待局面或 AI 建议。" TextWrapping="Wrap" MaxHeight="90" TextTrimming="CharacterEllipsis"/>
       </Border>
@@ -53,8 +54,14 @@
         <TextBlock DockPanel.Dock="Top" x:Name="OpponentHeader" Text="对手已出牌" Style="{StaticResource SectionTitle}"/>
         <ListBox x:Name="OpponentList"/>
       </DockPanel>
-      <TextBlock Grid.Row="6" x:Name="InteractionText" Text="拖动标题移动 · 设置中调整缩放与穿透"
+      <DockPanel Grid.Row="6" Margin="0,0,0,5">
+        <TextBlock DockPanel.Dock="Top" Text="对手公开手牌记忆" Style="{StaticResource SectionTitle}"/>
+        <TextBlock DockPanel.Dock="Top" x:Name="OpponentMemoryStatusText" TextWrapping="Wrap" FontSize="10" MaxHeight="44" TextTrimming="CharacterEllipsis"/>
+        <ListBox x:Name="OpponentMemoryList" ScrollViewer.CanContentScroll="False" ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+      </DockPanel>
+      <TextBlock Grid.Row="7" x:Name="InteractionText" Text="拖动标题移动 · 设置中调整缩放与穿透"
                  Foreground="#9EB5A4" TextWrapping="Wrap" FontSize="10" Margin="0,5,12,0"/>
     </Grid>
+    </ScrollViewer>
   </Border>
 </Window>

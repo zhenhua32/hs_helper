@@ -386,6 +386,7 @@ public partial class MainWindow : Window
         var configurationRevision = _configurationRevision;
         var history = _historyContext;
         var snapshot = history?.Snapshot ?? _liveFrame ?? _engine.Snapshot();
+        var handMemory = PublicHandMemoryVisibility.Confirmed(AttachmentVisibility.Project(snapshot));
         var importedDeck = AnalysisDeck;
         var requestStartedAt = DateTimeOffset.UtcNow;
         var userQuestion = string.IsNullOrWhiteSpace(QuestionBox.Text) ? null : QuestionBox.Text.Trim();
@@ -410,6 +411,9 @@ public partial class MainWindow : Window
         bool IsCurrent() => revision == _revision && configurationRevision == _configurationRevision && historyRevision == _historyRevision && ReferenceEquals(history, _historyContext)
             && (history?.CardBuild ?? SessionBuildBox.Text.Trim()) == requestedBuild && ReferenceEquals(importedDeck, AnalysisDeck)
             && DisplaySnapshot.MatchId == snapshot.MatchId && DisplaySnapshot.StateVersion == snapshot.StateVersion
+            && DisplaySnapshot.EventSequence == snapshot.EventSequence && DisplaySnapshot.LocalPlayerId == snapshot.LocalPlayerId
+            && DisplaySnapshot.PerspectiveSource == snapshot.PerspectiveSource && DisplaySnapshot.IsSpectating == snapshot.IsSpectating
+            && PublicHandMemoryPresentation.SameEvidence(DisplaySnapshot, handMemory)
             && ReferenceEquals(_analysis, cancellation) && CurrentAccess.CanAnalyze && CurrentAccess.Kind == access.Kind;
         _analysis = cancellation;
         AnalyzeButton.IsEnabled = false;
@@ -423,7 +427,8 @@ public partial class MainWindow : Window
             var related = new Dictionary<string, CardRecord>();
             if (pinnedManifest is not null)
                 foreach (var card in await _catalog.GetByIdsBatchedAsync(AttachmentVisibility.Project(snapshot).Entities.Values.Select(e => e.CardId).OfType<string>()
-                    .Concat(snapshot.Choice?.Options.Select(o => o.CardId).OfType<string>() ?? []).Distinct(), requestedBuild, cancellationToken: cancellation.Token))
+                    .Concat(snapshot.Choice?.Options.Select(o => o.CardId).OfType<string>() ?? [])
+                    .Concat(PublicHandMemoryPresentation.CardIds(snapshot, requestedBuild)).Distinct(), requestedBuild, cancellationToken: cancellation.Token))
                     related[card.Id] = card;
             if (importedDeck is not null)
             {

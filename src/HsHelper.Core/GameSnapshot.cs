@@ -127,6 +127,8 @@ public sealed record GameSnapshot(
     public string? GameType { get; init; }
     public DeckTrackingSnapshot? DeckTracking { get; init; }
     public PublicPlayTrackingSnapshot? PublicPlays { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicHandMemorySnapshot? PublicHandMemory { get; init; }
     public string PerspectiveSource { get; init; } = "unconfirmed";
     public bool IsSpectating { get; init; }
     public int? FirstPlayerId

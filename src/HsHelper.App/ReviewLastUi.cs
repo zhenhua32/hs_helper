@@ -81,7 +81,8 @@ public partial class MainWindow
                 if (manifest is not null)
                 {
                     if (!Current()) return;
-                    names = (await _catalog.GetByIdsBatchedAsync(AttachmentVisibility.Project(frame).Entities.Values.Select(entity => entity.CardId).OfType<string>().Distinct(), build, cancellationToken: token))
+                    names = (await _catalog.GetByIdsBatchedAsync(AttachmentVisibility.Project(frame).Entities.Values.Select(entity => entity.CardId).OfType<string>()
+                        .Concat(PublicHandMemoryPresentation.CardIds(frame, build)).Distinct(), build, cancellationToken: token))
                         .ToDictionary(card => card.Id, card => card.Name);
                 }
                 if (!Current()) return;

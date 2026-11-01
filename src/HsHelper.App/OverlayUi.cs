@@ -75,23 +75,26 @@ public partial class MainWindow
         var history = _historyContext;
         var token = _source.Token;
         var readCompleted = _aggregatedCardReadCompleted;
+        var handMemory = PublicHandMemoryVisibility.Confirmed(AttachmentVisibility.Project(state));
         bool Current() => !_closing && !token.IsCancellationRequested && revision == _overlayRevision &&
             ReferenceEquals(_overlay, overlay) && (!requireVisible || overlay.IsVisible) &&
             ReferenceEquals(history, _historyContext) && DisplaySnapshot.MatchId == state.MatchId &&
             DisplaySnapshot.StateVersion == state.StateVersion && DisplaySnapshot.EventSequence == state.EventSequence &&
             DisplaySnapshot.LocalPlayerId == state.LocalPlayerId &&
+            DisplaySnapshot.PerspectiveSource == state.PerspectiveSource && DisplaySnapshot.IsSpectating == state.IsSpectating &&
+            PublicHandMemoryPresentation.SameEvidence(DisplaySnapshot, handMemory) &&
             (_historyContext?.CardBuild ?? DisplaySnapshot.ClientBuild ?? SessionBuildBox.Text.Trim()) == build;
         try
         {
             var visible = AttachmentVisibility.Project(state);
-            var ids = visible.Entities.Values.Select(e => e.CardId).OfType<string>()
-                .Concat(state.DeckTracking?.KnownRemaining.Keys ?? [])
-                .Concat(state.PublicPlays?.Plays.Select(p => p.CardId).OfType<string>() ?? []).Distinct().ToArray();
+            var ids = BattleViewBuilder.VisibleCardIds(visible, build);
             var cards = string.IsNullOrWhiteSpace(build) ? [] : await _catalog.GetByIdsBatchedAsync(ids, build, cancellationToken: token);
             if (readCompleted is not null) await readCompleted("overlay", state, build, token);
             if (!Current()) return;
             var names = cards.ToDictionary(c => c.Id, c => c.Name);
             string Name(string? id) => id is null ? "未知卡牌" : names.GetValueOrDefault(id, id);
+            var memory = PublicHandMemoryPresentation.Create(visible, id => PublicHandMemoryPresentation.HasMatchingBuild(visible, build)
+                ? Name(id) : "卡名版本未确认（" + id + "）");
             var hand = visible.Entities.Values.Where(e => state.LocalPlayerId is not null && e.ControllerId == state.LocalPlayerId && e.Zone == "HAND")
                 .OrderBy(e => e.ZonePosition).Select(e => $"({e.Cost?.ToString() ?? "?"}) {Name(e.CardId)}");
             var remaining = new List<string>();
@@ -109,7 +112,8 @@ public partial class MainWindow
                 hand, remaining, plays, _overlayAdvice,
                 $"{(state.Quality.IsStable ? "稳定" : "结算中")} · {(state.Quality.IsComplete ? "记录完整" : "记录有缺口")}\n" +
                     CurrentAccess.Reason + "\n" + string.Join("；", state.Quality.Warnings),
-                state.Quality.IsComplete, state.Quality.IsStable));
+                state.Quality.IsComplete, state.Quality.IsStable,
+                memory.Entries.Select(entry => entry.DisplayText), memory.Status));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception) when (!Current()) { }

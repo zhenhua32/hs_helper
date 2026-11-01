@@ -90,6 +90,9 @@ public partial class OverlayWindow : Window
         RemainingList.ItemsSource = state.Remaining.Count == 0 ? new[] { "等待确认套牌与完整记录" } : state.Remaining;
         OpponentHeader.Text = "对手已出牌";
         OpponentList.ItemsSource = state.OpponentPlayed.Count == 0 ? new[] { "尚无公开出牌记录" } : state.OpponentPlayed;
+        OpponentMemoryStatusText.Text = state.OpponentHandMemoryStatus;
+        OpponentMemoryStatusText.ToolTip = state.OpponentHandMemoryStatus;
+        OpponentMemoryList.ItemsSource = state.OpponentHandMemory;
         AdviceText.Text = string.IsNullOrWhiteSpace(state.Advice) ? "等待 AI 建议。" : state.Advice;
         AdviceText.ToolTip = state.Advice;
         QualityText.Text = state.Quality;
