@@ -60,7 +60,7 @@ internal static class AssembledScriptCoachChecks
                 "The policy promoted an execution projection into observed game history or generated eligibility.");
         }
         foreach (var task in new[] { AdviceTaskKind.Review, AdviceTaskKind.Mulligan, AdviceTaskKind.DeckPlan })
-            Check(AdviceTaskTemplates.Get(task).Version == "hunter-v7/" + task.ToString().ToLowerInvariant(), "An unchanged policy lost its historical template binding.");
+            Check(AdviceTaskTemplates.Get(task).Version == (task == AdviceTaskKind.DeckPlan ? "hunter-v8/" : "hunter-v7/") + task.ToString().ToLowerInvariant(), "A task policy lost its current template binding.");
         var tool = SnapshotCoach.Definitions.Single(d => d.Name == "evaluate_line");
         foreach (var key in new[] { "first_half_dbf_id", "second_half_dbf_id", "trigger_count", "attack", "health", "script_key", "donor_card_id" })
         {

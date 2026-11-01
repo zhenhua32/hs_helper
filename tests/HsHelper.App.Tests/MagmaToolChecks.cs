@@ -101,7 +101,7 @@ public static class MagmaToolChecks
                 "The current policy omitted magma uncertainty or replaced existing choice lifecycle constraints.");
         }
         foreach (var task in new[] { AdviceTaskKind.Mulligan, AdviceTaskKind.Review, AdviceTaskKind.DeckPlan })
-            Check(AdviceTaskTemplates.Get(task).Version.StartsWith("hunter-v7/", StringComparison.Ordinal) &&
+            Check(AdviceTaskTemplates.Get(task).Version.StartsWith(task == AdviceTaskKind.DeckPlan ? "hunter-v8/" : "hunter-v7/", StringComparison.Ordinal) &&
                 !AdviceTaskTemplates.Get(task).Instructions.Contains("evaluate_magma_split", StringComparison.Ordinal),
                 "Magma policy changed an unrelated task template.");
     }

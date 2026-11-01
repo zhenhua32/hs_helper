@@ -76,6 +76,17 @@ internal static class LargeCardUiChecks
             AssertContext(handler.Requests.Last(), 1001);
             Check(handler.Requests.Count == 2 && Await(archive.ListAsync()).Count == 2,
                 "The actual deck-plan DBF aggregation did not reach fake HTTP and durable archive.");
+            var planningContext = JsonNode.Parse(handler.Requests.Last()["messages"]!.AsArray()
+                .Last(node => node?["role"]?.ToString() == "user")!["content"]!.GetValue<string>())!["Snapshot"]!;
+            var construction = planningContext["deck_construction"]!;
+            var imported = planningContext["imported_deck"]!;
+            Check(construction["legality"]?.ToString() == "Unknown" && construction["input_limit_reached"]?.GetValue<bool>() == true &&
+                construction["maximum_checked_entries"]?.GetValue<int>() == 500 && construction["special_main_deck_size"] is null &&
+                construction["issues"]!.AsArray().Any(issue => issue?.ToString().Contains("超过500项构筑检查上限", StringComparison.Ordinal) == true) &&
+                imported["cards"]!.AsArray() is [{ } main] && main["dbf_id"]?.GetValue<int>() == 900000 && main["count"]?.GetValue<int>() == 1 &&
+                imported["sideboards"]!.AsArray() is [{ } board] && board["cards"]!.AsArray().Count == 1000 &&
+                board["cards"]!.AsArray().Last()?["dbf_id"]?.GetValue<int>() == 901000,
+                "The large deck plan hid its construction limit, claimed a known size, or truncated the actual imported deck.");
             Pass("actual snapshot and deck-plan analysis resolve 1001 catalog references at the pinned build before fake HTTP and archive");
 
             foreach (var kind in new[] { "battle", "overlay" })

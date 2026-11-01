@@ -180,6 +180,8 @@ static async Task<int> MainAsync(string[] args)
                 var context = CompactAdviceContextBuilder.Create(snapshot, build, taskKind, deck?.Definition, relevantCards.Values)
                     with { UserQuestion = Option("question") ?? Option("task"), DeckVersionId = deckVersionId,
                         AsOf = requestStartedAt, KnowledgeAsOf = historical?.Point.RecordedAt };
+                if (taskKind == AdviceTaskKind.DeckPlan && deck is not null)
+                    context = await DeckConstructionContext.AttachAsync(context, catalog, deck.Definition);
                 if (historical is not null)
                     context = await ConversationHistoryBuilder.AttachAsync(context, archive, deckVersionId, requestStartedAt);
                 CoachLibraryContext? library = historical is null ? null : new(sessions, knowledge,

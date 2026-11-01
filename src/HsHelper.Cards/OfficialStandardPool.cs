@@ -16,6 +16,7 @@ public static class OfficialStandardPool
         var ids = new List<string>();
         var counts = new Dictionary<int, int>();
         var constructionDefinitions = new Dictionary<string, IReadOnlyDictionary<string, string?>>(StringComparer.Ordinal);
+        var mainDeckDefinitions = new Dictionary<string, XElement>(StringComparer.Ordinal);
         using var reader = XmlReader.Create(cardDefinitions, new XmlReaderSettings
         { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = 64 * 1024 * 1024 });
         reader.MoveToContent();
@@ -27,6 +28,8 @@ public static class OfficialStandardPool
             using var subtree = reader.ReadSubtree();
             var entity = XElement.Load(subtree);
             var cardId = entity.Attribute("CardID")?.Value;
+            if (cardId is "JAIL_430" or "REV_018")
+                if (!mainDeckDefinitions.TryAdd(cardId, entity)) throw new InvalidDataException("主牌张数证据中的卡牌定义重复。");
             var tags = entity.Elements("Tag").Where(t => t.Attribute("name") is not null)
                 .GroupBy(t => t.Attribute("name")!.Value, StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g => g.Last().Attribute("value")?.Value, StringComparer.Ordinal);
@@ -51,7 +54,7 @@ public static class OfficialStandardPool
             $"https://hearthstone.blizzard.com/en-gb/cards/ ; https://api.hearthstonejson.com/v1/{build}/CardDefs.base.xml",
             [], ids.OrderBy(x => x, StringComparer.Ordinal).ToArray(), [], [], false,
             "官方页面明确列出的标准系列与固定build收藏卡计数一致。只确认系列成员；来源未包含完整禁用、单卡上线或国服特殊规则，合法性保持Unknown。图片和池成员不作为完整构筑合法性证明。")
-        { Construction = ReviewedConstructionRules.Create(build, utc, utc.AddDays(7), constructionDefinitions) };
+        { Construction = ReviewedConstructionRules.Create(build, utc, utc.AddDays(7), constructionDefinitions, mainDeckDefinitions) };
     }
 
     private static Dictionary<int, int> ReadOfficialSets(string html)

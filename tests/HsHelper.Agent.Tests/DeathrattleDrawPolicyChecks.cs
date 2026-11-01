@@ -44,7 +44,7 @@ internal static class DeathrattleDrawPolicyChecks
                 policy.Instructions.Contains("不能据此认证完整结算或已验证斩杀", StringComparison.Ordinal),
                 "A task presented a conditional deathrattle count as an observed death, empty hand slot or executable followup.");
         }
-        Check(AdviceTaskTemplates.Version == "hunter-v7" && new[] { AdviceTaskKind.Mulligan, AdviceTaskKind.Review, AdviceTaskKind.DeckPlan }
+        Check(AdviceTaskTemplates.Version == "hunter-v7" && AdviceTaskTemplates.Get(AdviceTaskKind.DeckPlan).Version == "hunter-v8/deckplan" && new[] { AdviceTaskKind.Mulligan, AdviceTaskKind.Review }
             .All(kind => AdviceTaskTemplates.Get(kind).Version == "hunter-v7/" + kind.ToString().ToLowerInvariant()),
             "The shared public-hand-memory policy lost its base task version.");
     }

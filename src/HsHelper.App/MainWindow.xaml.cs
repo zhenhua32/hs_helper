@@ -317,6 +317,7 @@ public partial class MainWindow : Window
     {
         if (_closing) return;
         var revision = ++_catalogRefreshRevision;
+        CancelDeckDescription("卡库正在切换，主牌构筑张数要求尚未确认…");
         try
         {
             CancelCardBrowsing();
@@ -328,6 +329,8 @@ public partial class MainWindow : Window
             await RefreshPoolStatusAsync();
             if (_closing || revision != _catalogRefreshRevision) return;
             await SearchCardsAsync();
+            if (_closing || revision != _catalogRefreshRevision) return;
+            await RefreshDeckDescriptionAsync();
         }
         catch (Exception) when (_closing || revision != _catalogRefreshRevision) { }
     }
@@ -355,6 +358,7 @@ public partial class MainWindow : Window
     private async void DecodeClicked(object sender, RoutedEventArgs e) => await Run(async () =>
     {
         var parsed = DeckCode.Decode(DeckBox.Text);
+        CancelDeckDescription("新牌码正在解析，主牌构筑张数要求尚未确认…");
         if (_capture is not null || _timer.IsEnabled) await StopRecordingAsync();
         _selectedDeckVersion = null;
         _loadingDecks = true;

@@ -112,7 +112,18 @@
         </Grid>
       </TabItem>
       <TabItem Header="套牌">
-        <Grid Margin="16"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="160"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><TextBlock Text="粘贴游戏导出的套牌代码。保存为不可变版本后，在对局页选择实际使用的套牌。" Margin="0,0,0,10"/><TextBox Grid.Row="1" x:Name="DeckBox" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/><StackPanel Grid.Row="2"><WrapPanel><TextBox x:Name="DeckNameBox" Text="野兽快" Width="140"/><Button Content="解析牌码" Click="DecodeClicked"/><Button Content="保存到套牌库" Click="SaveDeckToLibraryClicked"/><Button x:Name="ExportDeckJsonButton" Content="导出套牌JSON" Click="SaveDeckClicked"/><Button x:Name="ExportDeckCodeButton" Content="导出牌码文本" Click="ExportDeckCodeClicked"/></WrapPanel><TextBlock x:Name="DeckExportStatusText" Text="JSON 保留匹配的已保存版本及原名称；修改牌码后按未保存草稿导出。" TextWrapping="Wrap" Margin="0,4,0,8"/></StackPanel><TextBox Grid.Row="3" x:Name="DeckResultBox" IsReadOnly="True" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/></Grid>
+        <ScrollViewer x:Name="DeckDescriptionScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False">
+          <Grid Margin="16">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="160"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <TextBlock Text="粘贴游戏导出的套牌代码。保存为不可变版本后，在对局页选择实际使用的套牌。" TextWrapping="Wrap" Margin="0,0,0,10"/>
+            <TextBox Grid.Row="1" x:Name="DeckBox" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+            <StackPanel Grid.Row="2">
+              <WrapPanel><TextBox x:Name="DeckNameBox" Text="野兽快" Width="140"/><Button Content="解析牌码" Click="DecodeClicked"/><Button Content="保存到套牌库" Click="SaveDeckToLibraryClicked"/><Button x:Name="ExportDeckJsonButton" Content="导出套牌JSON" Click="SaveDeckClicked"/><Button x:Name="ExportDeckCodeButton" Content="导出牌码文本" Click="ExportDeckCodeClicked"/></WrapPanel>
+              <TextBlock x:Name="DeckExportStatusText" Text="JSON 保留匹配的已保存版本及原名称；修改牌码后按未保存草稿导出。" TextWrapping="Wrap" Margin="0,4,0,8"/>
+            </StackPanel>
+            <TextBox Grid.Row="3" x:Name="DeckResultBox" Height="240" IsReadOnly="True" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+          </Grid>
+        </ScrollViewer>
       </TabItem>
       <TabItem x:Name="KnowledgeTab" Header="计划与笔记">
         <Grid Margin="16">

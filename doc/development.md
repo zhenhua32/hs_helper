@@ -480,3 +480,19 @@ Core177＋Storage122原整套另过299，唯一88721退出0，收据`.local/pack
 桌面原终态的旧smoke字节摘要错误为0，同目录独立只读`post-run-readonly-addendum.json`实际累加纠正为422文件、37,623,598字节，逐项长度／SHA及独立旧25／26整树均再次核对；原收据未覆盖、237未重跑。原fullclean终态先于七份文档写入，随后修改的新docs-aware driver未执行；原执行脚本哈希未预存，补充记录明确不以当前脚本哈希冒充原始证据。
 
 439个双包／ZIP／旁文件共225,600,152字节在检查前后集合、长度、SHA不变，旧26整个发行／桌面／Core-Storage／Rules及全部发布前缀1022项、307,611,034字节不变；旧25原1016项、337,521,011字节再次Verify通过。包代码使用本机Core10.0.0，WPF另Desktop10.0.0，SC10.0.14入口另由正式headless验证；不重编产品、不重复执行同字节FW，不等于真实客户端、多屏／DPI或干净Windows验收。未调用真实模型、操作游戏或上传，App ZIP不附CLI。后续七份发行文档更新不改变已发布产品／测试／构建／指南正文／样本输入，具体文件与范围见[Windows发行说明](windows-release.md#当前版本preview27)。
+
+## 主牌张数构筑规则与赛前背景
+
+preview27之后的源码接入固定build255790的`JAIL_430/126055`20张和`REV_018/79767`40张主牌要求。旧preview27实际Cards DLL在完整合成卡池中把各自30张主牌判Legal的五条隔离复现保留在`.local/special-construction-audit/baseline-run.log`；实际DLL SHA为`3d59078767760a0dcfd9c1a4acebe33e43fbc94d907bcd9873c9272da72cd52f`，不声称该合成卡池代表实服标准上线。固定JSON和完整CardDefs记录、父子有效期、模式、build与Record一致性共同授权新规则，原普通同名牌、职业、古神组及边栏约束分别保留。未知身份、两规则冲突、未审替换与额外构筑字段不选有利要求。卡库无损升schema4，旧JSON/hash/活动卡库不重写；详见[主牌张数合同](main-deck-size-contract.md)。
+
+桌面显示提交的主牌张数、要求、来源及整体构筑合法性，保存／切换沿原build；规则变化后重评，迟到成功／异常或关闭不能回写旧结果。真实640×460布局最初发现结果高度为0，已把套牌页改为可滚动内容与240高结果，保留全部按钮、费用曲线与末行；实际截图分别检查张数、整体合法性和末行。新隐藏WPF四组贯通真实Decode／选择器、20／40／普通30、partial／冲突、假HTTP和SQLite归档；它们包含在App115顶层内，不另累计成119。
+
+`DeckConstructionContext`冻结同一原套牌、build与查询时点，桌面和CLI的已绑定赛前任务共用`deck_construction`，将已知张数与整体Unknown分别投影。DeckPlan单独升`hunter-v8/deckplan`；Turn／Choice仍v25，Review／Mulligan仍v7，旧归档模板不改。超出既有500项构筑检查上限时明确Unknown及限制，1001份卡牌资料和完整参考套牌继续用于策略分析，不通过截断、自动加减牌或放宽检查来制造Legal。
+
+实际CLI的保存点反控又发现同毫秒未来规则提前抢选：原JSON保留tick精度，SQL却只按毫秒筛选且直接取首条。现流式核对最新适用毫秒组的原始生效时点，跳过未来项并按真实时间选取；精确同刻保留既有导入／RuleId顺序，最新已生效规则过期仍不复活旧规则。Cards四组及实际CLI的complete／partial双向一tick反控验证未来证据不能改变原保存点的合法性或来源；不把改成一分钟的较弱检查当作修复。
+
+首轮全量50765真实退出1，构建零警告／错误、前七套通过；App113/115的两红分别为旧Magma策略测试仍要求DeckPlan v7，以及新构筑查询在1001项参考套牌中抛出既有500项上限。29项冻结输入在终态后另核一致，原日志`.local/verify-main-deck-size-final1.log`和`.local/main-deck-size-final1-result.json`保留。仅更新当前DeckPlan断言并补超限Unknown与完整资料正控，再接CLI并修精确时窗；最终使用全新产物进行完整验证，不复用首轮绿色结果覆盖后续源码。所有检查使用公开固定样本、合成日志、假HTTP与隔离隐藏WPF，没有真实模型或对局验收；旧preview27包保持原样，本轮尚未打包。
+
+第二轮97725全1521项及27指南通过，独立审查随后发现保存版本build未知时，赛前入口仍借用活动卡库。现与套牌页一致保留未知，不加载其他build资料或授权20／40要求；同一隐藏WPF组新增真实未知版本保存→激活255790→实际HTTP／归档的反控，原牌码／版本／build保持不变。第二轮日志和34项输入保留为修复前记录，没有把其绿色结果当作最后补丁的验证。
+
+最终`./scripts/verify.ps1 -ArtifactsPath .local/build-main-deck-size-final3`通过1521项完整回归：Core177、Ingestion9、Cards60、Agent127、Configuration37、Storage122、Rules618、App115、Integration256，另27项指南检查。唯一1574真实退出0，构建零警告／错误，18份项目assets均为默认NuGetAudit true/all/low；34项冻结源码／测试哈希在验证前后完全一致。日志`.local/verify-main-deck-size-final3.log`、冻结清单`.local/main-deck-size-final3-frozen-inputs.json`及汇总`.local/main-deck-size-final-verification.json`保留证据。新增15组Cards、5组Agent、8组Integration，App115内含新增四个隐藏组，完整覆盖本轮最终时点／来源／上限与布局修复。

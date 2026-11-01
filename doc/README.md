@@ -16,6 +16,7 @@
 | [2026-10-30 验证记录](verification-2026-10-30.md) | 350 项回归、选择后果/回合末、构筑与隐私边界及 preview.5 发行补验 |
 | [Windows 发行与快速启动](windows-release.md) | 自包含预览包、运行依赖、ZIP 校验和诊断边界 |
 | [野兽快牌效覆盖](hunter-rule-coverage.md) | 17 种主牌和 3 张边栏的确定性覆盖、条件与未实现效果 |
+| [主牌构筑张数](main-deck-size-contract.md) | 固定20／40张规则、版本证据、整体合法性与赛前背景 |
 | [战吼逐次结算范围](battlecry-repeat-contract.md) | 已观察粗暴唤醒的次数证据、逐轮效果及首个未知结果边界 |
 | [亡语逐次结算范围](deathrattle-repeat-contract.md) | 一次模拟死亡、倍率与效果来源、同批边界及完整后续路线 |
 

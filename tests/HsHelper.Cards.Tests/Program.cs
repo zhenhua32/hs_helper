@@ -244,6 +244,8 @@ try
         Equal(CardLegality.Unknown, (await catalog.DescribeDeckAsync(deck with { Cards = Enumerable.Range(0, 20).Select(i => new DeckCard(100 + i, 2)).ToArray() }, "703")).Legality);
     });
     await ConstructionChecks.RunAsync(taskRoot, Run);
+    await MainDeckSizeChecks.RunAsync(taskRoot, Run);
+    await PoolRuleTimeChecks.RunAsync(taskRoot, Run);
     await AssembledCardTextChecks.RunAsync(Run);
     await CardBatchChecks.RunAsync(taskRoot, Run);
     await Run("image cache uses verified source and reuses validated PNG offline", async () =>

@@ -97,13 +97,13 @@ internal static class ConstructionChecks
             var previousHash = await Scalar("SELECT sha256 FROM card_pool_rules WHERE rule_id='migration-legacy'");
             var previousJson = await Scalar("SELECT json FROM card_pool_rules WHERE rule_id='migration-legacy'");
             Check(!((string)previousJson!).Contains("Construction", StringComparison.Ordinal), "Legacy fixture contains post-v2 semantics.");
-            // v2 and v3 have the same tables; v3 marks that construction evidence must be understood.
+            // These versions share tables; v4 requires understanding main-deck-size evidence.
             await Scalar("PRAGMA user_version=2");
             var reopened = new CardCatalog(database);
             await Reject(() => Import(reopened, Rules("migration-rejected-before-initialize")));
             Check(Convert.ToInt64(await Scalar("PRAGMA user_version")) == 2, "Import silently wrote new semantics into a v2 database.");
             await reopened.InitializeAsync();
-            Check(Convert.ToInt64(await Scalar("PRAGMA user_version")) == 3, "Old card schema was not upgraded.");
+            Check(Convert.ToInt64(await Scalar("PRAGMA user_version")) == 4, "Old card schema was not upgraded.");
             Check(await reopened.GetActiveManifestAsync() == manifest &&
                 (await reopened.GetByIdsAsync(["JAIL_831"], Build)).Single().DbfId == King,
                 "Migration changed the active manifest or lost legacy card data.");
@@ -114,9 +114,9 @@ internal static class ConstructionChecks
             await Import(reopened, Rules("migration-reviewed"));
             Check((await reopened.GetPoolRulesAsync(Build, at: Now))!.Construction is not null, "Migrated schema could not persist construction evidence.");
             var countBeforeFuture = await Scalar("SELECT COUNT(*) FROM cards");
-            await Scalar("PRAGMA user_version=4");
+            await Scalar("PRAGMA user_version=5");
             await Reject(() => new CardCatalog(database).InitializeAsync());
-            Check(Convert.ToInt64(await Scalar("PRAGMA user_version")) == 4 && Equals(await Scalar("SELECT COUNT(*) FROM cards"), countBeforeFuture),
+            Check(Convert.ToInt64(await Scalar("PRAGMA user_version")) == 5 && Equals(await Scalar("SELECT COUNT(*) FROM cards"), countBeforeFuture),
                 "An unsupported future schema was changed or erased while rejecting it.");
         });
         await run("explicit sideboard membership capacity copies and class waiver are enforced", async () =>

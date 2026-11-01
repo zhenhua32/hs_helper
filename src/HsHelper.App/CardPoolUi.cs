@@ -25,20 +25,24 @@ public partial class MainWindow
     private async void SyncPoolClicked(object sender, RoutedEventArgs e) => await CatalogOperation(async () =>
     {
         if (_manifest is null) throw new InvalidOperationException("请先同步卡库。");
+        CancelDeckDescription("规则正在同步，主牌构筑张数要求尚未确认…");
         StatusText.Text = "正在核对官方标准系列与固定 build 的卡牌定义…";
         var build = _manifest.Build;
         await Task.Run(() => _catalog.SyncStandardPoolAsync(_cardHttp, build));
         await RefreshPoolStatusAsync();
         await SearchCardsAsync();
+        await RefreshDeckDescriptionAsync();
         StatusText.Text = "标准系列池已同步。";
     });
     private async void ImportPoolClicked(object sender, RoutedEventArgs e) => await CatalogOperation(async () =>
     {
         var dialog = new OpenFileDialog { Filter = "版本化卡池规则JSON|*.json" };
         if (dialog.ShowDialog() != true) return;
+        CancelDeckDescription("规则正在导入，主牌构筑张数要求尚未确认…");
         using var input = File.OpenRead(dialog.FileName);
         await _catalog.ImportPoolRulesAsync(input);
         await RefreshPoolStatusAsync(); await SearchCardsAsync();
+        await RefreshDeckDescriptionAsync();
         StatusText.Text = "卡池规则已导入并保留历史版本。";
     });
     private async void CardSelected(object sender, SelectionChangedEventArgs e)

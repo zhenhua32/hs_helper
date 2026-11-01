@@ -25,8 +25,8 @@ public sealed partial class CardCatalog
             evidence.ValidUntil <= evidence.EffectiveFrom)
             throw new InvalidDataException("构筑证据的 build、模式和有效时间必须在父卡池范围内。");
         if (evidence.CardGroups is null || evidence.Sideboards is null ||
-            evidence.CardGroups.Count > 100 || evidence.Sideboards.Count > 100 ||
-            evidence.CardGroups.Count + evidence.Sideboards.Count == 0)
+            evidence.CardGroups.Count > 100 || evidence.Sideboards.Count > 100 || evidence.MainDeckSizes?.Count > 100 ||
+            evidence.CardGroups.Count + evidence.Sideboards.Count + (evidence.MainDeckSizes?.Count ?? 0) == 0)
             throw new InvalidDataException("构筑证据约束列表无效。");
         var groups = new List<DeckCardGroupLimit>();
         var groupIds = new HashSet<string>(StringComparer.Ordinal);
@@ -50,17 +50,32 @@ public sealed partial class CardCatalog
                 throw new InvalidDataException("构筑证据包含重复拥有者或冲突的边栏数量限制。");
             sideboards.Add(sideboard with { AllowedCardIds = Ids(sideboard.AllowedCardIds, !sideboard.AllowedCardsComplete) });
         }
+        var mainSizes = new List<DeckMainDeckSizeRule>();
+        var sizeOwners = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var rule in evidence.MainDeckSizes ?? [])
+        {
+            if (rule is null) throw new InvalidDataException("构筑证据不能包含空主牌张数规则。");
+            Label(rule.OwnerCardId, 200, "主牌张数规则拥有者");
+            if (!sizeOwners.Add(rule.OwnerCardId) || rule.RequiredCards is < 1 or > 1000 ||
+                parent.Build == "255790" && ReviewedMainDeckSizes.ExpectedCards(rule.OwnerCardId) is { } expected && rule.RequiredCards != expected)
+                throw new InvalidDataException("构筑证据包含重复拥有者、无效张数或与已审核固定规则冲突的主牌张数。");
+            mainSizes.Add(rule);
+        }
         return evidence with
         {
             EffectiveFrom = evidence.EffectiveFrom.ToUniversalTime(), ValidUntil = evidence.ValidUntil.ToUniversalTime(),
             CardGroups = Array.AsReadOnly(groups.OrderBy(g => g.GroupId, StringComparer.Ordinal).ToArray()),
-            Sideboards = Array.AsReadOnly(sideboards.OrderBy(s => s.OwnerCardId, StringComparer.Ordinal).ToArray())
+            Sideboards = Array.AsReadOnly(sideboards.OrderBy(s => s.OwnerCardId, StringComparer.Ordinal).ToArray()),
+            MainDeckSizes = evidence.MainDeckSizes is null ? null : Array.AsReadOnly(mainSizes.OrderBy(s => s.OwnerCardId, StringComparer.Ordinal).ToArray())
         };
     }
 
     private static bool NeedsUnmappedConstructionRule(CardRecord card, DeckConstructionEvidence? evidence)
     {
         using var raw = System.Text.Json.JsonDocument.Parse(card.RawJson);
+        var sizeRule = evidence?.MainDeckSizes?.SingleOrDefault(rule => rule.OwnerCardId == card.Id);
+        if (ReviewedMainDeckSizes.IsKnownModifier(card) || IsMainDeckSizeException(raw.RootElement, card.Text) || sizeRule is not null)
+            return sizeRule is null || !sizeRule.KeepsOrdinaryCopyLimits || !ReviewedMainDeckSizes.MatchesCard(evidence!.Build, card, sizeRule.RequiredCards);
         if (IsConstructionException(raw.RootElement, card.Text) &&
             evidence?.Sideboards.Any(rule => rule.OwnerCardId == card.Id && rule.KeepsOrdinaryMainDeckRules) != true)
             return true;
@@ -78,11 +93,14 @@ internal static class ReviewedConstructionRules
     internal static bool IsKnownOldGod(string id) => OldGods.Contains(id, StringComparer.Ordinal);
 
     internal static DeckConstructionEvidence? Create(string build, DateTimeOffset from, DateTimeOffset until,
-        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string?>> definitions)
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string?>> definitions,
+        IReadOnlyDictionary<string, System.Xml.Linq.XElement>? mainDeckDefinitions = null)
     {
         if (build != "255790") return null;
         var groups = new List<DeckCardGroupLimit>();
         var sideboards = new List<DeckSideboardRule>();
+        var mainSizes = (mainDeckDefinitions?.Values ?? []).Select(entity => ReviewedMainDeckSizes.FromDefinition(build, entity))
+            .Where(rule => rule is not null).Cast<DeckMainDeckSizeRule>().ToArray();
         if (OldGods.All(id => definitions.TryGetValue(id, out var tags) && tags.GetValueOrDefault("OLD_GOD") == "1"))
             groups.Add(new("old-gods", Array.AsReadOnly(OldGods.ToArray()), 1));
         if (definitions.TryGetValue("JAIL_831", out var owner) && owner.GetValueOrDefault("MAX_SIDEBOARD_CARDS") == "3" &&
@@ -90,9 +108,12 @@ internal static class ReviewedConstructionRules
             owner.GetValueOrDefault("SIDEBOARD_IGNORES_CLASS_RULE") == "1")
             // CardDefs identifies the subset but does not enumerate it. Capacity is proven; membership stays unknown.
             sideboards.Add(new("JAIL_831", 3, [], KeepsOrdinaryMainDeckRules: true, IgnoresHeroClass: true));
-        if (groups.Count + sideboards.Count == 0) return null;
+        if (groups.Count + sideboards.Count + mainSizes.Length == 0) return null;
         return new($"reviewed-construction-{build}-{from:yyyyMMddHHmmssfff}", build, 2, from, until,
             "https://hearthstone.blizzard.com/en-gb/news/24304163/reign-of-the-black-empire-is-now-live ; " +
-            $"https://api.hearthstonejson.com/v1/{build}/CardDefs.base.xml", groups.AsReadOnly(), sideboards.AsReadOnly());
+            $"https://api.hearthstonejson.com/v1/{build}/CardDefs.base.xml ; " +
+            "https://hearthstone.blizzard.com/en-gb/cards/126055-azalina-soulsever/ ; https://hearthstone.blizzard.com/en-us/cards/79767-prince-renathal/",
+            groups.AsReadOnly(), sideboards.AsReadOnly())
+            { MainDeckSizes = mainSizes.Length == 0 ? null : Array.AsReadOnly(mainSizes) };
     }
 }

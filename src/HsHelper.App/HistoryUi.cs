@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.IO;
 using System.Security.Cryptography;
-using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -110,7 +109,7 @@ public partial class MainWindow
             {
                 _selectedDeckVersion = seed; _deck = seed.Definition;
                 await LoadDeckLibraryAsync(seed.Id);
-                await DescribeDeckAsync(seed.Definition);
+                await DescribeDeckAsync(seed.Definition, seed.CardBuild);
             }
         }
         await RefreshHistoryAsync();
@@ -137,6 +136,7 @@ public partial class MainWindow
     private async void SaveDeckToLibraryClicked(object sender, RoutedEventArgs e) => await Run(async () =>
     {
         var deck = HsHelper.Cards.DeckCode.Decode(DeckBox.Text);
+        CancelDeckDescription("套牌版本正在保存，主牌构筑张数要求尚未确认…");
         if (_capture is not null || _timer.IsEnabled) await StopRecordingAsync();
         var version = await _store.SaveDeckVersionAsync(DeckNameBox.Text, deck, _manifest?.Build ?? "unknown",
             _selectedDeckVersion?.Name == DeckNameBox.Text.Trim() ? _selectedDeckVersion.Id : null);
@@ -145,12 +145,13 @@ public partial class MainWindow
         await LoadDeckLibraryAsync(version.Id);
         InvalidateAdvice();
         StatusText.Text = "套牌版本已保存，下一次开始监听或导入时固定绑定该版本。";
-        await DescribeDeckAsync(deck, version.CardBuild);
+        await DescribeDeckAsync(version.Definition, version.CardBuild);
     });
 
     private async void SavedDeckChanged(object sender, SelectionChangedEventArgs e) => await Run(async () =>
     {
         if (_loadingDecks || _store is null) return;
+        CancelDeckDescription("套牌版本正在切换，主牌构筑张数要求尚未确认…");
         if (_timer.IsEnabled) await StopRecordingAsync();
         _selectedDeckVersion = (SavedDeckBox.SelectedItem as DeckItem)?.Value;
         if (_selectedDeckVersion is { } version)
@@ -158,25 +159,9 @@ public partial class MainWindow
             _deck = version.Definition; DeckBox.Text = version.Code; DeckNameBox.Text = version.Name;
             await DescribeDeckAsync(version.Definition, version.CardBuild);
         }
+        else await RefreshDeckDescriptionAsync();
         InvalidateAdvice();
     });
-
-    private async Task DescribeDeckAsync(HsHelper.Cards.DeckDefinition deck, string? build = null)
-    {
-        build ??= _manifest?.Build;
-        if (build is null || build == "unknown") { DeckResultBox.Text = "套牌已解析，加载对应卡库后可显示名称和费用曲线。"; return; }
-        var description = await _catalog.DescribeDeckAsync(deck, build);
-        var text = new StringBuilder($"{description.HeroClass ?? "未知职业"} · 主牌 {deck.Cards.Sum(c => c.Count)} 张 · 构筑检查 {description.Legality}\n");
-        foreach (var card in description.Cards.OrderBy(c => c.Cost).ThenBy(c => c.Name)) text.AppendLine($"{card.Count}x ({card.Cost?.ToString() ?? "?"}) {card.Name}");
-        foreach (var sideboard in description.Sideboards)
-        {
-            text.AppendLine($"\n{sideboard.OwnerName} 的边栏：");
-            foreach (var card in sideboard.Cards) text.AppendLine($"  {card.Count}x ({card.Cost?.ToString() ?? "?"}) {card.Name}");
-        }
-        text.AppendLine("\n费用曲线：" + string.Join("  ", description.ManaCurve.Select(b => $"{b.Cost}费 {b.Count}张")));
-        foreach (var issue in description.Issues) text.AppendLine(issue);
-        DeckResultBox.Text = text.ToString();
-    }
 
     private PowerLogStateEngine NewEngine(string? identity = null) => new(SelectedPlayer, identity, autoDetectPerspective: PlayerBox.SelectedIndex == 0);
     private string SourceIdentity(string path)
@@ -217,6 +202,7 @@ public partial class MainWindow
         if (!TryLeaveKnowledgeEditor()) return;
         _closing = true;
         _catalogRefreshRevision++;
+        CancelDeckDescription();
         CancelCardBrowsing();
         try
         {

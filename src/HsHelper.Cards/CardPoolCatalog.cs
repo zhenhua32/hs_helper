@@ -25,7 +25,7 @@ public sealed partial class CardCatalog
             await using var schema = connection.CreateCommand();
             schema.Transaction = (Microsoft.Data.Sqlite.SqliteTransaction)transaction;
             schema.CommandText = "PRAGMA user_version";
-            if (Convert.ToInt64(await schema.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) != 3)
+            if (Convert.ToInt64(await schema.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) != 4)
                 throw new InvalidDataException("写入构筑证据前必须初始化当前版本卡库，避免旧程序忽略新规则。");
         }
         await using var existing = connection.CreateCommand();
@@ -75,15 +75,28 @@ public sealed partial class CardCatalog
         var instant = at ?? DateTimeOffset.UtcNow;
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT json FROM card_pool_rules WHERE build=$build AND format=$format AND effective_from <= $at ORDER BY effective_from DESC,imported_at DESC,rule_id DESC LIMIT 1";
+        // The indexed columns are milliseconds, while the immutable evidence JSON retains
+        // ticks. Read only the newest applicable millisecond group, skipping future entries
+        // in the query instant's group; their import order cannot change effective ordering.
+        command.CommandText = "SELECT effective_from,json FROM card_pool_rules WHERE build=$build AND format=$format AND effective_from <= $at ORDER BY effective_from DESC,imported_at DESC,rule_id DESC";
         command.Parameters.AddWithValue("$build", build);
         command.Parameters.AddWithValue("$format", format);
         command.Parameters.AddWithValue("$at", instant.ToUnixTimeMilliseconds());
-        var json = await command.ExecuteScalarAsync(cancellationToken) as string;
-        if (json is null) return null;
-        var rules = NormalizeRules(JsonSerializer.Deserialize<CardPoolRules>(json, RuleJson)!);
+        CardPoolRules? selected = null;
+        long? selectedMillisecond = null;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var millisecond = reader.GetInt64(0);
+            if (selectedMillisecond is { } found && millisecond < found) break;
+            var candidate = NormalizeRules(JsonSerializer.Deserialize<CardPoolRules>(reader.GetString(1), RuleJson)!);
+            if (candidate.EffectiveFrom > instant) continue;
+            if (selected is null || candidate.EffectiveFrom > selected.EffectiveFrom)
+            { selected = candidate; selectedMillisecond = millisecond; }
+            // Exact-time ties retain the existing imported_at / rule_id ordering from SQL.
+        }
         // A newer expired rule does not revive an older, superseded rule.
-        return instant >= rules.ValidUntil ? null : rules;
+        return selected is null || instant >= selected.ValidUntil ? null : selected;
     }
 
     public async Task<CardPoolRules> SyncStandardPoolAsync(HttpClient client, string build,
@@ -148,12 +161,17 @@ public sealed partial class CardCatalog
         var described = new List<DeckCardDescription>();
         var seen = new HashSet<int>();
         var hasConstructionExceptions = false;
+        var sizeSources = new List<DeckMainDeckSizeSource>();
+        var sizeUnknowns = new List<string>();
+        var sizeOwners = new HashSet<string>(StringComparer.Ordinal);
         foreach (var entry in deck.Cards)
         {
             if (entry.Count <= 0 || entry.DbfId <= 0 || !seen.Add(entry.DbfId))
             { illegal = true; issues.Add("主牌库包含无效数量、ID或重复条目。"); }
             if (!records.TryGetValue(entry.DbfId, out var card))
             {
+                if (entry.Count > 0)
+                { hasConstructionExceptions = true; sizeUnknowns.Add($"主牌 dbfId {entry.DbfId} 身份缺失，不能确认它是否另有构筑规则，整体主牌张数要求仍未知。"); }
                 unknown = true; issues.Add($"当前卡库缺少 dbfId {entry.DbfId}。");
                 described.Add(new(entry.DbfId, entry.Count, null, $"未知牌 {entry.DbfId}", null, "", "", CardLegality.Unknown));
                 continue;
@@ -162,6 +180,14 @@ public sealed partial class CardCatalog
             var rarity = Attribute(raw.RootElement, "rarity");
             var canOverride = NeedsUnmappedConstructionRule(card, construction);
             hasConstructionExceptions |= canOverride;
+            var sizeRule = construction?.MainDeckSizes?.SingleOrDefault(rule => rule.OwnerCardId == card.Id);
+            if (entry.Count > 0 && sizeOwners.Add(card.Id) &&
+                (ReviewedMainDeckSizes.IsKnownModifier(card) || IsMainDeckSizeException(raw.RootElement, card.Text) || sizeRule is not null))
+            {
+                if (sizeRule is not null && ReviewedMainDeckSizes.MatchesCard(build, card, sizeRule.RequiredCards))
+                    sizeSources.Add(new(card.Id, card.Name, sizeRule.RequiredCards, construction!.RuleId, construction.Source));
+                else sizeUnknowns.Add($"{card.Name} 缺少同 build、模式、有效时间和完整固定定义一致的已审核主牌张数规则。");
+            }
             var legality = EvaluateLegality(card, rules);
             described.Add(new(entry.DbfId, entry.Count, card.Id, card.Name, card.Cost, card.CardClass, rarity, legality));
             if (legality == CardLegality.Illegal) { illegal = true; issues.Add($"{card.Name} 不在有效卡池或被规则排除。"); }
@@ -173,9 +199,31 @@ public sealed partial class CardCatalog
             { illegal = true; issues.Add($"{card.Name} 的职业与英雄不符。"); }
         }
         var total = deck.Cards.Sum(c => (long)c.Count);
+        DeckMainDeckSizeOutcome? mainDeckSize = null;
+        var requiredSizes = sizeSources.Select(source => source.RequiredCards).Distinct().ToArray();
+        if (requiredSizes.Length > 1)
+        {
+            unknown = true;
+            sizeUnknowns.Add("套牌同时包含相互冲突的已审核主牌张数规则；未确认其组合优先级，不能任选一个张数判为合法。");
+        }
+        if (hasConstructionExceptions || requiredSizes.Length > 1)
+            sizeUnknowns.Add("仍有未审核的构筑例外或组合，已列单项证据不能证明整个套牌的主牌张数要求。");
+        var knownSize = requiredSizes.Length == 1 && !hasConstructionExceptions;
+        if (sizeSources.Count > 0 || sizeUnknowns.Count > 0 || hasConstructionExceptions)
+        {
+            mainDeckSize = new(total, knownSize ? requiredSizes[0] : null, knownSize,
+                knownSize ? total == requiredSizes[0] : null, Array.AsReadOnly(sizeSources.ToArray()),
+                Array.AsReadOnly(sizeUnknowns.Distinct(StringComparer.Ordinal).ToArray()));
+            issues.AddRange(mainDeckSize.Unknowns);
+        }
         if (hasConstructionExceptions)
         { unknown = true; issues.Add("套牌包含未审核的构筑例外，套牌张数和同名牌上限需专用规则确认。"); }
-        else
+        else if (requiredSizes.Length == 1)
+        {
+            if (total != requiredSizes[0])
+            { illegal = true; issues.Add($"已审核的主牌构筑要求为 {requiredSizes[0]} 张，当前 {total} 张（证据 {construction!.RuleId}）。"); }
+        }
+        else if (requiredSizes.Length == 0)
         {
             if (total != 30) { unknown = true; issues.Add($"普通构筑应为30张，当前{total}张；未识别的构筑例外需要核对。"); }
         }
@@ -258,7 +306,7 @@ public sealed partial class CardCatalog
             .OrderBy(g => g.Key).Select(g => new ManaCurveBucket(g.Key, g.Sum(c => c.Count))).ToArray();
         return new DeckDescription(deck.Format, heroClass, described.AsReadOnly(), Array.AsReadOnly(curve),
             illegal ? CardLegality.Illegal : unknown ? CardLegality.Unknown : CardLegality.Legal,
-            issues.Distinct(StringComparer.Ordinal).ToArray(), build, rules?.RuleId) { Sideboards = sideboards.AsReadOnly() };
+            issues.Distinct(StringComparer.Ordinal).ToArray(), build, rules?.RuleId) { Sideboards = sideboards.AsReadOnly(), MainDeckSize = mainDeckSize };
     }
 
     private static IReadOnlyList<ManaCurveBucket> Curve(IEnumerable<DeckCardDescription> cards) => Array.AsReadOnly(cards
@@ -269,9 +317,14 @@ public sealed partial class CardCatalog
     {
         if (raw.EnumerateObject().Any(p => p.Name.Contains("deckLimit", StringComparison.OrdinalIgnoreCase) ||
             p.Name.Contains("deckSize", StringComparison.OrdinalIgnoreCase) || p.Name.Contains("deckBuilding", StringComparison.OrdinalIgnoreCase))) return true;
-        return new[] { "your deck size", "your deck can", "you may include", "per deck", "套牌上限", "套牌大小", "牌组大小", "牌組大小", "每副套牌", "构筑", "構築" }
+        return IsMainDeckSizeException(raw, text) || new[] { "your deck size", "your deck can", "you may include", "per deck", "套牌上限", "套牌大小", "牌组大小", "牌組大小", "每副套牌", "构筑", "構築" }
             .Any(phrase => text.Contains(phrase, StringComparison.OrdinalIgnoreCase));
     }
+    private static bool IsMainDeckSizeException(JsonElement raw, string text) =>
+        raw.EnumerateObject().Any(property => property.Name.Contains("deckSize", StringComparison.OrdinalIgnoreCase) || property.Name.Contains("deckLimit", StringComparison.OrdinalIgnoreCase) ||
+            property.Name.Contains("deckBuilding", StringComparison.OrdinalIgnoreCase)) ||
+        new[] { "your deck size", "your deck is", "套牌容量", "套牌为", "套牌上限", "套牌大小", "牌组大小", "牌組大小" }
+            .Any(phrase => text.Contains(phrase, StringComparison.OrdinalIgnoreCase));
     private static string Attribute(JsonElement raw, string name) => raw.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()! : "";
 
     private static CardPoolRules NormalizeRules(CardPoolRules rules)

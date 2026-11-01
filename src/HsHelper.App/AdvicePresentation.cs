@@ -141,13 +141,14 @@ public partial class MainWindow
             (PlanFirstBox.SelectedIndex switch { 1 => (bool?)true, 2 => false, _ => null }) == first;
         try
         {
-            var build = deck.CardBuild == "unknown" ? _manifest?.Build ?? "unknown" : deck.CardBuild;
+            var build = string.IsNullOrWhiteSpace(deck.CardBuild) ? "unknown" : deck.CardBuild;
             var cards = build == "unknown" ? [] : await _catalog.GetByDbfIdsBatchedAsync(deck.Definition.Cards.Select(c => c.DbfId)
                 .Concat(deck.Definition.Sideboards.SelectMany(s => s.Cards.Select(c => c.DbfId))), build, cancellationToken: cancellation.Token);
             var snapshot = new GameSnapshot("deck-" + deck.Id, 0, 0, null, null, null, GamePhase.Unknown,
                 FrozenDictionary<int, EntitySnapshot>.Empty, new(false, false, true, false, 0, ["赛前套牌背景，不是实时局面。"]));
             var context = CompactAdviceContextBuilder.Create(snapshot, build, AdviceTaskKind.DeckPlan, deck.Definition, cards)
-                with { UserQuestion = userQuestion, KnowledgeAsOf = asOf };
+                with { UserQuestion = userQuestion, KnowledgeAsOf = asOf, DeckVersionId = deck.Id };
+            context = await DeckConstructionContext.AttachAsync(context, _catalog, deck.Definition, cancellation.Token);
             context = await ConversationHistoryBuilder.AttachAsync(context, _adviceArchive, deck.Id, asOf,
                 cancellationToken: cancellation.Token);
             context.Snapshot["planning_opponent_class"] = opponent;

@@ -32,7 +32,16 @@ public sealed record CardPoolRules(
 /// <summary>Reviewed constraints inherit no legality claims from pool membership; their own scope must match the parent rules.</summary>
 public sealed record DeckConstructionEvidence(string RuleId, string Build, int Format,
     DateTimeOffset EffectiveFrom, DateTimeOffset ValidUntil, string Source,
-    IReadOnlyList<DeckCardGroupLimit> CardGroups, IReadOnlyList<DeckSideboardRule> Sideboards);
+    IReadOnlyList<DeckCardGroupLimit> CardGroups, IReadOnlyList<DeckSideboardRule> Sideboards)
+{
+    // Null is kept absent when old evidence is reserialized, preserving its immutable hash.
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<DeckMainDeckSizeRule>? MainDeckSizes { get; init; }
+}
+public sealed record DeckMainDeckSizeRule(string OwnerCardId, int RequiredCards, bool KeepsOrdinaryCopyLimits = false);
+public sealed record DeckMainDeckSizeSource(string OwnerCardId, string OwnerName, int RequiredCards, string EvidenceId, string EvidenceSource);
+public sealed record DeckMainDeckSizeOutcome(long ActualCards, int? RequiredCards, bool IsKnown, bool? IsSatisfied,
+    IReadOnlyList<DeckMainDeckSizeSource> Sources, IReadOnlyList<string> Unknowns);
 public sealed record DeckCardGroupLimit(string GroupId, IReadOnlyList<string> CardIds, int MaximumCopies);
 public sealed record DeckSideboardRule(string OwnerCardId, int MaximumCards,
     IReadOnlyList<string> AllowedCardIds, bool AllowedCardsComplete = false,
@@ -49,6 +58,7 @@ public sealed record DeckDescription(int Format, string? HeroClass,
     CardLegality Legality, IReadOnlyList<string> Issues, string Build, string? RuleId)
 {
     public IReadOnlyList<DeckSideboardDescription> Sideboards { get; init; } = [];
+    public DeckMainDeckSizeOutcome? MainDeckSize { get; init; }
 }
 
 public sealed record DeckCard(int DbfId, int Count);
