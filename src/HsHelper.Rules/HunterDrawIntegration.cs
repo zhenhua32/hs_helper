@@ -20,7 +20,9 @@ public sealed partial class LineEvaluator
             if (evidence.Count.HasValue) foreach (var id in evidence.SourceEntityIds) _imbueCounterEntities.Add(id);
         }
 
-        private bool IsKnownImbueCounter(Entity entity, string tag) => tag == ImbueEvidence.CounterTag && _imbueCounterEntities.Contains(entity.Id);
+        private bool IsKnownImbueCounter(Entity entity, string tag) => tag == ImbueEvidence.CounterTag &&
+            (_imbueCounterEntities.Contains(entity.Id) || entity.Type == "PLAYER" && entity.Int("PLAYER_ID") is 1 or 2 &&
+                _snapshot.Entities.TryGetValue(entity.Id, out var original) && original.GetIntTag(ImbueEvidence.CounterTag) is >= 0);
 
         private void AdvanceImbueEvidence(int? controller)
         {

@@ -55,7 +55,7 @@ internal static class AssembledScriptCoachChecks
         foreach (var task in new[] { AdviceTaskKind.Turn, AdviceTaskKind.Choice })
         {
             var policy = AdviceTaskTemplates.Get(task);
-            Check(policy.Version == "hunter-v24/" + task.ToString().ToLowerInvariant() && policy.Instructions.Contains("AssembledEffects", StringComparison.Ordinal) &&
+            Check(policy.Version == "hunter-v25/" + task.ToString().ToLowerInvariant() && policy.Instructions.Contains("AssembledEffects", StringComparison.Ordinal) &&
                 policy.Instructions.Contains("不是对局中已发生的事实", StringComparison.Ordinal) && policy.Instructions.Contains("候选生成池", StringComparison.Ordinal),
                 "The policy promoted an execution projection into observed game history or generated eligibility.");
         }

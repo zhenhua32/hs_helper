@@ -685,6 +685,8 @@ foreach (var (name, run) in WeaponCombatChecks.Cases()) Run(name, run);
 foreach (var (name, run) in TerrorEndTurnResolutionChecks.Cases()) Run(name, run);
 foreach (var (name, run) in AssembledScriptAuditChecks.Cases()) Run(name, run);
 foreach (var (name, run) in AssembledRuntimeChecks.Cases()) Run(name, run);
+foreach (var (name, run) in DeathrattleMultiplicityChecks.Cases()) Run(name, run);
+foreach (var (name, run) in DeathrattleRuntimeChecks.Cases()) Run(name, run);
 foreach (var (name, run) in BattlecryMultiplicityChecks.Cases()) Run(name, run);
 foreach (var (name, run) in BattlecryRuntimeChecks.Cases()) Run(name, run);
 foreach (var (name, run) in TerrorEndTurnResolutionChecks.MultiCases()) Run(name, run);

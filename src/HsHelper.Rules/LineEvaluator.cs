@@ -80,6 +80,7 @@ public sealed partial class LineEvaluator
                 if (state.MapFollowupBoundaryReached) { state.Unsupported("AWAIT_MAP_FOLLOWUP_SNAPSHOT", "地图首选实体已在本地顺序中使用，追加选择尚未观察；请等待真实剩余选项，不得跨过该边界继续动作。"); break; }
                 if (state.MagmaSplitBoundaryReached) { state.Unsupported("AWAIT_MAGMA_SPLIT_SNAPSHOT", "熔岩猎犬的实际分配伤害尚未观察；分支不能作为已发生结果，请等待新局面后继续动作。"); break; }
                 if (state.WeaponResolutionBoundaryReached) { state.Unsupported("AWAIT_WEAPON_SNAPSHOT", "武器损毁或替换的后续结算未观察，不能继续使用该投影安排动作。"); break; }
+                if (state.DeathrattleBoundaryReached) { state.Conditional("前序亡语状态尚未确认，不能据条件投影判断后续动作合法性。", "CONDITIONAL_STATE_VALIDITY"); state.Unsupported("AWAIT_DEATHRATTLE_SNAPSHOT", "亡语或同批死亡只计算到已列前缀，不能跨越未观察的结算继续动作。"); break; }
                 if (state.BattlecryBoundaryReached) { state.Unsupported("AWAIT_BATTLECRY_SNAPSHOT", "战吼各轮尚未全部结算，不能跨越未观察的触发继续动作。"); break; }
                 if (state.StopForExistingQuestReward()) break;
                 if (state.TurnEnded) { state.Invalid("己方回合已经结束，不能在未观察下一决策点前继续安排动作。"); break; }
@@ -287,8 +288,9 @@ public sealed partial class LineEvaluator
             { state.Invalid("我方随从区已满。"); return; }
             if (profile.Mechanics.Contains("BATTLECRY") && !ElvenArcher.Contains(id))
             { state.Unsupported("UNSUPPORTED_BATTLECRY", "该战吼包含发现、随机、灌注或尚未实现的效果，未进行完整结算。"); return; }
-            if (!ElvenArcher.Contains(id) && !state.SimpleProfile(profile))
+            if (!ElvenArcher.Contains(id) && !state.SimpleProfile(profile) && !state.AuditedAcquiredOnlyBody(source))
             { state.Unsupported("UNSUPPORTED_MINION_EFFECT", "该随从的入场或持续效果尚未实现。"); return; }
+            if (!ElvenArcher.Contains(id) && !state.ValidatePassiveMinionEntry(source)) return;
             Entity? target = null;
             BattlecryRun? battlecry = null;
             if (ElvenArcher.Contains(id))
@@ -433,6 +435,7 @@ public sealed partial class LineEvaluator
                 }
                 entity.Alive = entity.Health is null || entity.Health > 0;
                 NormalizeCurrentRace(entity, source);
+                PreserveDeathrattleBehavior(entity);
                 if (HasCustomAssembledText(entity)) NormalizeAssembledFlags(entity, source);
                 Entities[entity.Id] = entity;
             }
@@ -622,23 +625,13 @@ public sealed partial class LineEvaluator
         public void ResolveDeaths()
         {
             var previousBatch = _currentDeathBatch;
-            _currentDeathBatch = Entities.Values.Where(e => e.Alive && e.Health <= 0).ToArray();
-            try { foreach (var entity in _currentDeathBatch) Remove(entity); }
+            _currentDeathBatch = Entities.Values.Where(e => e.Alive && e.Zone == "PLAY" && e.Health <= 0).ToArray();
+            try { ResolveDeathBatch(_currentDeathBatch); }
             finally { _currentDeathBatch = previousBatch; }
         }
         public void Remove(Entity entity)
         {
-            var pendingDraw = HasPotentialDeathDraw(entity);
-            var resolvedDraw = pendingDraw && RecordDeathrattleDraw(entity);
-            var resolvedNative = !pendingDraw && TryResolveBeastHunterDeath(entity);
-            var unresolvedDeath = (Has(entity, "DEATHRATTLE") && !resolvedNative && !resolvedDraw) || Has(entity, "REBORN");
-            if (unresolvedDeath)
-                Conditional("本次死亡后的亡语或复生尚未展开；后续结果假设这些效果不改变所列动作。", "DEATHRATTLE_OR_REBORN");
-            entity.Alive = false; entity.Zone = "GRAVEYARD";
-            CompleteBattlecryAttachmentsAfterDeath(entity);
-            if (!unresolvedDeath) CompleteObservedStaticGiftsAfterDeath(entity);
-            if (entity.Type == "WEAPON") _removedWeaponIds.Add(entity.Id);
-            if (entity.Type == "WEAPON" && (Has(entity, "DEATHRATTLE") || Has(entity, "REBORN"))) MarkWeaponBoundary();
+            if (entity.Alive) ResolveDeathBatch([entity]);
         }
         public void InspectInteractions(PlannedAction action)
         {
@@ -668,6 +661,7 @@ public sealed partial class LineEvaluator
                     !IsKnownImbueCounter(entity, flag.Key) &&
                     !IsObservedStaticDarkGiftNumericTag(entity, flag.Key) &&
                     !IsObservedDeathDrawNumericTag(entity, flag.Key) &&
+                    !IsDeathrattleEvidenceNumericTag(entity, flag.Key) &&
                     !((_snapshot.ClientBuild == AuditedBuild && entity.CardId == "EDR_850p" || IsObservedStatEnchantment(entity)) && flag.Key is "2" or "3")))
                     Conditional("存在尚未解释的数字状态标签，不能确认已覆盖全部动作限制。", "UNMAPPED_NUMERIC_TAG");
                 if (new[] { "HEALTH_MINIMUM", "MINIMUM_HEALTH", "DAMAGE_CANT_KILL", "INCOMING_DAMAGE_MULTIPLIER", "SPELL_DAMAGE_DOUBLE", "SPELLPOWER_DOUBLE", "SPELL_HEALING_DOUBLE", "HEALING_DOES_DAMAGE", "HEALING_DOUBLE", "MULTIPLY_HERO_DAMAGE", "RECEIVES_DOUBLE_SPELLDAMAGE_BONUS", "LIFESTEAL_DAMAGES_OPPOSING_HERO", "CANT_HEAL", "CANT_DAMAGE", "CANT_BE_DESTROYED", "HERO_CANT_BE_DESTROYED", "ALL_TARGETS_RANDOM", "FORGETFUL", "HEROPOWER_ADDITIONAL_ACTIVATIONS", "HEROPOWER_UNLIMITED_USES", "HEROPOWER_ACTIVATIONS_THIS_TURN", "CURRENT_HEROPOWER_DAMAGE_BONUS" }
@@ -676,11 +670,12 @@ public sealed partial class LineEvaluator
                 if ((action.Kind == ActionKind.PlayCard && new[] { "SPELLS_COST_HEALTH", "NEXT_CARD_COSTS_HEALTH", "COSTS_HEALTH", "HEALTH_COST" }.Any(tag => entity.Int(tag) is > 0)) ||
                     (action.Kind == ActionKind.HeroPower && entity.Int("HEROPOWER_COSTS_HEALTH") is > 0))
                 { Unsupported("ALTERNATE_RESOURCE_PAYMENT", "当前存在生命等特殊支付方式，不能使用普通法力支付规则。"); return; }
-                if (new[] { "EXTRA_MINION_DEATHRATTLES_BASE", "EXTRA_DEATHRATTLES_BASE", "EXTRA_DEATHRATTLES_ADDITIONAL", "EXTRA_BATTLECRIES_BASE", "EXTRA_MINION_BATTLECRIES_BASE", "EXTRA_BATTLECRIES_ADDITIONAL", "CANT_TRIGGER_DEATHRATTLE" }.Any(tag => entity.Int(tag) is > 0))
+                if (new[] { "EXTRA_MINION_DEATHRATTLES_BASE", "EXTRA_DEATHRATTLES_BASE", "EXTRA_DEATHRATTLES_ADDITIONAL", "EXTRA_BATTLECRIES_BASE", "EXTRA_MINION_BATTLECRIES_BASE", "EXTRA_BATTLECRIES_ADDITIONAL", "CANT_TRIGGER_DEATHRATTLE" }.Any(tag => entity.Int(tag) is > 0 && !ScopedDeathrattleModifier(entity, tag)))
                     Conditional("存在重复或禁用战吼/亡语的规则修正，此处未完整展开触发次数。", "BATTLECRY_OR_DEATHRATTLE_MODIFIER");
             }
             foreach (var entity in Entities.Values.Where(e => e.Alive || IsStaticDarkGiftCandidate(e) && e.Zone != "GRAVEYARD"))
             {
+                if (IsAuditedDeathrattleAttachment(entity)) { Coverage.Add("observed-siphoned-soul-deathrattle-attachment"); continue; }
                 if (IsAuditedBattlecryAttachment(entity)) { Coverage.Add("observed-rude-awakening-attachment"); continue; }
                 if (entity.CardId == DrawResolutionRules.DeathrattleEnchantmentCardId && entity.Zone != "GRAVEYARD")
                 {
@@ -713,10 +708,14 @@ public sealed partial class LineEvaluator
                 if (entity.Zone != "PLAY" || entity.Type is "GAME" or "PLAYER" or "HERO_POWER") continue;
                 if (entity.Type == "HERO" && entity.CardId?.StartsWith("HERO_", StringComparison.Ordinal) == true) continue;
                 if (Silenced(entity) || Has(entity, "DORMANT") || Has(entity, "UNTOUCHABLE")) continue;
+                if (!HasCustomAssembledText(entity) && entity.CardId is "EDR_227" or "DINO_421" or DeathrattleMultiplicityRules.SelfDoublerCardId &&
+                    UnknownDeathListener(entity))
+                    Conditional("亡语主体另有未覆盖或格式冲突的当前光环、触发或复生观察，不能将已审脚本当作全部后果。", "UNKNOWN_TRIGGER");
                 if (AssembledDefinition(entity) is not null)
                 {
                     Coverage.Add("assembled-battlecry-only-passive-body"); continue;
                 }
+                if (IsAuditedDeathrattleBody(entity)) { Coverage.Add("RLK_912-acquired-only-passive-body"); continue; }
                 var profile = Profile(entity);
                 if (profile is null) { Conditional("场上存在缺少卡牌效果资料的实体，可能影响动作。", "UNKNOWN_BOARD_CARD"); continue; }
                 if (entity.Type == "WEAPON" && SupportedWeaponAttackProfile(entity)) { Coverage.Add("weapon-passive-attack-profile"); continue; }
@@ -762,6 +761,7 @@ public sealed partial class LineEvaluator
                 _assumptions.OrderBy(x => x, StringComparer.Ordinal).ToArray(), _unsupported.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
                 Coverage.OrderBy(x => x, StringComparer.Ordinal).ToArray(), new(Mana, Array.AsReadOnly(entities))
                 { HeroPowerChanges = Array.AsReadOnly(_heroPowerChanges.ToArray()),
+                  DeathrattleExecutions = _deathrattleRuns.Count == 0 ? null : _deathrattleRuns.Select(run => run.Build()).ToArray(),
                   BattlecryExecutions = _battlecryRuns.Count == 0 ? null : _battlecryRuns.Select(run => run.Build()).ToArray(),
                   AssembledEffects = _assembledEffects.Count == 0 ? null : _assembledEffects,
                   ImbueCountBefore = _initialImbues, ImbueCountAfter = _currentImbues,

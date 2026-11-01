@@ -431,7 +431,7 @@ public sealed class SnapshotCoach
             args => args.Count == 1 && Integer(args["entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("evaluate_draw", "预览已覆盖手牌成功使用后直接抽牌、满手损失、牌库减量与疲劳范围。假设本体成功离手；合法出牌另用evaluate_line核验。数量范围不生成新手牌实体或后续动作。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
-        new AgentToolDefinition("evaluate_deathrattle_draw", "给出当前我方场上随从的实体ID，条件预览其实际已观察心中的恶魔附魔在该随从死亡后单次触发的普通抽两张、入手、爆牌和疲劳范围。该随从当前不从手牌离开，不额外腾出手牌位置；工具不杀死随从、不证明死亡实际发生，不生成新手牌身份或费用，也不证明完整亡语、后续动作或斩杀。候选交换仍用evaluate_line核验。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
+        new AgentToolDefinition("evaluate_deathrattle_draw", "给出当前我方场上随从的实体ID，条件预览一次假想死亡后实际已观察心中的恶魔的一轮抽两张、入手、爆牌和疲劳范围。独立亡语次数来源不使单轮数量变成合计，不能相乘后继续动作。该随从当前不从手牌离开，不额外腾出手牌位置；工具不杀死随从、不证明死亡实际发生，不生成新手牌身份或费用，也不证明完整亡语、后续动作或斩杀。候选交换仍用evaluate_line核验。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),
         new AgentToolDefinition("evaluate_generation", "预览已覆盖手牌成功使用后的原生随机生成数量与满手损失；不选择随机牌身份，不移出牌库，也不创建可执行的新手牌实体。合法出牌另用evaluate_line核验。", Schema("""{"type":"object","properties":{"source_entity_id":{"type":"integer","minimum":1}},"required":["source_entity_id"],"additionalProperties":false}"""),
             args => args.Count == 1 && Integer(args["source_entity_id"], 1, int.MaxValue)),

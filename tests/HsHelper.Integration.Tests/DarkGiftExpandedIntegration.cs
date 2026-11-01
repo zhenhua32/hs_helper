@@ -11,7 +11,7 @@ using HsHelper.Storage;
 
 internal static class DarkGiftExpandedIntegration
 {
-    private const string Build = "255790", Template = "hunter-v24/turn";
+    private const string Build = "255790", Template = "hunter-v25/turn";
     private const string Key = "fixture-expanded-gift-key", PrivateCard = "PRIVATE_EXPANDED_GIFT_ID";
     private static readonly IReadOnlyDictionary<string, string> Coverage = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -138,7 +138,26 @@ internal static class DarkGiftExpandedIntegration
             passive.Line["RuleCoverage"]!.AsArray().Any(value => value?.ToString() == "observed-rude-awakening-attachment") &&
             Entity(passive.Line, 30)["Attack"]?.GetValue<int>() == 5 && Entity(passive.Line, 30)["MaximumHealth"]?.GetValue<int>() == 2,
             "An audited Battlecry-only attachment changed the ordinary attack or created activations for a native non-Battlecry Umbraclaw.");
-        foreach (var gift in new[] { "EDR_100t4e", "EDR_100t5e", "EDR_100t7e1", "EDR_100t9e", "EDR_100t10" })
+        foreach (var dormantDeathrattle in new[]
+        {
+            Board("EDR_100t4e", 5, 2, 1) with { Search = false },
+            new Spec("EDR_100t4e", 5, 2, 1, [], Actions(("play", 30, null), ("attack", 30, 40))) { InHand = true }
+        })
+        {
+            var observed = await CompleteAsync(await CreateAsync(directory, cards, dormantDeathrattle), dormantDeathrattle);
+            var lethal = !dormantDeathrattle.InHand;
+            Check(observed.Line?["Verification"]?.ToString() == "Verified" && observed.Line["IsLethal"]?.GetValue<bool>() == lethal &&
+                observed.Advice is { Verification: "verified" } && observed.Advice.VerifiedLethal == lethal && observed.Archive!.Advice.VerifiedLethal == lethal &&
+                observed.Advice.Actions.Count == dormantDeathrattle.Actions.Count && Entity(observed.Line, 30)["IsAlive"]?.GetValue<bool>() == true &&
+                Entity(observed.Line, 30)["Zone"]?.ToString() == "PLAY" && Entity(observed.Line, 30)["Attack"]?.GetValue<int>() == 5 &&
+                Entity(observed.Line, 30)["MaximumHealth"]?.GetValue<int>() == 2 && Entity(observed.Line, 30)["RemainingHealth"]?.GetValue<int>() == 2 &&
+                Entity(observed.Line, 30)["Cost"]?.GetValue<int>() == 1 && observed.Line["Result"]!["DrawPreviews"]!.AsArray().Count == 0 &&
+                observed.Line["Result"]?["DeathrattleExecutions"]?.AsArray().Count is null or 0 &&
+                observed.Line["Result"]?["DrawBoundaryReached"]?.GetValue<bool>() == false &&
+                observed.Line["RuleCoverage"]!.AsArray().All(value => !value!.ToString().StartsWith("dark-gift-observed-", StringComparison.Ordinal)),
+                "An audited dormant Inner Demons attachment either blocked a surviving play/attack or was executed/regranted as a static gift before death.");
+        }
+        foreach (var gift in new[] { "EDR_100t5e", "EDR_100t7e1", "EDR_100t9e", "EDR_100t10" })
         {
             var ongoing = Board(gift, 5, 2, 1) with { Search = false };
             AssertUnverified(await CompleteAsync(await CreateAsync(directory, cards, ongoing), ongoing), "Ongoing gift was accepted as a static observation: " + gift);
@@ -148,7 +167,7 @@ internal static class DarkGiftExpandedIntegration
         AssertUnverified(mixedResult, "An unknown same-target source was erased by a known static gift.");
         Check(mixedResult.Archive!.Advice.HostUnsupportedMechanics?.Contains("UNMAPPED_ATTACHED_ENCHANTMENT") == true,
             "The partial line's unsupported attachment disappeared from the reopened archive.");
-        pass("an audited Battlecry-only attachment stays passive for a non-Battlecry body while ongoing deathrattle copy unreviewed repeat carriers reborn shields and mixed unknown attachments retain host limits");
+        pass("audited Battlecry-only and not-yet-triggered draw Deathrattle attachments permit their surviving current play or attack without executing or regranting effects while copy unreviewed repeat reborn shields and mixed unknown sources retain host limits");
 
         foreach (var variant in new[] { "gift-dbf", "gift-text", "gift-raw", "target-dbf", "source-owner", "attached", "source-type", "missing-attack", "missing-health", "missing-damage", "missing-elusive", "malformed-source-flag" })
         {

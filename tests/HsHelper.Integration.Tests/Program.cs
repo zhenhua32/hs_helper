@@ -243,6 +243,7 @@ await HunterHistoryIntegration.RunAsync(temp, Pass);
 await AssembledEffectIntegration.RunAsync(temp, Pass);
 await AssembledScriptIntegration.RunAsync(temp, Pass);
 await RepeatBattlecryIntegration.RunAsync(temp, Pass);
+await RepeatDeathrattleIntegration.RunAsync(temp, Pass);
 await HunterRandomEffectIntegration.RunAsync(temp, Pass);
 await HunterPlayTriggerIntegration.RunAsync(temp, Pass);
 await NativeDiscoveryIntegration.RunAsync(temp, Pass);

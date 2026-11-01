@@ -1,0 +1,485 @@
+{
+  "build": "255790",
+  "source": "https://api.hearthstonejson.com/v1/255790/zhCN/cards.json",
+  "sourceSha256": "7C9D0321B22BEF8D9C4E67397C7B8110AAC149164A95DD554118F9B6DC638299",
+  "cardDefsSource": "https://api.hearthstonejson.com/v1/255790/CardDefs.base.xml",
+  "cardDefsSha256": "EE72B26D5B90B595EE5DE63E05979BF80195896BA32CF943C6F5FFC8BFBB72A8",
+  "scope": "Complete fixed records for one actually observed EDR_531e multiplier and RLK_912 acquired-only Deathrattles, native continuation scenes and negative/control sources. Does not infer attachment generation from the changed EDR_531 mother, global aggregation, reborn or double Battlecries.",
+  "cards": [
+    {
+      "artist": "Dany Orizio",
+      "attack": 3,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 47856,
+      "flavor": "\u4E00\u56DE\u751F\uFF0C\u4E8C\u56DE\u6B7B\uFF0C\u4E09\u56DE\u5C31\u2026\u2026\u719F\u7EC3\u4E86\u3002",
+      "health": 6,
+      "id": "BOT_039",
+      "mechanics": [
+        "AURA"
+      ],
+      "name": "\u6B7B\u7075\u673A\u68B0\u5E08",
+      "rarity": "EPIC",
+      "referencedTags": [
+        "DEATHRATTLE"
+      ],
+      "set": "BOOMSDAY",
+      "text": "\u4F60\u7684\u003Cb\u003E\u4EA1\u8BED\u003C/b\u003E\u4F1A\u89E6\u53D1\n\u4E24\u6B21\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Malcolm Davis",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 0,
+      "countAsCopyOfDbfId": 179,
+      "dbfId": 120970,
+      "flavor": "\u5982\u679C\u4F60\u7528\u8DB3\u591F\u591A\u7684\u5C0F\u7CBE\u7075\u653B\u51FB\u827E\u745E\u8FBE\u9886\u4E3B\u7684\u8BDD\uFF0C\u4ED6\u5C31\u4F1A\u7206\u70B8\u3002\u4F46\u8FD9\u662F\u4E3A\u4EC0\u4E48\u5462\uFF1F",
+      "health": 1,
+      "howToEarn": "\u5B8C\u6210\u6559\u5B66\u540E\u89E3\u9501\u3002",
+      "howToEarnGolden": "\u603B\u8BA1\u8D62\u5F97500\u573A\u5BF9\u6218\u540E\u89E3\u9501\u3002",
+      "id": "CORE_CS2_231",
+      "name": "\u5C0F\u7CBE\u7075",
+      "race": "UNDEAD",
+      "races": [
+        "UNDEAD"
+      ],
+      "rarity": "COMMON",
+      "set": "CORE_HIDDEN",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ralph Horsley",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 69714,
+      "elite": true,
+      "flavor": "\u6574\u5929\u548C\u4E09\u4E2A\u5435\u5435\u56B7\u56B7\u6253\u6253\u6740\u6740\u7684\u7537\u4EBA\u4EEC\u4E3A\u4F0D\uFF0C\u5E03\u52B3\u7F2A\u514B\u4E1D\u5973\u58EB\u603B\u662F\u62C5\u5FC3\u81EA\u5DF1\u4F1A\u8001\u5F97\u5F88\u5FEB\u3002",
+      "health": 7,
+      "howToEarn": "\u5B8C\u6210\u6559\u5B66\u540E\u89E3\u9501\u3002",
+      "howToEarnGolden": "\u603B\u8BA1\u8D62\u5F975000\u573A\u5BF9\u6218\u540E\u89E3\u9501\u3002",
+      "id": "CORE_FP1_031",
+      "mechanics": [
+        "AURA"
+      ],
+      "name": "\u745E\u6587\u6234\u5C14\u7537\u7235",
+      "race": "UNDEAD",
+      "races": [
+        "UNDEAD"
+      ],
+      "rarity": "LEGENDARY",
+      "referencedTags": [
+        "DEATHRATTLE"
+      ],
+      "set": "CORE_HIDDEN",
+      "text": "\u4F60\u7684\u968F\u4ECE\u7684\u003Cb\u003E\u4EA1\u8BED\u003C/b\u003E\u5C06\u89E6\u53D1\u4E24\u6B21\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Howard Lyon",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 648,
+      "flavor": "\u51B3\u6597\u7684\u65F6\u5019\u79BB\u5B83\u4EEC\u8FDC\u70B9\u513F\u3002",
+      "health": 1,
+      "id": "CS2_171",
+      "mechanics": [
+        "CHARGE"
+      ],
+      "name": "\u77F3\u7259\u91CE\u732A",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "text": "\u003Cb\u003E\u51B2\u950B\u003C/b\u003E",
+      "type": "MINION"
+    },
+    {
+      "artist": "Dan Brereton",
+      "attack": 3,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 216,
+      "faction": "HORDE",
+      "flavor": "\u201C\u53BB\u674030\u6761\u8FC5\u731B\u9F99\u3002\u201D\u2014\u2014\u8D6B\u7C73\u7279\u00B7\u5948\u8F9B\u74E6\u91CC",
+      "health": 2,
+      "id": "CS2_172",
+      "name": "\u8840\u6CBC\u8FC5\u731B\u9F99",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "FREE",
+      "set": "LEGACY",
+      "type": "MINION"
+    },
+    {
+      "artist": "Todd Harris",
+      "attack": 8,
+      "cardClass": "DRUID",
+      "collectible": true,
+      "cost": 8,
+      "dbfId": 118617,
+      "flavor": "\u5730\u96F7\uFF1F\u4EC0\u4E48\u5730\u96F7\uFF1F",
+      "health": 8,
+      "id": "DINO_421",
+      "isMiniSet": true,
+      "mechanics": [
+        "DEATHRATTLE",
+        "ELUSIVE",
+        "TAUNT"
+      ],
+      "name": "\u9707\u5730\u96F7\u9F99",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "set": "THE_LOST_CITY",
+      "text": "\u003Cb\u003E\u5632\u8BBD\u003C/b\u003E\u3002\u003Cb\u003E\u6270\u9B54\u003C/b\u003E\u3002\u003Cb\u003E\u4EA1\u8BED\uFF1A\u003C/b\u003E\u0026\u4F7F\u4F60\u7684\u624B\u724C\u548C\u724C\u5E93\u4E2D\u7684\u6240\u6709\u968F\u4ECE\u724C\u83B7\u5F97\u002B3/\u002B3\u3002",
+      "type": "MINION"
+    },
+    {
+      "cardClass": "DRUID",
+      "dbfId": 118618,
+      "id": "DINO_421e",
+      "name": "\u9707\u5730",
+      "set": "THE_LOST_CITY",
+      "text": "\u002B3/\u002B3\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "NEUTRAL",
+      "cost": 0,
+      "dbfId": 113800,
+      "hideCost": true,
+      "id": "EDR_100t4",
+      "name": "\u5FC3\u4E2D\u7684\u6076\u9B54",
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u4EA1\u8BED\uFF1A\u003C/b\u003E\u62BD\u4E24\u5F20\u724C\u3002",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113807,
+      "id": "EDR_100t4e",
+      "name": "\u5FC3\u4E2D\u7684\u6076\u9B54",
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u4EA1\u8BED\uFF1A\u003C/b\u003E\u62BD\u4E24\u5F20\u724C\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113808,
+      "id": "EDR_100t5e",
+      "name": "\u6D3B\u4F53\u68A6\u9B47",
+      "set": "EMERALD_DREAM",
+      "text": "\u5F53\u4F60\u4F7F\u7528\u672C\u724C\u65F6\uFF0C\u53EC\u5524\u4E00\u4E2A\u5B83\u76842/2\u7684\u590D\u5236\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113809,
+      "id": "EDR_100t6e",
+      "name": "\u9690\u533F\u68A6\u884C",
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u51B2\u950B\u003C/b\u003E",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113883,
+      "id": "EDR_100t7e",
+      "name": "\u7C97\u66B4\u5524\u9192",
+      "set": "EMERALD_DREAM",
+      "text": "\u672C\u968F\u4ECE\u7684\u003Cb\u003E\u6218\u543C\u003C/b\u003E\u4F1A\u89E6\u53D1\u4E24\u6B21\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "SHAMAN",
+      "dbfId": 113892,
+      "id": "EDR_100t7e1",
+      "name": "\u626D\u66F2\u53CC\u91CD\u6218\u543C",
+      "set": "EMERALD_DREAM",
+      "text": "\u6240\u9009\u7684\u968F\u4ECE\u4F1A\u89E6\u53D1\u4E24\u6B21\u5176\u6218\u543C\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113887,
+      "id": "EDR_100t9e",
+      "name": "\u56DE\u8361\u6050\u6016",
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u590D\u751F\u003C/b\u003E\u3002\u003Cb\u003E\u590D\u751F\u003C/b\u003E\u65F6\u4F1A\u5177\u6709\u6240\u6709\u751F\u547D\u503C\u548C\u9644\u52A0\u6548\u679C\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 113803,
+      "id": "EDR_100te",
+      "name": "\u8D77\u5E8A\u6012\u6C14",
+      "set": "EMERALD_DREAM",
+      "text": "\u002B3\u653B\u51FB\u529B\u548C\u003Cb\u003E\u5438\u8840\u003C/b\u003E\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "artist": "Patrik Bjorkstrom",
+      "attack": 5,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 114020,
+      "flavor": "\u6240\u8C13\u7269\u4EE5\u7C7B\u805A\uFF0C\u90A3\u4E48\u5E7D\u722A\u718A\u8BE5\u548C\u8C01\u4E00\u8D77\u51AC\u7720\uFF1F",
+      "health": 2,
+      "id": "EDR_227",
+      "mechanics": [
+        "DEATHRATTLE",
+        "RUSH"
+      ],
+      "name": "\u5E7D\u722A\u718A",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "RARE",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u7A81\u88AD\u003C/b\u003E\u3002\u003Cb\u003E\u4EA1\u8BED\uFF1A\u003C/b\u003E\u003Cb\u003E\u704C\u6CE8\u003C/b\u003E\u4F60\u7684\u82F1\u96C4\u6280\u80FD\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Eva Widermann",
+      "attack": 9,
+      "cardClass": "HUNTER",
+      "collectible": true,
+      "cost": 9,
+      "dbfId": 114254,
+      "elite": true,
+      "flavor": "\u4EE5\u52C7\u731B\u679C\u51B3\u800C\u95FB\u540D\u4E8E\u4E16\uFF0C\u4E14\u62E5\u6709\u7684\u540D\u53F7\u4F17\u591A\uFF0C\u5176\u4E2D\u5305\u62EC\u6D1B\u6208\u4EC0\uFF0C\u8FD8\u6709\u5DE8\u72FC\u3002",
+      "health": 9,
+      "id": "EDR_480",
+      "mechanics": [
+        "AURA",
+        "RUSH"
+      ],
+      "name": "\u6208\u5FB7\u6797",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "LEGENDARY",
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u7A81\u88AD\u003C/b\u003E\u3002\u53CB\u65B9\u91CE\u517D\u9020\u6210\u7684\u4F24\u5BB3\u7FFB\u500D\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Slawomir Maniak",
+      "cardClass": "WARRIOR",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 116684,
+      "flavor": "\u4E0D\u4E86\uFF0C\u8C22\u8C22\u3002\u8FD9\u4E2A\u90FD\u5F52\u4F60\uFF0C\u5144\u5F1F\u3002",
+      "id": "EDR_531",
+      "name": "\u8679\u5438\u751F\u957F",
+      "rarity": "RARE",
+      "set": "EMERALD_DREAM",
+      "text": "\u6D88\u706D\u4E00\u4E2A\u53CB\u65B9\u968F\u4ECE\u4EE5\u83B7\u5F978\u70B9\u62A4\u7532\u503C\u3002",
+      "type": "SPELL"
+    },
+    {
+      "cardClass": "WARRIOR",
+      "dbfId": 120093,
+      "id": "EDR_531e",
+      "name": "\u8679\u5438\u751F\u957F",
+      "set": "EMERALD_DREAM",
+      "text": "\u002B2\u653B\u51FB\u529B\u3002\u672C\u968F\u4ECE\u7684\u003Cb\u003E\u4EA1\u8BED\u003C/b\u003E\u4F1A\u89E6\u53D1\u4E24\u6B21\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "artist": "Edgar Hidalgo",
+      "attack": 4,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 114006,
+      "flavor": "\u8774\u8776\u632F\u7FC5\u98DE\uFF0C\u5B88\u536B\u6C38\u76F8\u968F\u2014\u2014",
+      "health": 4,
+      "id": "EDR_800",
+      "mechanics": [
+        "BATTLECRY",
+        "DIVINE_SHIELD",
+        "TAUNT"
+      ],
+      "name": "\u632F\u7FC5\u5B88\u536B",
+      "rarity": "COMMON",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u003Cb\u003E\u5632\u8BBD\u003C/b\u003E\u3002\u5723\u76FE\u003C/b\u003E\n\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u003Cb\u003E\u704C\u6CE8\u003C/b\u003E\u4F60\u7684\u82F1\u96C4\u6280\u80FD\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Timur Shevtsov",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 114933,
+      "flavor": "\u68A6\u554A\uFF0C\u68A6\uFF0C\u68A6\uFF0C\u68A6\u2026\u2026",
+      "health": 1,
+      "howToEarnGolden": "\u53EF\u4EE5\u5728\u003Ci\u003E\u6F2B\u6E38\u7FE1\u7FE0\u68A6\u5883\u003C/i\u003E\u5956\u52B1\u8DEF\u7EBF\u4E2D\u83B7\u5F97\u8BE5\u5956\u52B1\u3002",
+      "id": "EDR_849",
+      "mechanics": [
+        "TRIGGER_VISUAL"
+      ],
+      "name": "\u68A6\u7F1A\u8FC5\u731B\u9F99",
+      "race": "BEAST",
+      "races": [
+        "BEAST"
+      ],
+      "rarity": "COMMON",
+      "set": "EMERALD_DREAM",
+      "text": "\u5728\u4F60\u4F7F\u7528\u4E00\u5F20\u968F\u4ECE\u724C\u540E\uFF0C\u968F\u673A\u4F7F\u5176\u83B7\u5F97\u4E00\u9879\u003Cb\u003E\u989D\u5916\u6548\u679C\u003C/b\u003E\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "BOSi Studio",
+      "cardClass": "HUNTER",
+      "collectionText": "\u968F\u673A\u4F7F\u4F60\u624B\u724C\u4E2D\u7684\u4E00\u5F20\u91CE\u517D\u724C\u83B7\u5F97\u002B\u003Cb\u003E",
+      "cost": 2,
+      "dbfId": 114052,
+      "id": "EDR_850p",
+      "name": "\u5DE8\u72FC\u7684\u795D\u798F",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "\u968F\u673A\u4F7F\u4F60\u624B\u724C\u4E2D\u7684\u4E00\u5F20\u91CE\u517D\u724C\u83B7\u5F97\u002B\u003Cb\u003E@\u003C/b\u003E\u653B\u51FB\u529B\uFF0C\u5176\u6CD5\u529B\u503C\u6D88\u8017\u51CF\u5C11\uFF08\u003Cb\u003E@\u003C/b\u003E\uFF09\u70B9\u3002",
+      "type": "HERO_POWER"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 114619,
+      "id": "EDR_850pe1",
+      "name": "\u6208\u5FB7\u6797\u7684\u52C7\u6C14",
+      "set": "EMERALD_DREAM",
+      "text": "\u002B0\u653B\u51FB\u529B\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "cardClass": "HUNTER",
+      "dbfId": 114959,
+      "id": "EDR_850pe5",
+      "name": "\u5DE8\u72FC\u7684\u543C\u53EB",
+      "set": "EMERALD_DREAM",
+      "text": "\u6CD5\u529B\u503C\u6D88\u8017\u51CF\u5C11\u3002",
+      "type": "ENCHANTMENT"
+    },
+    {
+      "artist": "Stefano Spagnuolo",
+      "attack": 2,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 2,
+      "dbfId": 114935,
+      "flavor": "\u9C9C\u82B1\u867D\u7F8E\uFF0C\u5374\u4E5F\u6709\u523A\u3002\u8FD8\u6709\u80E1\u5B50\u3002\u8FD8\u6709\u76FE\u724C\u3002",
+      "health": 3,
+      "id": "EDR_852",
+      "mechanics": [
+        "BATTLECRY"
+      ],
+      "name": "\u82E6\u82B1\u9A91\u58EB",
+      "rarity": "COMMON",
+      "referencedTags": [
+        "IMBUE"
+      ],
+      "set": "EMERALD_DREAM",
+      "text": "\u003Cb\u003E\u6218\u543C\uFF1A\u003C/b\u003E\u003Cb\u003E\u704C\u6CE8\u003C/b\u003E\u4F60\u7684\u82F1\u96C4\u6280\u80FD\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Ralph Horsley",
+      "attack": 1,
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 4,
+      "dbfId": 1915,
+      "elite": true,
+      "flavor": "\u6574\u5929\u548C\u4E09\u4E2A\u5435\u5435\u56B7\u56B7\u6253\u6253\u6740\u6740\u7684\u7537\u4EBA\u4EEC\u4E3A\u4F0D\uFF0C\u5E03\u52B3\u7F2A\u514B\u4E1D\u5973\u58EB\u603B\u662F\u62C5\u5FC3\u81EA\u5DF1\u4F1A\u8001\u5F97\u5F88\u5FEB\u3002",
+      "health": 7,
+      "howToEarn": "\u52A0\u5165\u201C\u7EB3\u514B\u8428\u739B\u65AF\u7684\u8BC5\u5492\u201D\u5192\u9669\u6A21\u5F0F\uFF0C\u5728\u519B\u4E8B\u533A\u4E2D\u89E3\u9501\u3002",
+      "howToEarnGolden": "\u52A0\u5165\u201C\u7EB3\u514B\u8428\u739B\u65AF\u7684\u8BC5\u5492\u201D\u5192\u9669\u6A21\u5F0F\uFF0C\u5728\u519B\u4E8B\u533A\u4E2D\u89E3\u9501\u5236\u4F5C\u3002",
+      "id": "FP1_031",
+      "mechanics": [
+        "AURA"
+      ],
+      "name": "\u745E\u6587\u6234\u5C14\u7537\u7235",
+      "race": "UNDEAD",
+      "races": [
+        "UNDEAD"
+      ],
+      "rarity": "LEGENDARY",
+      "referencedTags": [
+        "DEATHRATTLE"
+      ],
+      "set": "NAXX",
+      "text": "\u4F60\u7684\u968F\u4ECE\u7684\u003Cb\u003E\u4EA1\u8BED\u003C/b\u003E\u5C06\u89E6\u53D1\u4E24\u6B21\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "Matt Dixon",
+      "attack": 1,
+      "cardClass": "SHAMAN",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 84229,
+      "flavor": "\u6211\u7684\u4EA1\u8BED\u6548\u679C\u5C31\u5199\u5728\u8FD9\u91CC\u2014\u2014\u5982\u679C\u6211\u6709\u7684\u8BDD\u3002",
+      "health": 3,
+      "id": "RLK_912",
+      "name": "\u5929\u707E\u5DE8\u9B54",
+      "race": "UNDEAD",
+      "races": [
+        "UNDEAD"
+      ],
+      "rarity": "EPIC",
+      "referencedTags": [
+        "DEATHRATTLE"
+      ],
+      "set": "RETURN_OF_THE_LICH_KING",
+      "techLevel": 2,
+      "text": "\u672C\u968F\u4ECE\u83B7\u5F97\u7684\u003Cb\u003E\u4EA1\u8BED\u003C/b\u003E\u4F1A\u89E6\u53D1\u4E24\u6B21\u3002",
+      "type": "MINION"
+    },
+    {
+      "artist": "James Ryman",
+      "cardClass": "NEUTRAL",
+      "collectible": true,
+      "cost": 1,
+      "dbfId": 120648,
+      "flavor": "\u52AB\u65E5\u5FEB\u4E50\uFF0C\u5931\u843D\u4E4B\u57CE\uFF01",
+      "howToEarn": "\u6253\u5F00\u003Ci\u003E\u5B89\u6208\u6D1B\u9F9F\u9014\u003C/i\u003E\u5361\u724C\u5305\u540E\u53EF\u89E3\u9501\u3002",
+      "howToEarnGolden": "\u6253\u5F00\u003Ci\u003E\u5B89\u6208\u6D1B\u9F9F\u9014\u003C/i\u003E\u91D1\u8272\u5305\u540E\u53EF\u89E3\u9501\u3002",
+      "id": "TLC_EVENT_400",
+      "mechanics": [
+        "SIDE_QUEST"
+      ],
+      "name": "\u56F4\u653B\u57CE\u95E8",
+      "rarity": "EPIC",
+      "set": "EVENT",
+      "text": "\u003Cb\u003E\u652F\u7EBF\u4EFB\u52A1\uFF1A\u003C/b\u003E\u4F7F\u7528\u4EA1\u7075\u6216\u91CE\u517D\u724C\uFF0C\u603B\u8BA13\u5F20\u3002\u003Cb\u003E\u5956\u52B1\uFF1A\u003C/b\u003E\u5236\u9020\u4E00\u4E2A\u81EA\u5B9A\u4E49\u7684\u50F5\u5C38\u517D\uFF0C\u5176\u6CD5\u529B\u503C\u6D88\u8017\u51CF\u5C11\uFF083\uFF09\u70B9\u3002",
+      "type": "SPELL"
+    }
+  ]
+}

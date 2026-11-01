@@ -143,10 +143,11 @@ internal static class DarkGiftStaticChecks
         {
             var frame = Replace(Frame(), Frame().Entities[50] with { CardId = id });
             var result = Eval(frame);
-            if (id == "EDR_100t7e")
+            if (id is "EDR_100t7e" or "EDR_100t4e")
             {
-                Check(result.Verification == LineVerification.Verified && result.IsLethal && !result.RuleCoverage.Any(IsGiftCoverage) && result.Result.HeroPowerChanges.Count == 0,
-                    "The reviewed Battlecry-only attachment either granted a static keyword or changed this non-Battlecry body action.");
+                Check(result.Verification == LineVerification.Verified && result.IsLethal && !result.RuleCoverage.Any(IsGiftCoverage) &&
+                    result.Result.HeroPowerChanges.Count == 0 && result.Result.DrawPreviews.Count == 0 && result.Result.DeathrattleExecutions is null,
+                    "A reviewed inactive Battlecry or death-only attachment granted a static keyword or fired without its actual event.");
                 continue;
             }
             Check(result.Verification != LineVerification.Verified && !result.IsLethal && !result.RuleCoverage.Any(IsGiftCoverage), "A neighboring or scripted gift was treated as a static supported one.");

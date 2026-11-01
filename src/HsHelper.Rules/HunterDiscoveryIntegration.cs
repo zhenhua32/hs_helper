@@ -47,7 +47,7 @@ public sealed partial class LineEvaluator
         private readonly List<DiscoveryPlayOutcome> _discoveryPreviews = [];
         public bool DiscoveryBoundaryReached { get; private set; }
 
-        private bool HasUnresolvedNativeResolution => BattlecryBoundaryReached || DrawBoundaryReached || GenerationBoundaryReached || WolfBlessingBoundaryReached ||
+        private bool HasUnresolvedNativeResolution => DeathrattleBoundaryReached || BattlecryBoundaryReached || DrawBoundaryReached || GenerationBoundaryReached || WolfBlessingBoundaryReached ||
             DiscoveryBoundaryReached || MapFollowupBoundaryReached || MagmaSplitBoundaryReached || _unsupported.Overlaps(["DEATHRATTLE_OR_REBORN", "BATTLECRY_OR_DEATHRATTLE_MODIFIER",
                 "UNKNOWN_MYTHICAL_TERROR_EXTRA_EFFECT", "UNKNOWN_TRIGGER", "UNKNOWN_AURA", "UNMAPPED_BOARD_TEXT",
                 "UNMAPPED_ATTACHED_ENCHANTMENT", "OPPONENT_SECRET", "FRIENDLY_SECRET_OR_QUEST", "CUSTOM_ASSEMBLED_HAND", "ASSEMBLED_EXTRA_TRIGGER", "UNKNOWN_BATTLECRY_SOURCE_TRIGGER"]);

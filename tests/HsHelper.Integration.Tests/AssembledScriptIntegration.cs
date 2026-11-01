@@ -11,7 +11,7 @@ using HsHelper.Storage;
 
 internal static class AssembledScriptIntegration
 {
-    private const string Build = "255790", Template = "hunter-v24/turn", Key = "assembled-script-fake-key";
+    private const string Build = "255790", Template = "hunter-v25/turn", Key = "assembled-script-fake-key";
     private const string Private = "PRIVATE_ASSEMBLED_SCRIPT_PROBE", Complete = "PowerProcessor.EndCurrentTaskList() - complete";
     private const string Script = "Battlecry.HandMinionBuff.1.1.v1";
 

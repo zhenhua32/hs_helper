@@ -86,6 +86,10 @@ internal static class HunterWolfLineChecks
                 ("ATK", "1"), ("HEALTH", "1"), ("DAMAGE", "0"), ("EXHAUSTED", "0"), ("NUM_TURNS_IN_PLAY", "1")));
             frame = HunterGenerationLineChecks.Add(frame, HunterGenerationLineChecks.Card(51, "VANILLA", "PLAY", 1,
                 ("CONTROLLER", "2"), ("ATK", "1"), ("HEALTH", "1"), ("DAMAGE", "0")));
+            var partial = Evaluate(frame, new(ActionKind.Attack, 50, 51), new(ActionKind.HeroPower, 12));
+            Check(partial.AppliedActions == 1 && partial.Result.WolfBlessingPreviews.Count == 0 &&
+                partial.UnsupportedMechanics.Contains("AWAIT_DEATHRATTLE_SNAPSHOT"), "An unknown deck buff was crossed before the next observation.");
+            frame = frame with { Entities = frame.Entities.Where(pair => pair.Value.Zone != "DECK").ToFrozenDictionary() };
             var result = Evaluate(frame, new(ActionKind.Attack, 50, 51), new(ActionKind.HeroPower, 12));
             var preview = result.Result.WolfBlessingPreviews.Single();
             Check(result.AppliedActions == 2 && preview.Branches.Single(branch => branch.TargetEntityId == 30) is { CurrentAttack: 8, ResultingAttack: 10 } &&

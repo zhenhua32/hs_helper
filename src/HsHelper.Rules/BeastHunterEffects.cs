@@ -145,6 +145,8 @@ public sealed partial class LineEvaluator
             { Invalid("我方随从区已满。"); return false; }
             if (observedStatsOnly ? source.Attack is null || source.MaximumHealth is null : profile.Attack is null || profile.Health is null)
             { Unsupported("UNKNOWN_BASE_STATS", "入场随从的必要属性缺失。"); return false; }
+            if (!HasCustomAssembledText(source) && source.CardId is "EDR_227" or "DINO_421" or DeathrattleMultiplicityRules.SelfDoublerCardId && UnknownDeathListener(source))
+                Conditional("入场来源另有当前监听或复生观察，不能把原生亡语脚本当作全部后续效果。", "UNKNOWN_TRIGGER");
             if (!Pay(source)) return false;
             if (OpponentDefeatedByPayment) return true;
             if (source.MaximumHealth.HasValue) _summonedWithObservedHealth.Add(source.Id);
@@ -156,8 +158,10 @@ public sealed partial class LineEvaluator
                 flag.Key is "SILENCED" or "FROZEN" or "CARDRACE" or "200" or "CANT_ATTACK_HEROES" or "CANNOT_ATTACK_HEROES" or
                     "CANT_ATTACK_MINIONS" or "DORMANT" or "UNTOUCHABLE").ToDictionary(StringComparer.Ordinal);
             RestoreBattlecryBehavior(source);
+            PreserveDeathrattleBehavior(source);
             source.Flags["NUM_TURNS_IN_PLAY"] = 0;
             source.Flags["EXHAUSTED"] = Has(source, "CHARGE") || Has(source, "RUSH") ? 0 : 1;
+            RememberEnteredDeathDrawSource(source);
             return true;
         }
 
@@ -219,18 +223,84 @@ public sealed partial class LineEvaluator
                 ImbueHunter(entity.Controller, "deathrattle:EDR_227"); Coverage.Add("EDR_227-deathrattle-imbue"); return true;
             }
             if (entity.CardId != "DINO_421") return false;
-            foreach (var card in Entities.Values.Where(e => e.Alive && e.Controller == entity.Controller && e.Zone is "HAND" or "DECK"))
+            CheckDinoCollection(entity);
+            foreach (var card in Entities.Values.Where(e => e.Controller == entity.Controller && e.Zone is "HAND" or "DECK"))
             {
                 if (!RequireNativeDefinition(card)) continue;
                 var profile = Profile(card);
                 if (profile is null) { Conditional("震地雷龙的隐藏牌库或手牌身份未知，未对未知实体虚构随从增益。", "UNKNOWN_DINO_BUFF_TARGET"); continue; }
+                if (card.Type != profile.Type || !ObservedCardType(card, profile.Type))
+                { Conditional("震地雷龙目标当前类型与版本定义或原始别名矛盾，未忽略该未知目标。", "UNKNOWN_DINO_BUFF_TARGET"); continue; }
                 if (profile.Type != "MINION") continue;
-                if (card.Attack is null || card.MaximumHealth is null)
+                if (card.Attack is null or < 0 || card.MaximumHealth is null or <= 0 || card.Health is null or <= 0 || card.Health > card.MaximumHealth ||
+                    !_snapshot.Entities.TryGetValue(card.Id, out var original) ||
+                    !RawNumber(original,"ATK","47",false,out _) || !RawNumber(original,"HEALTH","45",false,out _) ||
+                    !RawNumber(original,"DAMAGE","44",false,out _))
                 { Conditional("震地雷龙目标的当前属性未知，未用印刷值覆盖既有增益。", "UNKNOWN_DINO_BUFF_STATS"); continue; }
                 card.Attack = checked(card.Attack.Value + 3); card.MaximumHealth = checked(card.MaximumHealth.Value + 3);
                 if (card.Health is { } health) card.Health = checked(health + 3);
             }
             Coverage.Add("DINO_421-observed-hand-and-deck-minions-plus-3-3"); return true;
+        }
+
+        private void PreflightDinoArithmetic(Entity body, int activations)
+        {
+            foreach (var target in Entities.Values.Where(e => e.Controller == body.Controller && e.Zone is "HAND" or "DECK" && e.Type == "MINION"))
+            {
+                if (target.Attack is { } attack) _ = checked(attack + 3 * activations);
+                if (target.MaximumHealth is { } health) _ = checked(health + 3 * activations);
+                if (target.Health is { } remaining) _ = checked(remaining + 3 * activations);
+            }
+        }
+
+        private void CheckDinoCollection(Entity body, bool auditTargets = false)
+        {
+            var player = _snapshot.Entities.Values.SingleOrDefault(entity => entity.Kind == EntityKind.Player && entity.GetIntTag("PLAYER_ID") == body.Controller);
+            foreach (var (tag, zone) in new[] { ("NUM_CARDS_IN_HAND", "HAND"), ("NUM_CARDS_IN_DECK", "DECK") })
+            {
+                var observed = _snapshot.Entities.Values.Count(entity => entity.ControllerId == body.Controller && entity.Zone == zone);
+                if (player is not null && player.Tags.TryGetValue(tag, out var raw) && (!int.TryParse(raw, out var count) || count < 0 || count != observed))
+                    Conditional("震地雷龙目标计数与当前实体集合不一致，未把遗漏牌库或手牌当作空集合。", "UNKNOWN_DINO_BUFF_TARGET");
+            }
+            if (body.Controller == Local && _snapshot.DeckTracking is { } tracking && tracking.MatchId == _snapshot.MatchId &&
+                tracking.StateVersion == _snapshot.StateVersion && tracking.CardBuild == _snapshot.ClientBuild &&
+                (tracking.UnknownCount != 0 || tracking.TotalCards != _snapshot.Entities.Values.Count(entity => entity.ControllerId == Local && entity.Zone == "DECK")))
+                Conditional("震地雷龙的已绑定牌库仍有未知组成，不能补造未见实体的属性。", "UNKNOWN_DINO_BUFF_TARGET");
+            foreach (var target in Entities.Values.Where(entity => entity.Controller == body.Controller && entity.Zone is "HAND" or "DECK"))
+                if (DinoTargetHasUnknownListener(target))
+                    Conditional("震地雷龙目标带有未覆盖的当前光环、监听或脚本反证，首轮增益不代表相关反应已完成。", "UNKNOWN_DINO_TARGET_LISTENER");
+            if (auditTargets)
+                foreach (var target in Entities.Values.Where(entity => entity.Controller == body.Controller && entity.Zone is "HAND" or "DECK"))
+                {
+                    var profile = Profile(target);
+                    if (profile is null || target.Type != profile.Type || !ObservedCardType(target, profile.Type) ||
+                        profile.Type == "MINION" && (target.Attack is null or < 0 || target.MaximumHealth is null or <= 0 || target.Health is null or <= 0))
+                        Conditional("同批死亡含未知震地雷龙目标，不能选择任意亡语顺序。", "UNKNOWN_DINO_BUFF_TARGET");
+                }
+            foreach (var card in Entities.Values.Where(entity => entity.Controller == body.Controller && entity.Zone == "DECK"))
+            {
+                var profile = Profile(card);
+                if (profile is not null && !SimpleProfile(profile) &&
+                    !(NativeCardDefinitions.IsAudited(_snapshot.ClientBuild,card.CardId,_cards.GetValueOrDefault(card.CardId ?? "")) &&
+                        card.CardId is { } id && AuditedHunterBodies.Contains(id)))
+                    Conditional("牌库中有未覆盖的监听或特殊文字，不能假定后续使用卡牌与这些增益无关。", "UNKNOWN_DINO_DECK_LISTENER");
+            }
+        }
+
+        private bool DinoTargetHasUnknownListener(Entity target)
+        {
+            if (!_snapshot.Entities.TryGetValue(target.Id, out var original) ||
+                !RawNumber(original,"SILENCED","188",false,out var silence) || silence is not (null or 0 or 1)) return true;
+            if (silence == 1) return false;
+            var profile = Profile(target);
+            var scoped = !HasCustomAssembledText(target) && target.CardId is "EDR_849" or "CORE_TTN_866" or "FIR_953" or "EDR_480" &&
+                NativeCardDefinitions.IsAudited(_snapshot.ClientBuild,target.CardId,_cards.GetValueOrDefault(target.CardId));
+            foreach (var (name,alias) in new[] { ("AURA","362"), ("TRIGGER_VISUAL","32") })
+                if (!RawNumber(original,name,alias,false,out var flag) || flag is not (null or 0 or 1) ||
+                    flag == 1 && !(scoped && profile?.Mechanics.Contains(name) == true)) return true;
+            return !scoped && original.Tags.Any(pair =>
+                (pair.Key.StartsWith("TAG_SCRIPT_DATA_NUM_",StringComparison.Ordinal) || pair.Key is "2" or "3" or "1179" or "2921") &&
+                (!int.TryParse(pair.Value,out var value) || value != 0));
         }
     }
 }

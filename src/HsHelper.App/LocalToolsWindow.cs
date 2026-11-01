@@ -28,7 +28,7 @@ public sealed class LocalToolsWindow : Window
     private readonly ListBox _actions = new() { MinHeight = 80, MaxHeight = 150, DisplayMemberPath = nameof(LocalAction.Text) };
     private readonly Button _evaluate = new() { Content = "验证候选顺序" };
     private readonly Button _previewDraw = new() { Content = "预览所选手牌抽牌" };
-    private readonly Button _previewDeathrattleDraw = new() { Content = "预览所选随从亡语抽牌", ToolTip = "在“角色攻击”中选中我方场上随从，预览实际已观察的心中的恶魔附魔在其死亡后单次抽两张的直接风险；不杀死随从或腾出手牌位置。" };
+    private readonly Button _previewDeathrattleDraw = new() { Content = "预览所选随从亡语抽牌", ToolTip = "在“角色攻击”中选中我方场上随从，假设它死亡一次，预览已观察抽牌亡语的一轮直接风险及次数依据；不杀死随从、不腾出手牌位置，也不把计划重复次数当作已经全部结算。" };
     private readonly Button _previewGeneration = new() { Content = "预览随机生成数量" };
     private readonly Button _previewWolfBlessing = new() { Content = "比较巨狼祝福分支" };
     private readonly Button _previewMagmaSplit = new() { Content = "预览熔岩猎犬分配", ToolTip = "使用当前攻击者与攻击对象预览基础交换及后置逐包随机分配；攻击对象不是随机命中，不改变当前局面。" };
@@ -728,6 +728,8 @@ public static class LocalToolResultFormatter
         Add("失败原因", "Errors"); Add("成立条件", "Assumptions"); Add("未覆盖机制", "UnsupportedMechanics"); Add("已覆盖规则", "RuleCoverage");
         if (evaluation["Result"] is JsonObject state)
         {
+            if (state["DeathrattleExecutions"] is JsonArray deathrattleExecutions)
+                DeathrattleExecutionPresentation.Append(lines, deathrattleExecutions, entityName);
             if (state["BattlecryExecutions"] is JsonArray battlecryExecutions)
                 foreach (var execution in battlecryExecutions.OfType<JsonObject>())
                     BattlecryExecutionPresentation.Append(lines, execution, entityName, cardName);
@@ -863,7 +865,7 @@ public static class LocalToolResultFormatter
         deathrattle |= draw["Kind"]?.ToString() == "DeathrattleOrdinary";
         if (deathrattle)
         {
-            lines.Add("亡语抽牌直接后果预览（假设该随从死亡后触发一次；不会杀死随从）");
+            lines.Add("亡语抽牌直接后果预览（假设该随从死亡一次；不会杀死随从）");
             if (draw["TriggerEntityId"] is JsonValue trigger && trigger.TryGetValue<int>(out var triggerId))
                 lines.Add("触发随从：" + entityName(triggerId) + " #" + triggerId);
             if (draw["EnchantmentEntityId"] is { } enchantment)
@@ -872,7 +874,8 @@ public static class LocalToolResultFormatter
             if (draw["ResolvesEffects"]?.ToString() == "false") lines.Add("当前来源或触发条件未确认，不能把以下范围当作已结算结果。");
         }
         else lines.Add("抽牌直接后果预览（假设本体成功离手；不证明出牌合法）");
-        BattlecryExecutionPresentation.AppendPreviewScope(lines, draw);
+        if (deathrattle) DeathrattleExecutionPresentation.AppendDrawScope(lines, draw, entityName);
+        else BattlecryExecutionPresentation.AppendPreviewScope(lines, draw);
         lines.Add($"抽取次数 {Range(draw["RequestedDraws"])}；牌库移出 {Range(draw["CardsRemovedFromDeck"])}；入手 {Range(draw["CardsAddedToHand"])}；满手损失 {Range(draw["CardsBurned"])}。");
         lines.Add($"空库尝试 {Range(draw["EmptyDeckAttempts"])}；直接疲劳伤害 {Range(draw["FatigueDamage"])}（护甲吸收前，免疫另行计算）。");
         lines.Add($"直接后果手牌数 {Range(draw["HandCountAfter"])} / 牌库数 {Range(draw["DeckCountAfter"])} / 疲劳计数 {Range(draw["FatigueAfter"])}。");

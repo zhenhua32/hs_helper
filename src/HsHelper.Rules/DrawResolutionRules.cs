@@ -42,6 +42,10 @@ public sealed record DrawResolutionOutcome(string MatchId, long StateVersion, lo
     public BattlecryMultiplicityOutcome? BattlecryMultiplicity { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? IsSingleBattlecryActivationPreview { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DeathrattleMultiplicityOutcome? DeathrattleMultiplicity { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? IsSingleDeathrattleActivationPreview { get; init; }
     public bool IsDirectEffectOnly => true;
     public bool CanEvaluateFollowupActions => false;
     public int? TriggerEntityId { get; init; }
@@ -80,6 +84,7 @@ public static partial class DrawResolutionRules
         string? sourceId = null; var kind = deathrattle ? "DeathrattleOrdinary" : "Unknown";
         EntitySnapshot? enchantment = null;
         BattlecryMultiplicityOutcome? multiplicity = null;
+        DeathrattleMultiplicityOutcome? deathMultiplicity = null;
         var unknown = new DrawNumberRange(0, null);
         var requested = unknown;
         if (snapshot.Entities.Values.Any(entity => entity is null || entity.Tags is null) ||
@@ -101,6 +106,9 @@ public static partial class DrawResolutionRules
             if (!TryDeathrattleSource(snapshot, sourceEntityId, cards, out source, out enchantment, out var reason))
             { sourceId = source?.CardId; enchantment = null; unknowns.Add(reason); return Unresolved(); }
             sourceId = source!.CardId;
+            deathMultiplicity = DeathrattleMultiplicityRules.Evaluate(snapshot, sourceEntityId, cards, enchantment!.Id);
+            if (!deathMultiplicity.IsResolved || deathMultiplicity.IsEnabled != true)
+            { unknowns.AddRange(deathMultiplicity.Unknowns); unknowns.Add("亡语脚本的次数或当前启用状态未确认，未按普通一次计算。"); return Unresolved(); }
             if (beforeDraw?.PriorResolutionPending == true || !DeathrattleDrawContext(snapshot, sourceEntityId, enchantment!.Id, cards, out reason))
             { unknowns.Add(beforeDraw?.PriorResolutionPending == true ? "死亡、抽牌或其他触发仍有先前未观察的结算，不能把一次直接亡语当作完整后果。" : reason); return Unresolved(); }
         }
@@ -225,6 +233,7 @@ public static partial class DrawResolutionRules
             armor.HasValue ? Range(scenarios.Select(value => value.ArmorAfter)) : null,
             scenarios.Any(value => value.Dead), ReadOnly(unknowns), ReadOnly(assumptions), ReadOnly(coverage))
         { TriggerEntityId = deathrattle ? sourceEntityId : null, EnchantmentEntityId = enchantment?.Id, EnchantmentCardId = enchantment?.CardId,
+            DeathrattleMultiplicity = deathMultiplicity, IsSingleDeathrattleActivationPreview = deathMultiplicity is { Activations: > 1 } ? true : null,
             BattlecryMultiplicity = multiplicity, IsSingleBattlecryActivationPreview = multiplicity is { Activations: not (0 or 1) } ? true : null };
 
         void AddScenario(int count, bool blocked, long initialDeck, long capacity, long initialHealth,
@@ -304,6 +313,7 @@ public static partial class DrawResolutionRules
             sourceEntityId, sourceId, kind, false, requested, unknown, unknown, unknown, unknown, unknown,
             null, null, null, null, null, false, ReadOnly(unknowns), ReadOnly(assumptions), ReadOnly(coverage))
         { TriggerEntityId = deathrattle ? sourceEntityId : null, EnchantmentEntityId = enchantment?.Id, EnchantmentCardId = enchantment?.CardId,
+            DeathrattleMultiplicity = deathMultiplicity, IsSingleDeathrattleActivationPreview = deathMultiplicity is { Activations: > 1 } ? true : null,
             BattlecryMultiplicity = multiplicity, IsSingleBattlecryActivationPreview = multiplicity is { Activations: not (0 or 1) } ? true : null };
     }
 

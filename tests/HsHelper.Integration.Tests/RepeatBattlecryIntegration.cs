@@ -12,7 +12,7 @@ using HsHelper.Storage;
 
 internal static class RepeatBattlecryIntegration
 {
-    private const string Build = "255790", Template = "hunter-v24/turn", Key = "repeat-battlecry-fake-key";
+    private const string Build = "255790", Template = "hunter-v25/turn", Key = "repeat-battlecry-fake-key";
     private const string Gift = "EDR_100t7e", Private = "PRIVATE_REPEAT_BATTLECRY_PROBE";
     private const string Complete = "PowerProcessor.EndCurrentTaskList() - complete";
 

@@ -218,11 +218,12 @@ internal static class DarkGiftExpandedChecks
         foreach(var id in new[]{"EDR_100t4e","EDR_100t5e","EDR_100t7e","EDR_100t7e1","EDR_100t9e","EDR_100t10"})
         {
             var frame=Add(HandFrame(Specs[3]),Gift(51,id));
-            if(id=="EDR_100t7e")
+            if(id is "EDR_100t7e" or "EDR_100t4e")
             {
                 var harmless=Eval(frame);
-                Check(harmless.Verification==LineVerification.Verified && harmless.RuleCoverage.Contains(Specs[3].Coverage) && harmless.Result.HeroPowerChanges.Count==0,
-                    "A Battlecry-only attachment multiplied a non-Battlecry summon/attack or lost already observed static values.");
+                Check(harmless.Verification==LineVerification.Verified && harmless.RuleCoverage.Contains(Specs[3].Coverage) && harmless.Result.HeroPowerChanges.Count==0 &&
+                    harmless.Result.DrawPreviews.Count==0 && harmless.Result.DeathrattleExecutions is null,
+                    "An inactive Battlecry/death-only attachment fired during a surviving summon/attack or lost observed static values.");
             }
             else Unverified(frame);
         }

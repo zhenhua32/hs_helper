@@ -52,7 +52,7 @@ internal static class BattlecryRepeatCoachChecks
         foreach (var task in new[] { AdviceTaskKind.Turn, AdviceTaskKind.Choice })
         {
             var policy = AdviceTaskTemplates.Get(task);
-            Check(policy.Version == "hunter-v24/" + task.ToString().ToLowerInvariant() &&
+            Check(policy.Version == "hunter-v25/" + task.ToString().ToLowerInvariant() &&
                 new[] { "BattlecryExecutions", "StartedActivations", "CompletedActivations", "IsSingleBattlecryActivationPreview", "双亡语", "不提交第二条play" }
                     .All(text => policy.Instructions.Contains(text, StringComparison.Ordinal)), "The repeat policy lost counts, boundary or single-play semantics.");
         }

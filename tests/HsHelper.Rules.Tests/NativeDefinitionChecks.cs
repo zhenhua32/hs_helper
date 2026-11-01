@@ -152,6 +152,10 @@ internal static class NativeDefinitionChecks
             }
         var dino = Frame(10, 30, Body(30, "DINO_421", 1, 8, 1, ("DEATHRATTLE", "1")), Body(40, "VANILLA", 2, 1, 30),
             Hand(31, "EDR_852", 3, 2, 3, ("CARDRACE", "20")));
+        var incompleteDeck = Eval(dino, new PlannedAction(ActionKind.Attack, 30, 40));
+        Check(incompleteDeck.Verification != LineVerification.Verified && Find(incompleteDeck, 31).Attack == 5,
+            "A positive observed deck count with no corresponding entities became a complete empty-deck buff.");
+        dino = Tag(dino, 2, "NUM_CARDS_IN_DECK", "0");
         var buffed = Eval(dino, new PlannedAction(ActionKind.Attack, 30, 40));
         Check(buffed.Verification == LineVerification.Verified && Find(buffed, 31).Attack == 5 && Find(buffed, 31).MaximumHealth == 6,
             "Audited native death failed to use current source and target stats.");

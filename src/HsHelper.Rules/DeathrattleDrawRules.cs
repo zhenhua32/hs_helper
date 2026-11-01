@@ -51,7 +51,9 @@ public static partial class DrawResolutionRules
             !Optional(enchantment, "TAG_SCRIPT_DATA_NUM_6", "2921", 0) || !Optional(enchantment, "IS_NIGHTMARE_BONUS", "3567", 1) ||
             !Visual(enchantment, "ENCHANTMENT_BIRTH_VISUAL", "330") || !Visual(enchantment, "ENCHANTMENT_IDLE_VISUAL", "331") ||
             !NativeCardDefinitions.IsAuditedEntity(snapshot.ClientBuild, enchantment, cards) ||
-            AssembledCardText.RequiresCustomText(enchantment.Tags)) return false;
+            AssembledCardText.RequiresCustomText(enchantment.Tags) ||
+            !DeathrattleMultiplicityRules.TryAuditDrawAttachment(snapshot, enchantment.Id, cards, out var auditedTarget) ||
+            auditedTarget != sourceEntityId) return false;
         foreach (var (name, alias) in DeathModifiers)
             if (!Optional(enchantment, name, alias, 0)) return false;
         foreach (var (name, alias) in new[] { ("BATTLECRY", "218"), ("DEATHRATTLE", "217"), ("TRIGGER_VISUAL", "32"), ("AURA", "362"), ("REBORN", "1085") })
@@ -79,7 +81,11 @@ public static partial class DrawResolutionRules
                  NativeCardDefinitions.ExpectedType(entity.CardId) == "ENCHANTMENT") && !passiveAttachments.Contains(entity.Id)) return false;
             if (entity.Kind != EntityKind.Player && entity.Zone != "PLAY") continue;
             foreach (var (name, alias) in DeathModifiers)
+            {
+                if (name == "EXTRA_DEATHRATTLES_BASE" && IsAcquiredOnlyBody(snapshot, entity, cards) &&
+                    (!entity.Tags.ContainsKey(name) && !entity.Tags.ContainsKey(alias) || Optional(entity, name, alias, 1))) continue;
                 if (!Optional(entity, name, alias, 0)) return false;
+            }
             foreach (var (name, alias) in new[] { ("TRIGGER_VISUAL", "32"), ("AURA", "362") })
                 if (!Bool(entity, name, alias, false, out var active) || active && !KnownUnrelatedTrigger(snapshot, entity, cards)) return false;
             if (entity.Id == bodyId) continue;
@@ -95,6 +101,12 @@ public static partial class DrawResolutionRules
         entity.CardId is "EDR_849" or "CORE_TTN_866" or "EDR_480" &&
         NativeCardDefinitions.IsAuditedEntity(snapshot.ClientBuild, entity, cards);
 
+    private static bool IsAcquiredOnlyBody(GameSnapshot snapshot, EntitySnapshot entity, IReadOnlyDictionary<string, CardRecord> cards) =>
+        entity.CardId == DeathrattleMultiplicityRules.SelfDoublerCardId && !AssembledCardText.RequiresCustomText(entity.Tags) &&
+        Optional(entity, "AURA", "362", 0) && Optional(entity, "TRIGGER_VISUAL", "32", 0) &&
+        Optional(entity, "REBORN", "1085", 0) &&
+        DeathrattleMultiplicityRules.IsAuditedSelfDoubler(snapshot.ClientBuild, cards.GetValueOrDefault(entity.CardId));
+
     private static bool BodyDefinition(GameSnapshot snapshot, EntitySnapshot entity, IReadOnlyDictionary<string, CardRecord> cards, bool selected)
     {
         if (entity.CardId is not { } id || !cards.TryGetValue(id, out var card) || card is null || card.Type != "MINION" ||
@@ -107,6 +119,7 @@ public static partial class DrawResolutionRules
             var mechanics = raw.TryGetProperty("mechanics", out var list)
                 ? list.EnumerateArray().Select(value => value.GetString()!).ToHashSet(StringComparer.Ordinal) : [];
             if (selected && (mechanics.Contains("DEATHRATTLE") || mechanics.Contains("REBORN"))) return false;
+            if (IsAcquiredOnlyBody(snapshot, entity, cards)) return true;
             if (mechanics.Contains("AURA") || mechanics.Contains("TRIGGER_VISUAL"))
                 return KnownUnrelatedTrigger(snapshot, entity, cards);
             if (NativeCardDefinitions.IsRegistered(id) && NativeCardDefinitions.IsImplementedBody(id)) return true;

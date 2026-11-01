@@ -156,10 +156,10 @@ internal static class DarkGiftStaticIntegration
         Check(handler.Calls == 2 && handler.Line is not null && observation is { Success: true, Name: "evaluate_line", ResultHash.Length: 64, ToolCallId: "dark-gift-line", RequestId: not null } &&
             observation.AnalysisRunId == advice.AnalysisRunId && observation.Model == advice.Model && observation.EventSequence == item.Frame.EventSequence &&
             observation.RequestId == usages[0].RequestId && advice.RequestIds.SequenceEqual(usages.Select(usage => usage.RequestId)) &&
-            usages.Count == 2 && usages.All(usage => usage.Success && usage.ChargedTokens == 30 && usage.CardBuild == build && usage.PromptTemplateVersion == "hunter-v24/turn") &&
+            usages.Count == 2 && usages.All(usage => usage.Success && usage.ChargedTokens == 30 && usage.CardBuild == build && usage.PromptTemplateVersion == "hunter-v25/turn") &&
             budget.Snapshot(item.Frame.MatchId) is { RequestsStarted: 2, CompletedRequests: 2, ChargedTokens: 60, InFlightRequests: 0 } &&
             observation.ResultHash == Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(handler.Line!.ToJsonString()))) &&
-            advice.TemplateVersion == "hunter-v24/turn" && before == SnapshotCodec.Serialize(item.Frame),
+            advice.TemplateVersion == "hunter-v25/turn" && before == SnapshotCodec.Serialize(item.Frame),
             "Real tool source/hash usage accounting template binding or immutable snapshot changed across HTTP and final host validation.");
         var draft = AdviceArchiveStore.Prepare(new(item.Frame.MatchId, item.Frame.StateVersion, item.Frame.EventSequence, build, advice.TemplateVersion!, advice.Summary)
         {
