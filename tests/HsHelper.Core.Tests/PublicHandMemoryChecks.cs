@@ -18,6 +18,11 @@ public static class PublicHandMemoryChecks
         yield return ("public hand memory clears old observers spectator transitions and new games", Observers);
         yield return ("a changed or newly confirmed observer can reobserve a still-public body without another SHOW", PublicAfterPerspectiveChange);
         yield return ("public hand memory clears gap facts but accepts newly observed public identities after settlement", Gaps);
+        yield return ("unmatched block end clears existing hand memory and preserves the gap warning and version transition", BlockUnderflowMemory);
+        yield return ("unmatched block end invalidates public sources before a later ordinary update and return", BlockUnderflowSource);
+        yield return ("new actual public identity after block underflow can establish incomplete hand memory", BlockUnderflowRecovery);
+        yield return ("balanced nested blocks preserve public identity through settlement", BalancedBlocks);
+        yield return ("legacy saved underflow memory is unknown while ordinary legacy records remain readable", LegacyUnderflowMemory);
         yield return ("midgame logs retain newly observed public returns without inventing a game start", MidgamePublicProof);
         yield return ("public hand memory cannot revive a gap source from stale raw identity or attribute changes", NoGapResurrection);
         yield return ("public hand memory does not depend on the bounded recent-event buffer", EventBuffer);
@@ -167,6 +172,74 @@ public static class PublicHandMemoryChecks
         Feed(engine, "SHOW_ENTITY - Updating Entity=30 CardID=NEW_PUBLIC", "tag=CARDTYPE value=MINION", "tag=ZONE value=PLAY"); Bounce(engine);
         Check(Memory(engine).Entries.Single().CardId == "NEW_PUBLIC", "Actual new public identity failed to reanchor after a gap.");
     }
+    private static void BlockUnderflowMemory()
+    {
+        var engine = Start(); Card(engine); Bounce(engine); var before = engine.Snapshot();
+        Check(engine.ProcessLine("BLOCK_END"), "Unmatched block end did not report a changed observation.");
+        var gap = engine.Snapshot();
+        Check(gap.PublicHandMemory!.Entries.Count == 0, "An unmatched block end retained an existing hand identity across lost input.");
+        Check(!gap.Quality.IsComplete && !gap.Quality.IsStable && gap.Quality.OpenBlockCount == 0 &&
+            gap.Quality.Warnings.Contains("结算块结束缺少对应开始") && gap.StateVersion == before.StateVersion + 1 &&
+            gap.EventSequence == before.EventSequence + 1, "Unmatched block end changed its quality, warning or single-event version semantics.");
+        Complete(engine); Check(!Memory(engine).IsComplete, "Input loss was presented as complete hand history after settlement."); Empty(engine);
+        var repeated = engine.Snapshot(); engine.ProcessLine("BLOCK_END");
+        Check(engine.Snapshot().StateVersion == repeated.StateVersion + 1, "A repeated underflow with the same warning failed to advance the state once.");
+    }
+    private static void BlockUnderflowSource()
+    {
+        var engine = Start(); Card(engine);
+        Feed(engine, "BLOCK_END", "TAG_CHANGE Entity=30 tag=ATK value=10"); Bounce(engine);
+        Empty(engine);
+        Check(!Memory(engine).IsComplete, "A stale pre-underflow public source regained complete-history status.");
+    }
+    private static void BlockUnderflowRecovery()
+    {
+        var engine = Start(); Card(engine); Feed(engine, "BLOCK_END", "SHOW_ENTITY - Updating Entity=30 CardID=NEW_PUBLIC_AFTER_UNDERFLOW"); Bounce(engine);
+        var memory = Memory(engine);
+        Check(!memory.IsComplete && memory.IsSettled && memory.Warnings.Count > 0 &&
+            memory.Entries.Single().CardId == "NEW_PUBLIC_AFTER_UNDERFLOW" &&
+            memory.ContinuityPolicy == PublicHandMemoryVisibility.CurrentContinuityPolicy,
+            "A new actual public proof after underflow could not reestablish independently reliable incomplete memory with its audited policy.");
+    }
+    private static void BalancedBlocks()
+    {
+        var engine = Start(); Card(engine);
+        Feed(engine, "BLOCK_START BlockType=POWER Entity=30", "BLOCK_START BlockType=TRIGGER Entity=30",
+            "HIDE_ENTITY - Entity=30 tag=ZONE value=HAND", "BLOCK_END");
+        Check(engine.Snapshot().Quality.OpenBlockCount == 1 && PublicHandMemoryVisibility.Confirmed(engine.Snapshot()) is null,
+            "Closing only the inner block published an unsettled hand identity.");
+        Feed(engine, "BLOCK_END"); Complete(engine);
+        Check(Memory(engine).IsComplete && Memory(engine).Entries.Single().CardId == "PUBLIC_CARD" &&
+            !engine.Snapshot().Quality.Warnings.Contains("结算块结束缺少对应开始"), "Balanced nested blocks were treated as lost input.");
+    }
+    private static void LegacyUnderflowMemory()
+    {
+        var engine = Start(); Card(engine); Bounce(engine); var frame = engine.Snapshot(); var memory = Memory(engine);
+        var legacyMemory = new PublicHandMemorySnapshot(memory.MatchId, memory.StateVersion, memory.EventSequence,
+            memory.LocalPlayerId, memory.PerspectiveSource, memory.Entries, memory.IsComplete, memory.Warnings, memory.IsSettled);
+        var legacy = frame with { PublicHandMemory = legacyMemory };
+        Check(PublicHandMemoryVisibility.Confirmed(legacy)!.Entries.Single().CardId == "PUBLIC_CARD", "A normal legacy ledger was made unreadable.");
+        var underflow = legacy with { Quality = legacy.Quality with { IsComplete = false, IsStable = false,
+            Warnings = ["结算块结束缺少对应开始"] } };
+        var options = new JsonSerializerOptions { IgnoreReadOnlyProperties = true,
+            Converters = { new JsonStringEnumConverter(), new FrozenEntitiesConverter(), new FrozenTagsConverter() } };
+        var json = JsonSerializer.Serialize(underflow, options);
+        Check(!json.Contains("ContinuityPolicy", StringComparison.Ordinal), "Fixture does not represent the missing-policy legacy format.");
+        var restored = JsonSerializer.Deserialize<GameSnapshot>(json, options)!;
+        Check(restored.PublicHandMemory!.ContinuityPolicy is null, "Legacy deserialization promoted missing continuity evidence to a new policy.");
+        Check(PublicHandMemoryVisibility.Confirmed(restored) is null, "A legacy saved underflow snapshot exposed its stale hand memory without an audited continuity policy.");
+        Check(JsonSerializer.Serialize(underflow, options) == json && underflow.PublicHandMemory!.Entries.Count == 1,
+            "Consumer filtering rewrote the legacy raw evidence instead of deriving unknown visibility.");
+        var unrelatedPartial = legacy with { Quality = legacy.Quality with { IsComplete = false, IsStable = false, Warnings = ["unrelated incomplete observation"] } };
+        var confirmedPartial = PublicHandMemoryVisibility.Confirmed(unrelatedPartial);
+        Check(confirmedPartial is { IsComplete: false, ContinuityPolicy: null } && confirmedPartial.Entries.Single().CardId == "PUBLIC_CARD",
+            "An ordinary incomplete legacy record was blocked or its missing policy was upgraded during derived projection.");
+        var unknownPolicy = new PublicHandMemorySnapshot(legacyMemory.MatchId, legacyMemory.StateVersion, legacyMemory.EventSequence,
+            legacyMemory.LocalPlayerId, legacyMemory.PerspectiveSource, legacyMemory.Entries, legacyMemory.IsComplete,
+            legacyMemory.Warnings, legacyMemory.IsSettled, "unreviewed-policy");
+        Check(PublicHandMemoryVisibility.Confirmed(underflow with { PublicHandMemory = unknownPolicy }) is null,
+            "An unreviewed continuity label authorized stale underflow evidence.");
+    }
     private static void MidgamePublicProof()
     {
         foreach (var zone in new[] { "PLAY", "GRAVEYARD" })
@@ -229,7 +302,7 @@ public static class PublicHandMemoryChecks
     private static PublicHandMemorySnapshot Alter(PublicHandMemorySnapshot memory, string? match = null, long? version = null, long? sequence = null,
         int? local = null, string? perspective = null, IReadOnlyList<PublicHandMemoryEntry>? entries = null) =>
         new(match ?? memory.MatchId, version ?? memory.StateVersion, sequence ?? memory.EventSequence, local ?? memory.LocalPlayerId,
-            perspective ?? memory.PerspectiveSource, entries ?? memory.Entries, memory.IsComplete, memory.Warnings, memory.IsSettled);
+            perspective ?? memory.PerspectiveSource, entries ?? memory.Entries, memory.IsComplete, memory.Warnings, memory.IsSettled, memory.ContinuityPolicy);
     private static void InvalidBindings()
     {
         var engine = Start(); Card(engine); Bounce(engine); var frame = engine.Snapshot(); var memory = Memory(engine); var entry = memory.Entries.Single();
@@ -259,7 +332,8 @@ public static class PublicHandMemoryChecks
         Check(!frame.Quality.IsComplete && !frame.Quality.IsStable && frame.PublicHandMemory!.IsComplete,
             "Fixture did not reach the derived attachment-quality boundary.");
         var confirmed = Memory(engine);
-        Check(!confirmed.IsComplete && confirmed.IsSettled && confirmed.Warnings.Count > 0 && confirmed.Entries.SequenceEqual([original]),
+        Check(!confirmed.IsComplete && confirmed.IsSettled && confirmed.Warnings.Count > 0 && confirmed.Entries.SequenceEqual([original]) &&
+            confirmed.ContinuityPolicy == frame.PublicHandMemory!.ContinuityPolicy && confirmed.ContinuityPolicy == PublicHandMemoryVisibility.CurrentContinuityPolicy,
             "An unrelated unresolved attachment erased independently observed public hand memory or falsely declared complete context.");
     }
     private sealed class FrozenEntitiesConverter : JsonConverter<FrozenDictionary<int, EntitySnapshot>>

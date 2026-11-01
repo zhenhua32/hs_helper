@@ -13,6 +13,7 @@ internal static class PublicHandMemoryStorageChecks
         yield return ("public hand memory codec freezes evidence and leaves legacy null JSON and hash unchanged", Codec);
         yield return ("malformed public hand memory cannot enter durable snapshot queues", () => Malformed(database));
         yield return ("new settled public hand facts after a gap are durably checkpointed before recording stops", () => PartialCheckpoint(database));
+        yield return ("legacy preview23 underflow memory is unknown while original bytes and normal old memory survive", LegacyUnderflow);
     }
 
     private static async Task Durable(string database)
@@ -89,6 +90,27 @@ internal static class PublicHandMemoryStorageChecks
             return Task.CompletedTask;
         }
         throw new InvalidOperationException("Malformed memory was accepted for recording.");
+    }
+
+    private static Task LegacyUnderflow()
+    {
+        // Both records were produced by immutable preview23 Core/Storage DLLs, not the patched codec.
+        // They intentionally preserve the historical bug as input; deriving a safe view must not rewrite it.
+        var root = Path.Combine(AppContext.BaseDirectory, "Fixtures");
+        var badJson = File.ReadAllText(Path.Combine(root, "public-hand-memory-underflow-preview23.json"));
+        var normalJson = File.ReadAllText(Path.Combine(root, "public-hand-memory-normal-preview23.json"));
+        Check(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(badJson))) == "aaa0e04358d21cefb347f05968ac5bf4ec661ed5717593bd8bf8c4ba6eaffe8b" &&
+            Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(normalJson))) == "fdeacf827cf4cf386acf87f810921de3da3e9d89d4cc71f1ae5f7ca2bb587c73",
+            "An independent previous-release compatibility fixture changed.");
+        var bad = SnapshotCodec.Deserialize(badJson); var normal = SnapshotCodec.Deserialize(normalJson);
+        Check(bad.PublicHandMemory?.Entries.Count == 1 && bad.Quality.Warnings.Contains("结算块结束缺少对应开始") &&
+            bad.PublicHandMemory.ContinuityPolicy is null && PublicHandMemoryVisibility.Confirmed(bad) is null,
+            "An old underflow ledger fabricated current continuity proof or retained its unreliable hand association.");
+        Check(normal.PublicHandMemory?.ContinuityPolicy is null && PublicHandMemoryVisibility.Confirmed(normal)?.Entries.Single().CardId == "AUDIT_PUBLIC_CARD",
+            "Protecting an old underflow record rejected normal old public memory.");
+        Check(SnapshotCodec.Serialize(bad) == badJson && SnapshotCodec.Serialize(normal) == normalJson,
+            "Filtering an unreliable historical association changed original snapshot bytes or backfilled a new policy stamp.");
+        return Task.CompletedTask;
     }
 
     private static async Task PartialCheckpoint(string database)

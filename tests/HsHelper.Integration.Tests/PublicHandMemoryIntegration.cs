@@ -112,7 +112,36 @@ internal static class PublicHandMemoryIntegration
         Check(Entries(gap.Frame).Count == 1 && PublicHandMemoryVisibility.Confirmed(gap.Frame)?.IsComplete == false,
             "A genuine new public proof after a gap was confused with an old inference or labeled complete.");
         await PipelineAsync(await gap.SaveAsync(), catalog, expectedEntries: 1, expectVerified: false);
-        pass("control view spectator gap and reset invalidate old associations while a fresh settled post-gap public observation can be shown explicitly incomplete");
+
+        var underflow = await Replay.CreateAsync(directory, catalog);
+        underflow.Feed("TAG_CHANGE Entity=41 tag=ZONE value=PLAY", Complete, "HIDE_ENTITY - Entity=41 tag=ZONE value=HAND", Complete);
+        var beforeUnderflow = await underflow.SaveAsync(); var beforeUnderflowJson = SnapshotCodec.Serialize(beforeUnderflow.Frame);
+        var oldEntry = Entries(beforeUnderflow.Frame).Single();
+        underflow.Feed("BLOCK_END", Complete);
+        var clearedAt = underflow.Frame.EventSequence;
+        Check(!underflow.Frame.Quality.IsComplete && underflow.Frame.PublicHandMemory is { IsComplete: false, Entries.Count: 0 } &&
+            Entries(underflow.Frame).Count == 0, "An unmatched BLOCK_END marked quality incomplete but retained previously confirmed hand memory.");
+        await PipelineAsync(await underflow.SaveAsync(), catalog, expectedEntries: 0, expectVerified: false);
+        underflow.Feed("TAG_CHANGE Entity=41 tag=ZONE value=PLAY", "SHOW_ENTITY - Updating Entity=41 CardID=" + RememberedCard,
+            "tag=CARDTYPE value=MINION", Complete, "HIDE_ENTITY - Entity=41 tag=ZONE value=HAND", Complete);
+        var freshEntry = Entries(underflow.Frame).Single();
+        Check(freshEntry.PublicAtSequence > clearedAt && freshEntry.PublicAtSequence > oldEntry.PublicAtSequence &&
+            PublicHandMemoryVisibility.Confirmed(underflow.Frame)?.IsComplete == false,
+            "Post-underflow recovery reused an old public identity or claimed a complete history.");
+        await PipelineAsync(await underflow.SaveAsync(), catalog, expectedEntries: 1, expectVerified: false);
+        var oldExact = await new SessionStore(beforeUnderflow.Database).GetHistoricalDecisionAsync(beforeUnderflow.Point.Id);
+        Check(oldExact is not null && SnapshotCodec.Serialize(oldExact.Context.Snapshot) == beforeUnderflowJson &&
+            Entries(oldExact.Context.Snapshot).Single() == oldEntry && SnapshotCodec.Serialize(beforeUnderflow.Frame) == beforeUnderflowJson,
+            "Clearing unreliable current memory rewrote the earlier exact saved observation.");
+        await PipelineAsync(beforeUnderflow, catalog, expectedEntries: 1);
+
+        var stalePublic = await Replay.CreateAsync(directory, catalog);
+        stalePublic.Feed("TAG_CHANGE Entity=41 tag=ZONE value=PLAY", Complete);
+        stalePublic.Feed("BLOCK_END", Complete, "TAG_CHANGE Entity=41 tag=ATK value=10", "HIDE_ENTITY - Entity=41 tag=ZONE value=HAND", Complete);
+        Check(!stalePublic.Frame.Quality.IsComplete && stalePublic.Frame.PublicHandMemory is { Entries.Count: 0 } && Entries(stalePublic.Frame).Count == 0,
+            "An ordinary attribute update after block underflow revived a public source that had never re-established its identity.");
+        await PipelineAsync(await stalePublic.SaveAsync(), catalog, expectedEntries: 0, expectVerified: false);
+        pass("control view spectator reset explicit gaps and block underflow clear old associations while only fresh settled post-gap public proof can recover incomplete memory without rewriting earlier exact observations");
 
         var old = await new SessionStore(privatePoint.Database).GetHistoricalDecisionAsync(privatePoint.Point.Id) ?? throw new InvalidOperationException("Missing earlier exact point.");
         Check(SnapshotCodec.Serialize(old.Context.Snapshot) == privateOriginal && Entries(old.Context.Snapshot).Count == 0,

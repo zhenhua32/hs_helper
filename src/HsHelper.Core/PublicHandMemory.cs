@@ -18,21 +18,25 @@ public sealed record PublicHandMemorySnapshot
     [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public IReadOnlyList<string> Warnings { get; }
     // Unlike global snapshot quality, a new observation can settle after an earlier input gap.
     [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.Never)] public bool IsSettled { get; }
+    // Missing legacy evidence stays missing; constructors/deserialization must not promote old records.
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ContinuityPolicy { get; }
 
     public PublicHandMemorySnapshot(string matchId, long stateVersion, long eventSequence, int localPlayerId,
         string perspectiveSource, IReadOnlyList<PublicHandMemoryEntry> entries, bool isComplete,
-        IReadOnlyList<string> warnings, bool isSettled = false)
+        IReadOnlyList<string> warnings, bool isSettled = false, string? continuityPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(entries); ArgumentNullException.ThrowIfNull(warnings);
         MatchId = matchId; StateVersion = stateVersion; EventSequence = eventSequence; LocalPlayerId = localPlayerId;
         PerspectiveSource = perspectiveSource; Entries = Array.AsReadOnly(entries.ToArray()); IsComplete = isComplete;
         Warnings = Array.AsReadOnly(warnings.ToArray()); IsSettled = isSettled;
+        ContinuityPolicy = continuityPolicy;
     }
 }
 
 /// <summary>One consumer boundary for a bound ledger. It never restores identities into private entities.</summary>
 public static class PublicHandMemoryVisibility
 {
+    public const string CurrentContinuityPolicy = "input-gaps-v2";
     private static readonly HashSet<string> SafePrivateTags = ["ZONE", "CONTROLLER", "ENTITY_ID", "ZONE_POSITION"];
 
     public static PublicHandMemorySnapshot? Confirmed(GameSnapshot snapshot)
@@ -45,6 +49,7 @@ public static class PublicHandMemoryVisibility
             memory.EventSequence != snapshot.EventSequence || memory.LocalPlayerId != snapshot.LocalPlayerId ||
             memory.PerspectiveSource != snapshot.PerspectiveSource ||
             memory.PerspectiveSource is not ("manual" or "initial_private_hand") || memory.Entries is null || memory.Warnings is null ||
+            snapshot.Quality.Warnings.Contains("结算块结束缺少对应开始") && memory.ContinuityPolicy != CurrentContinuityPolicy ||
             memory.StateVersion < 0 || memory.EventSequence < 0 ||
             !snapshot.Entities.Values.Where(entity => entity.Kind == EntityKind.Player).Select(entity => entity.GetIntTag("PLAYER_ID"))
                 .Order().SequenceEqual(new int?[] { 1, 2 }) ||
@@ -65,7 +70,7 @@ public static class PublicHandMemoryVisibility
         }
         return !snapshot.Quality.IsComplete
             ? new(memory.MatchId, memory.StateVersion, memory.EventSequence, memory.LocalPlayerId, memory.PerspectiveSource,
-                memory.Entries, false, Array.AsReadOnly(memory.Warnings.Append("局面其它信息不完整；这里只保留具有独立连续公开证据的手牌记忆，不代表其余手牌。").Distinct(StringComparer.Ordinal).ToArray()), memory.IsSettled)
+                memory.Entries, false, Array.AsReadOnly(memory.Warnings.Append("局面其它信息不完整；这里只保留具有独立连续公开证据的手牌记忆，不代表其余手牌。").Distinct(StringComparer.Ordinal).ToArray()), memory.IsSettled, memory.ContinuityPolicy)
             : memory;
     }
 
@@ -129,6 +134,7 @@ internal sealed class PublicHandMemoryTracker
         if (local is not (1 or 2) || local != _local || perspective != _perspective) return null;
         return new(matchId, version, sequence, local.Value, perspective,
             _hand.Values.OrderBy(entry => entry.EnteredHandAtSequence).ThenBy(entry => entry.EntityId).ToArray(),
-            complete && !_historyLost, _historyLost ? ["公开手牌记忆此前有记录缺口；仅列缺口后重新公开并连续追踪的身份，不代表其余手牌。"] : [], settled);
+            complete && !_historyLost, _historyLost ? ["公开手牌记忆此前有记录缺口；仅列缺口后重新公开并连续追踪的身份，不代表其余手牌。"] : [], settled,
+            PublicHandMemoryVisibility.CurrentContinuityPolicy);
     }
 }

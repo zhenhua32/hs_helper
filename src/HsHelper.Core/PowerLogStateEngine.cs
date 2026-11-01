@@ -370,7 +370,13 @@ public sealed partial class PowerLogStateEngine
             _currentEntity = null;
             if (_turnBlocks.Count > 0) _turnBlocks.Pop();
             if (_blockCount > 0) _blockCount--;
-            else { _hasGap = true; _warnings.Add("结算块结束缺少对应开始"); }
+            else
+            {
+                var beforeGapVersion = _version;
+                MarkDataGap("结算块结束缺少对应开始");
+                // MarkDataGap advances the first warning; repeated underflows still advance once.
+                return _version != beforeGapVersion || Changed();
+            }
             return Changed();
         }
         if (content.StartsWith("META_DATA", StringComparison.Ordinal))
