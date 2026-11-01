@@ -205,6 +205,7 @@ public static class DreamboundRaptorRules
         first.Kind == second.Kind && first.Tags.Count == second.Tags.Count && first.Tags.All(pair => second.Tags.TryGetValue(pair.Key, out var value) && pair.Value == value);
     private static bool AuditedMinion(CardRecord card)
     {
+        if (NativeCardDefinitions.IsRegistered(card.Id) && !NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, card.Id, card)) return false;
         try
         {
             using var document = JsonDocument.Parse(card.RawJson); var raw = document.RootElement;
@@ -218,6 +219,7 @@ public static class DreamboundRaptorRules
         cards.TryGetValue("EDR_849", out var card) && AuditedRaptor(card);
     private static bool AuditedRaptor(CardRecord card)
     {
+        if (!NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, "EDR_849", card)) return false;
         if (card.DbfId != 114933 || card.Text != "在你使用一张随从牌后，随机使其获得一项<b>额外效果</b>。") return false;
         try
         {

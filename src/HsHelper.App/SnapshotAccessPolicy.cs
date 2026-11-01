@@ -15,6 +15,7 @@ public static class SnapshotAccessPolicy
         bool historical, bool fileReplay, bool listening, bool loading, bool catchingUp, bool sourceFailed,
         DateTimeOffset? lastSuccessfulRead, DateTimeOffset? fileLastWrite)
     {
+        snapshot = AttachmentVisibility.Project(snapshot);
         var usable = snapshot.Entities.Count > 0 && snapshot.Quality.IsStable &&
             snapshot.Quality.HasLocalPerspective && !snapshot.IsSpectating;
         if (loading) return new(SnapshotViewKind.Unavailable, false, "正在读取日志", "请等待日志追赶完成。");

@@ -16,6 +16,7 @@ namespace HsHelper.Coaching;
 public static class CompactAdviceContextBuilder
 {
     public const string SchemaVersion = "compact-v1";
+    public const string VisibilityPolicy = "attachments-v1";
     private static readonly JsonSerializerOptions Json = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -39,13 +40,16 @@ public static class CompactAdviceContextBuilder
         var template = AdviceTaskTemplates.Get(task);
         return new(snapshot.MatchId, snapshot.StateVersion, task.ToString(), Build(snapshot, build, deck, cards, recentEvents))
         { TaskKind = task, TemplateVersion = template.Version, CardBuild = build is null or "" ? "unknown" : build,
-            EventSequence = snapshot.EventSequence };
+            EventSequence = snapshot.EventSequence, VisibilityPolicy = VisibilityPolicy };
     }
 
     public static JsonObject Build(GameSnapshot snapshot, string? build, DeckDefinition? deck = null,
         IEnumerable<CardRecord>? cards = null, IEnumerable<ObservedGameEvent>? recentEvents = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        snapshot = AttachmentVisibility.Project(recentEvents is null ? snapshot : snapshot with
+            { RecentEvents = Array.AsReadOnly(recentEvents.ToArray()) });
+        recentEvents = snapshot.RecentEvents;
         var local = ChoiceVisibility.ConfirmedLocalPlayer(snapshot);
         var visible = snapshot.Entities.Values.Where(entity => entity.Kind is EntityKind.Game or EntityKind.Player ||
             entity.Zone == "PLAY" || local.HasValue && entity.ControllerId == local && entity.Zone is "HAND" or "SECRET")
@@ -193,6 +197,8 @@ public static class CompactAdviceContextBuilder
     private static string? EventIdentity(GameSnapshot snapshot, ObservedGameEvent observed, IReadOnlyList<PlayedCardRecord> plays)
     {
         if (observed.CardId is null) return null;
+        // Project already checked the observer against proof captured at this event.
+        if (observed.IdentityVisibility is not null) return observed.CardId;
         if (observed.FromZone is "PLAY" or "GRAVEYARD" || observed.ToZone is "PLAY" or "GRAVEYARD" ||
             ChoiceVisibility.ConfirmedLocalPlayer(snapshot) is { } local && observed.ControllerId == local ||
             plays.Any(play => play.EntityId == observed.EntityId && play.CardId == observed.CardId)) return observed.CardId;

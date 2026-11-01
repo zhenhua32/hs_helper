@@ -131,6 +131,7 @@ public static class GenerationResolutionRules
             ? Tag(entity, name, alias) is >= 0 and var value ? value > 0 : null : absent;
     private static bool AuditedSource(CardRecord card)
     {
+        if (!NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, card.Id, card)) return false;
         try
         {
             using var document = JsonDocument.Parse(card.RawJson); var raw = document.RootElement;

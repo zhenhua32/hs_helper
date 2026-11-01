@@ -57,7 +57,8 @@ public static class CraftChoiceRules
             source.Zone is not ("PLAY" or "GRAVEYARD") || source.CardId is not ("TLC_EVENT_400" or "BE_044") ||
             choice.SourceCardId != source.CardId ||
             !cards.TryGetValue(source.CardId, out var sourceCard) || sourceCard is null || sourceCard.Id != source.CardId ||
-            sourceCard.Type != (source.CardId == "BE_044" ? "MINION" : "SPELL"))
+            sourceCard.Type != (source.CardId == "BE_044" ? "MINION" : "SPELL") ||
+            !NativeCardDefinitions.IsAuditedEntity(snapshot.ClientBuild, source, cards))
         {
             unknowns.Add("构筑来源的身份、已使用区域、归属或固定版本资料未确认。");
             return Result();

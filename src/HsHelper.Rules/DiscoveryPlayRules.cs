@@ -155,7 +155,7 @@ public static class DiscoveryPlayRules
         "RewindDarkGiftBeastDiscover", "野兽发现、黑暗之赐和独立回溯阶段；延系条件留待绑定的真实回合历史，不恢复旧时间线。", ["BATTLECRY", "DISCOVER"], true);
     private static bool Audited(CardRecord card, string id, Definition definition)
     {
-        if (card.Id != id || card.DbfId != definition.DbfId || card.Type != definition.Type || card.Text != definition.Text) return false;
+        if (!NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, id, card) || card.Id != id || card.DbfId != definition.DbfId || card.Type != definition.Type || card.Text != definition.Text) return false;
         try
         {
             using var document = JsonDocument.Parse(card.RawJson); var raw = document.RootElement;

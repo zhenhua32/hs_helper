@@ -37,6 +37,7 @@ public sealed record AdviceContext(string MatchId, long StateVersion, string Tas
     public IReadOnlyList<AdviceConversationTurn> Conversation { get; init; } = [];
     public bool ConversationTruncated { get; init; }
     public string? UserQuestion { get; init; }
+    [JsonIgnore] public string? VisibilityPolicy { get; init; }
     public string TemplateVersion { get; init; } = AdviceTaskTemplates.Version;
     [JsonConverter(typeof(JsonStringEnumConverter))] public AdviceTaskKind? TaskKind { get; init; }
 }

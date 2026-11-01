@@ -80,15 +80,19 @@ public static class SnapshotAccessRegression
     private static void UnusableFrames()
     {
         var frame = BattleViewRegression.Frame();
+        var legacyEntities = frame.Entities.ToDictionary();
+        legacyEntities[90001] = new(90001, "EDR_100t13e", EntityKind.Card, new Dictionary<string, string>
+        { ["CARDTYPE"] = "ENCHANTMENT", ["ZONE"] = "PLAY", ["CONTROLLER"] = "1", ["ATTACHED"] = "999999" }.ToFrozenDictionary());
         foreach (var unusable in new[]
         {
             frame with { Entities = FrozenDictionary<int, EntitySnapshot>.Empty },
             frame with { Quality = frame.Quality with { IsStable = false } },
             frame with { Quality = frame.Quality with { HasLocalPerspective = false } },
-            frame with { IsSpectating = true }
+            frame with { IsSpectating = true },
+            frame with { Entities = legacyEntities.ToFrozenDictionary() }
         })
             foreach (var access in new[] { Access(unusable), Access(unusable, historical: true), Access(unusable, fileReplay: true) })
-                Check(!access.CanAnalyze, "An empty, unstable, unconfirmed or spectator frame was accepted for analysis.");
+                Check(!access.CanAnalyze, "An empty, unstable, unconfirmed, spectator or legacy unbound-attachment frame was accepted for analysis.");
     }
 
     private static SnapshotAccess Access(GameSnapshot? frame = null, bool historical = false, bool fileReplay = false,

@@ -102,7 +102,7 @@ internal static class MultiStageChoiceIntegration
             "CREATE_GAME", "GameEntity EntityID=1", "tag=STATE value=RUNNING", "tag=TURN value=8", "tag=STEP value=MAIN_ACTION",
             "Player EntityID=2 PlayerID=1", "tag=CURRENT_PLAYER value=1", "tag=NUM_CARDS_IN_HAND value=0", "tag=MAXHANDSIZE value=10",
             "Player EntityID=3 PlayerID=2", "tag=CURRENT_PLAYER value=0",
-            $"FULL_ENTITY - Creating ID=30 CardID={source}", "tag=CONTROLLER value=1", "tag=ZONE value=PLAY",
+            $"FULL_ENTITY - Creating ID=30 CardID={source}", $"tag=CARDTYPE value={(source == "TLC_EVENT_400" ? "SPELL" : "MINION")}", "tag=CONTROLLER value=1", "tag=ZONE value=PLAY",
             "tag=QUEST_PROGRESS value=3", "tag=QUEST_PROGRESS_TOTAL value=3",
             .. Candidate(90, "PRIVATE_UNRELATED", 9, 9, 9), "PowerProcessor.EndCurrentTaskList() - complete"]);
         return engine;

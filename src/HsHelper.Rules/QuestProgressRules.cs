@@ -62,6 +62,7 @@ public static class QuestProgressRules
         questCardId = quest.CardId;
         if (!cards.TryGetValue(questCardId, out var task) || task is null || task.Id != questCardId || task.DbfId != 120648 || task.Type != "SPELL" ||
             task.Text != "<b>支线任务：</b>使用亡灵或野兽牌，总计3张。<b>奖励：</b>制造一个自定义的僵尸兽，其法力值消耗减少（3）点。" ||
+            !NativeCardDefinitions.IsAudited(snapshot.ClientBuild, questCardId, task) ||
             !Profile(task, out _, out _, out var mechanics) || !mechanics.Contains("SIDE_QUEST"))
         { unknowns.Add("缺少固定围攻城门的 ID、DBF、类别及支线任务定义。"); return Result(); }
         if (snapshot.Entities.Values.Count(entity => entity.Kind == EntityKind.Card && entity.ControllerId == local &&
@@ -87,6 +88,8 @@ public static class QuestProgressRules
         if (!PlayedEvidenceValid(playedFromHand))
         { unknowns.Add("被使用牌缺少可信的我方 HAND 时身份、类别、归属或种族证据。"); return Result(); }
         var played = cards[playedFromHand.CardId!];
+        if (NativeCardDefinitions.IsRegistered(played.Id) && !NativeCardDefinitions.IsAudited(snapshot.ClientBuild, played.Id, played))
+        { unknowns.Add("参与任务条件判断的原生牌固定定义不一致，未借原ID分类或递增。"); return Result(); }
         if (AssembledCardText.RequiresCustomText(playedFromHand.Tags) ||
             snapshot.Entities.TryGetValue(playedFromHand.Id, out var original) && AssembledCardText.RequiresCustomText(original.Tags))
         { unknowns.Add("被使用牌带拼装/半段标记，未按基础卡推导任务增量。"); return Result(); }

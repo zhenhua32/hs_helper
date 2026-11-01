@@ -58,6 +58,7 @@ public static class WolfBlessingResolutionRules
         sourceCardId = beforeBlessing?.CurrentSourceCardId ?? source.CardId;
         if (sourceCardId != "EDR_850p" || !cards.TryGetValue(sourceCardId, out var powerCard) ||
             powerCard is not { Id: "EDR_850p", DbfId: 114052, Type: "HERO_POWER" } ||
+            !NativeCardDefinitions.IsAudited(snapshot.ClientBuild, sourceCardId, powerCard) ||
             AssembledCardText.RequiresCustomText(source.Tags))
         { unknowns.Add("技能不是已确认的原生巨狼祝福，不能按基础ID推导自定义效果。"); return Result(); }
         var powers = snapshot.Entities.Values.Where(entity => entity.Kind == EntityKind.Card && entity.ControllerId == local && entity.Zone == "PLAY" &&
@@ -98,6 +99,8 @@ public static class WolfBlessingResolutionRules
             { complete = false; unknowns.Add("存在身份或固定资料不明的手牌，不能排除额外随机候选。"); continue; }
             if (!ObservedType(entity.Tags, card.Type))
             { complete = false; unknowns.Add("手牌当前类别与固定身份冲突，候选集合保持不完整。"); continue; }
+            if (NativeCardDefinitions.IsRegistered(card.Id) && !NativeCardDefinitions.IsAudited(snapshot.ClientBuild, card.Id, card))
+            { complete = false; unknowns.Add("参与候选分类的原生固定定义不一致，未借原CardId推断野兽或增益。"); continue; }
             if (card.Type != "MINION") continue;
             var beast = IsBeast(entity, card);
             if (beast is null)

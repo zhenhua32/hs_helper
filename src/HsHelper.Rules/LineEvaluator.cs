@@ -228,6 +228,7 @@ public sealed partial class LineEvaluator
     private static void UseHeroPower(Runtime state, PlannedAction action)
     {
         var source = state.Source(action.SourceEntityId, "PLAY"); if (source is null) return;
+        if (!state.RequireNativeDefinition(source)) return;
         if (source.Type != "HERO_POWER") { state.Invalid("来源不是英雄技能。"); return; }
         if (state.Has(source, "HERO_POWER_DISABLED") || state.Player?.Int("HERO_POWER_DISABLED") is > 0)
         { state.Invalid("英雄技能当前被禁用。"); return; }
@@ -255,6 +256,7 @@ public sealed partial class LineEvaluator
         var source = state.Source(action.SourceEntityId, "HAND"); if (source is null) return;
         if (state.HasCustomAssembledText(source))
         { state.Unsupported("CUSTOM_ASSEMBLED_SOURCE", "拼装牌的自定义文字尚未模拟，不能按原卡ID结算。"); return; }
+        if (!state.RequireNativeDefinition(source)) return;
         if (state.Has(source, "CANT_PLAY")) { state.Invalid("该手牌当前不能使用。"); return; }
         var profile = state.Profile(source);
         if (profile is null) { state.Unsupported("UNKNOWN_CARD_EFFECT", "当前卡库缺少这张手牌的效果。"); return; }
@@ -394,7 +396,8 @@ public sealed partial class LineEvaluator
                 { "1" => "GAME", "2" => "PLAYER", "3" => "HERO", "4" => "MINION", "5" => "SPELL", "6" => "ENCHANTMENT", "7" => "WEAPON", "10" => "HERO_POWER", var type => type ?? "" };
                 if (source.Kind == EntityKind.Game) entity.Type = "GAME";
                 if (source.Kind == EntityKind.Player) entity.Type = "PLAYER";
-                if (string.IsNullOrEmpty(entity.Type)) entity.Type = Profile(entity)?.Type ?? (source.Kind == EntityKind.Player ? "PLAYER" : source.Kind == EntityKind.Game ? "GAME" : "");
+                if (string.IsNullOrEmpty(entity.Type)) entity.Type = NativeCardDefinitions.ExpectedType(entity.CardId) ?? Profile(entity)?.Type ??
+                    (source.Kind == EntityKind.Player ? "PLAYER" : source.Kind == EntityKind.Game ? "GAME" : "");
                 if (entity.Type == "WEAPON")
                 {
                     entity.WeaponDurability = WeaponDurabilityEvidence.Resolve(snapshot.ClientBuild, source);
@@ -557,7 +560,9 @@ public sealed partial class LineEvaluator
         {
             if (IsBeast(source))
             {
-                var gods = Entities.Values.Count(e => e.Alive && e.Zone == "PLAY" && e.Controller == source.Controller && e.CardId == "EDR_480" && !Silenced(e) && !Has(e, "DORMANT"));
+                var godSources = Entities.Values.Where(e => e.Alive && e.Zone == "PLAY" && e.Controller == source.Controller && e.CardId == "EDR_480" && !Silenced(e) && !Has(e, "DORMANT")).ToArray();
+                if (godSources.Any(god => !RequireNativeDefinition(god))) return 0;
+                var gods = godSources.Length;
                 if (gods > 0 && _snapshot.ClientBuild != "255790")
                     Conditional("当前build的戈德林牌效尚未审计，仅保留未计算光环的条件结果。", "UNAUDITED_GOLDRINN_BUILD");
                 else for (var i = 0; i < gods; i++) amount = checked(amount * 2);
@@ -593,6 +598,7 @@ public sealed partial class LineEvaluator
         {
             if (Entities.TryGetValue(action.SourceEntityId, out var selectedSource) && HasCustomAssembledText(selectedSource))
             { Unsupported("CUSTOM_ASSEMBLED_SOURCE", "拼装牌的自定义文字尚未模拟，不能按原卡ID结算。"); return; }
+            if (!InspectNativeDefinitions(action)) return;
             foreach (var entity in Entities.Values.Where(e => e.Alive && (e.Zone is "PLAY" or "HAND" || e.Type == "PLAYER" ||
                 (e.Type == "ENCHANTMENT" && e.Int("ATTACHED") is > 0 && e.Zone != "GRAVEYARD"))))
             {

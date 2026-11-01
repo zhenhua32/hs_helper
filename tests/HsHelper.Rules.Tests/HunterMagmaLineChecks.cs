@@ -83,8 +83,10 @@ internal static class HunterMagmaLineChecks
             var frame = Replace(Frame(), Entity(40, "VANILLA", 2, "MINION", 0, 1));
             var altered = cards.ToDictionary(); altered["FIR_953"] = cards["FIR_953"] with { Text = "changed native script" };
             var line = evaluator.EvaluateLine(frame, [new(ActionKind.Attack, 30, 40)], altered);
-            Check(line.Verification != LineVerification.Verified && !line.IsLethal && line.Result.MagmaSplitBoundaryReached &&
-                Find(line, 11).RemainingHealth == 20, "A same-ID altered card inherited audited deterministic split damage.");
+            Check(line.Verification == LineVerification.Unsupported && !line.IsLethal && line.AppliedActions == 0 &&
+                line.UnsupportedMechanics.Contains("UNAUDITED_NATIVE_DEFINITION") && !line.Result.MagmaSplitBoundaryReached &&
+                Find(line, 11).RemainingHealth == 20 && Find(line, 40).RemainingHealth == 1,
+                "A same-ID altered card inherited audited combat or deterministic split damage.");
         });
         yield return ("Magma unobserved summoned source stats cannot prove its later split from printed values", () =>
         {

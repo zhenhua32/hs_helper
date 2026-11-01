@@ -68,8 +68,16 @@ public sealed record ChoiceHistorySnapshot
         TruncatedThroughSequence = truncatedThroughSequence; Warnings = Array.AsReadOnly(warnings.ToArray());
     }
 }
+public enum EventIdentityVisibility { Unobserved, Public, PlayerOne, PlayerTwo }
+
 public sealed record ObservedGameEvent(long Sequence, string Kind, int? EntityId, int? ControllerId,
-    string? CardId, string? FromZone, string? ToZone, string Summary);
+    string? CardId, string? FromZone, string? ToZone, string Summary)
+{
+    // Host evidence captured at the event, not inferred from a later reveal or perspective.
+    // Omitting this for legacy records preserves their original serialized representation.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public EventIdentityVisibility? IdentityVisibility { get; init; }
+}
 
 /// <summary>An immutable, perspective-filtered view. Missing attributes remain null.</summary>
 public sealed record EntitySnapshot(

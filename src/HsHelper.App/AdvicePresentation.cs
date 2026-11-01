@@ -24,7 +24,8 @@ public partial class MainWindow
         var draft = new AdviceRecordDraft(snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence,
             string.IsNullOrWhiteSpace(build) ? "unknown" : build, context.TemplateVersion, advice.Summary)
         {
-            DeckVersionId = deckVersion, Task = context.Task, UserQuestion = context.UserQuestion, Reasons = advice.Reasons, Alternative = advice.Alternative,
+            DeckVersionId = deckVersion, VisibilityPolicy = context.VisibilityPolicy,
+            Task = context.Task, UserQuestion = context.UserQuestion, Reasons = advice.Reasons, Alternative = advice.Alternative,
             Risks = advice.Risks, Verification = advice.Verification, VerifiedLethal = advice.VerifiedLethal,
             LimitationsVersion = advice.LimitationsVersion, Assumptions = advice.Assumptions, Unknowns = advice.Unknowns,
             UnsupportedMechanics = advice.UnsupportedMechanics, HostRisks = advice.HostRisks, HostAssumptions = advice.HostAssumptions,

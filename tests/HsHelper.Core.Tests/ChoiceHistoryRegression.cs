@@ -37,7 +37,7 @@ public static class ChoiceHistoryRegression
         "GameState.DebugPrintGame() - BuildNumber=255790 FormatType=FT_STANDARD GameType=GT_RANKED",
         "CREATE_GAME", "GameEntity EntityID=1", "tag=STATE value=RUNNING", "tag=TURN value=8", "tag=STEP value=MAIN_ACTION",
         "Player EntityID=2 PlayerID=1", "tag=CURRENT_PLAYER value=1", "Player EntityID=3 PlayerID=2", "tag=CURRENT_PLAYER value=0",
-        "FULL_ENTITY - Creating ID=30 CardID=TLC_EVENT_400", "tag=CONTROLLER value=1", "tag=ZONE value=PLAY",
+        "FULL_ENTITY - Creating ID=30 CardID=TLC_EVENT_400", "tag=CARDTYPE value=SPELL", "tag=CONTROLLER value=1", "tag=ZONE value=PLAY",
         "tag=QUEST_PROGRESS value=3", "tag=QUEST_PROGRESS_TOTAL value=3",
         .. Candidate(80, "FIRST_A", 1, 4, 3, 5), .. Candidate(81, "FIRST_B", 1, 2, 2, 2),
         .. Candidate(82, "SECOND_A", 1, 3, 2, 4), .. Candidate(83, "SECOND_B", 1, 1, 1, 1),

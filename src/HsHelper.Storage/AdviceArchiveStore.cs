@@ -16,6 +16,7 @@ public sealed record AdviceRecordDraft(string MatchId, long StateVersion, long E
     string PromptTemplateVersion, string Summary)
 {
     public string? DeckVersionId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? VisibilityPolicy { get; init; }
     public string Task { get; init; } = "";
     public string? UserQuestion { get; init; }
     public IReadOnlyList<string> Reasons { get; init; } = [];
@@ -55,7 +56,8 @@ public sealed record AdviceArchivePage(IReadOnlyList<ArchivedAdviceRecord> Recor
     public bool HasPrevious => PageNumber > 1;
 }
 public sealed record AdviceConversationQuery(string MatchId, string? DeckVersionId, string CardBuild,
-    long StateVersion, long EventSequence, DateTimeOffset AsOf, int MaxTurns = 4, DateTimeOffset? MaxKnowledgeAsOf = null);
+    long StateVersion, long EventSequence, DateTimeOffset AsOf, int MaxTurns = 4, DateTimeOffset? MaxKnowledgeAsOf = null,
+    string? RequiredVisibilityPolicy = null);
 public sealed record AdviceHistoryResult(IReadOnlyList<ArchivedAdviceRecord> Records, bool IsTruncated);
 
 /// <summary>Immutable completed advice, with exact state/build/template binding and sanitized allowlisted fields.</summary>
@@ -200,6 +202,7 @@ public sealed class AdviceArchiveStore
         ArgumentNullException.ThrowIfNull(query);
         CoachLocalDatabase.Identifier(query.MatchId); CoachLocalDatabase.Identifier(query.CardBuild);
         if (query.DeckVersionId is not null) CoachLocalDatabase.Identifier(query.DeckVersionId);
+        if (query.RequiredVisibilityPolicy is not null) CoachLocalDatabase.Identifier(query.RequiredVisibilityPolicy);
         if (query.StateVersion < 0 || query.EventSequence < 0 || query.MaxTurns is < 0 or > 4 || query.MaxKnowledgeAsOf > query.AsOf)
             throw new ArgumentException("连续追问历史的边界或轮数无效。");
         cancellationToken.ThrowIfCancellationRequested();
@@ -212,12 +215,14 @@ public sealed class AdviceArchiveStore
               AND recorded_at<=$at AND
             """ + " " + (query.DeckVersionId is null ? "deck_version_id IS NULL" : "deck_version_id=$deck") +
             (query.MaxKnowledgeAsOf.HasValue ? " AND json_type(payload_json,'$.KnowledgeAsOf')='text' AND json_extract(payload_json,'$.KnowledgeAsOf')<=$knowledgeAt" : "") +
+            (query.RequiredVisibilityPolicy is not null ? " AND json_extract(payload_json,'$.VisibilityPolicy')=$visibilityPolicy" : "") +
             " ORDER BY recorded_at DESC,id DESC LIMIT $limit";
         CoachLocalDatabase.Add(command, "$match", query.MatchId); CoachLocalDatabase.Add(command, "$build", query.CardBuild);
         CoachLocalDatabase.Add(command, "$version", query.StateVersion); CoachLocalDatabase.Add(command, "$sequence", query.EventSequence);
         CoachLocalDatabase.Add(command, "$at", CoachLocalDatabase.Timestamp(query.AsOf));
         if (query.DeckVersionId is not null) CoachLocalDatabase.Add(command, "$deck", query.DeckVersionId);
         if (query.MaxKnowledgeAsOf.HasValue) CoachLocalDatabase.Add(command, "$knowledgeAt", CoachLocalDatabase.Timestamp(query.MaxKnowledgeAsOf.Value));
+        if (query.RequiredVisibilityPolicy is not null) CoachLocalDatabase.Add(command, "$visibilityPolicy", query.RequiredVisibilityPolicy);
         CoachLocalDatabase.Add(command, "$limit", query.MaxTurns + 1);
         var records = new List<ArchivedAdviceRecord>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -238,6 +243,7 @@ public sealed class AdviceArchiveStore
         ArgumentNullException.ThrowIfNull(draft);
         CoachLocalDatabase.Identifier(draft.MatchId); CoachLocalDatabase.Identifier(draft.CardBuild);
         CoachLocalDatabase.Identifier(draft.PromptTemplateVersion);
+        if (draft.VisibilityPolicy is not null) CoachLocalDatabase.Identifier(draft.VisibilityPolicy);
         if (draft.DeckVersionId is not null) CoachLocalDatabase.Identifier(draft.DeckVersionId);
         if (draft.Model is not null && (string.IsNullOrWhiteSpace(draft.Model) || draft.Model.Length > 200 ||
             draft.Model.Any(char.IsControl) || draft.Model.Contains("://", StringComparison.Ordinal)))

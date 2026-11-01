@@ -154,6 +154,7 @@ public sealed partial class LineEvaluator
         }
 
         public bool IsNativeSidequest(Entity entity) => _snapshot.ClientBuild == AuditedBuild && entity.CardId == "TLC_EVENT_400" &&
+            NativeCardDefinitions.IsAudited(_snapshot.ClientBuild, entity.CardId, _cards.GetValueOrDefault(entity.CardId)) &&
             Profile(entity) is { Type: "SPELL" } profile && profile.Mechanics.Contains("SIDE_QUEST") && !HasCustomAssembledText(entity);
 
         public bool CanInstallInSecretZone(Entity source)

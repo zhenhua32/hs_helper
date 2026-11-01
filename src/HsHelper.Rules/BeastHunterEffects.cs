@@ -99,6 +99,7 @@ public sealed partial class LineEvaluator
         private bool IsObservedStatEnchantment(Entity enchantment)
         {
             if (_snapshot.ClientBuild != AuditedBuild || enchantment.Type != "ENCHANTMENT" || enchantment.CardId is null || Profile(enchantment) is null ||
+                !NativeCardDefinitions.IsAudited(_snapshot.ClientBuild, enchantment.CardId, _cards.GetValueOrDefault(enchantment.CardId)) ||
                 enchantment.Int("ATTACHED") is not { } id || !Entities.TryGetValue(id, out var target) || target.Type != "MINION" ||
                 target.Zone is not ("HAND" or "DECK" or "PLAY")) return false;
             // These pinned definitions only modify stats/cost. Current observed values already include them.
@@ -160,7 +161,7 @@ public sealed partial class LineEvaluator
             { Conditional("本次灌注所属英雄职业未知或不是已覆盖的猎人，未模拟其英雄技能变化。", "UNSUPPORTED_IMBUE_CLASS"); return; }
             var power = Power(controller);
             if (power is null) { Conditional("当前英雄技能实体未唯一识别，灌注后的技能保持未知。", "UNKNOWN_IMBUE_POWER"); return; }
-            if (!_cards.ContainsKey("EDR_850p"))
+            if (!NativeCardDefinitions.IsAudited(_snapshot.ClientBuild, "EDR_850p", _cards.GetValueOrDefault("EDR_850p")))
             { Conditional("缺少固定版本关联牌 EDR_850p，未展开灌注后的技能。", "MISSING_IMBUE_CARD_DATA"); return; }
             var previous = power.CardId;
             var oldLevel = previous == "EDR_850p" ? WolfLevel(power) : null;
@@ -183,6 +184,7 @@ public sealed partial class LineEvaluator
         private bool TryResolveBeastHunterDeath(Entity entity)
         {
             if (_snapshot.ClientBuild != AuditedBuild || Silenced(entity) || !Has(entity, "DEATHRATTLE")) return false;
+            if (entity.CardId is "EDR_227" or "DINO_421" && !RequireNativeDefinition(entity)) return false;
             if (entity.CardId == "EDR_227")
             {
                 ImbueHunter(entity.Controller, "deathrattle:EDR_227"); Coverage.Add("EDR_227-deathrattle-imbue"); return true;
@@ -190,6 +192,7 @@ public sealed partial class LineEvaluator
             if (entity.CardId != "DINO_421") return false;
             foreach (var card in Entities.Values.Where(e => e.Alive && e.Controller == entity.Controller && e.Zone is "HAND" or "DECK"))
             {
+                if (!RequireNativeDefinition(card)) continue;
                 var profile = Profile(card);
                 if (profile is null) { Conditional("震地雷龙的隐藏牌库或手牌身份未知，未对未知实体虚构随从增益。", "UNKNOWN_DINO_BUFF_TARGET"); continue; }
                 if (profile.Type != "MINION") continue;

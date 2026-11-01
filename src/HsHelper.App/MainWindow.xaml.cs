@@ -270,7 +270,7 @@ public partial class MainWindow : Window
     }
     private void RenderSnapshot()
     {
-        var state = DisplaySnapshot;
+        var state = AttachmentVisibility.Project(DisplaySnapshot);
         if (state.MatchId != _renderedMatchId || state.StateVersion != _renderedVersion)
         {
             InvalidateAdvice();
@@ -422,7 +422,7 @@ public partial class MainWindow : Window
             if (task == "回合建议") task = snapshot.Phase switch { GamePhase.Mulligan => "留牌建议", GamePhase.Choice => "选择建议", _ => task };
             var related = new Dictionary<string, CardRecord>();
             if (pinnedManifest is not null)
-                foreach (var card in await _catalog.GetByIdsBatchedAsync(snapshot.Entities.Values.Select(e => e.CardId).OfType<string>()
+                foreach (var card in await _catalog.GetByIdsBatchedAsync(AttachmentVisibility.Project(snapshot).Entities.Values.Select(e => e.CardId).OfType<string>()
                     .Concat(snapshot.Choice?.Options.Select(o => o.CardId).OfType<string>() ?? []).Distinct(), requestedBuild, cancellationToken: cancellation.Token))
                     related[card.Id] = card;
             if (importedDeck is not null)

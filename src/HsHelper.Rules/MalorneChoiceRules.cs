@@ -46,6 +46,7 @@ public static class MalorneChoiceRules
             source.CardId != "EDR_888" || source.Zone is not ("PLAY" or "GRAVEYARD") ||
             source.Tags.GetValueOrDefault("CARDTYPE") is { } sourceType && sourceType is not ("MINION" or "4") ||
             !cards.TryGetValue("EDR_888", out var sourceCard) || sourceCard is not { Id: "EDR_888", DbfId: 115186, Type: "MINION" } ||
+            !NativeCardDefinitions.IsAuditedEntity(snapshot.ClientBuild, source, cards) ||
             !choice.Options.Any(option => option.EntityId == selectedEntityId))
         { unknowns.Add("未确认固定版本玛洛恩来源及当前我方单选，未展开后果。"); return Result(); }
 
@@ -54,6 +55,7 @@ public static class MalorneChoiceRules
             if (option.CardId is null || !WildGods.TryGetValue(option.CardId, out var dbf) ||
                 !cards.TryGetValue(option.CardId, out var card) || card is null || card.Id != option.CardId ||
                 card.DbfId != dbf || card.Type != "MINION" || string.IsNullOrWhiteSpace(card.Name) ||
+                !NativeCardDefinitions.IsAudited(snapshot.ClientBuild, option.CardId, card) ||
                 snapshot.Entities.TryGetValue(option.EntityId, out var entity) &&
                     (entity.Id != option.EntityId || entity.Kind != EntityKind.Card ||
                      entity.CardId is { } observedId && observedId != option.CardId ||

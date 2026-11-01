@@ -180,20 +180,25 @@ public static class EndTurnRegression
     private static void MissingEvidence()
     {
         var snapshot = Fixture(Terror(), Minion(20, "VANILLA", 2, 3, 6));
-        foreach (var frame in new[] { snapshot with { ClientBuild = "999999" }, Fixture(Terror(), Entity(20, "VANILLA", 2, "PLAY", "MINION", [])) })
+        foreach (var frame in new[] { Fixture(Terror(), Entity(20, "VANILLA", 2, "PLAY", "MINION", [])) })
         {
             var result = Eval(frame, new PlannedAction(ActionKind.EndTurn, 2));
             Check(result.Verification == LineVerification.Conditional && result.Result.ForcedAttacks.Count == 0 && result.Result.PendingForcedAttacks.Count == 1,
                 "Missing or wrong-build evidence became a fabricated precise exchange.");
         }
+        var wrongBuild = Eval(snapshot with { ClientBuild = "999999" }, new PlannedAction(ActionKind.EndTurn, 2));
+        Check(wrongBuild.Verification == LineVerification.Unsupported && wrongBuild.AppliedActions == 0 &&
+            wrongBuild.Result.ForcedAttacks.Count == 0 && wrongBuild.UnsupportedMechanics.Contains("UNAUDITED_CARD_BUILD"),
+            "Wrong-build native context reached turn-end dispatch or a computed exchange.");
         var absent = Evaluator.EvaluateLine(snapshot, [new PlannedAction(ActionKind.EndTurn, 2)], Cards.Where(pair => pair.Key != "CORE_TTN_866").ToDictionary());
-        Check(absent.Verification == LineVerification.Conditional && absent.Result.PendingForcedAttacks.Count == 1,
+        Check(absent.Verification == LineVerification.Unsupported && absent.AppliedActions == 0 &&
+            absent.UnsupportedMechanics.Contains("UNAUDITED_NATIVE_DEFINITION"),
             "A missing terror definition still produced an audited trigger.");
         var empty = Fixture(Terror());
         var wrongEmpty = Eval(empty with { ClientBuild = "999999" }, new PlannedAction(ActionKind.EndTurn, 2));
         var missingEmpty = Evaluator.EvaluateLine(empty, [new PlannedAction(ActionKind.EndTurn, 2)], Cards.Where(pair => pair.Key != "CORE_TTN_866").ToDictionary());
         foreach (var result in new[] { wrongEmpty, missingEmpty })
-            Check(result.Verification == LineVerification.Conditional && result.Result.PendingForcedAttacks.Count == 1 && !result.Result.EndTurnTriggersResolved,
+            Check(result.Verification == LineVerification.Unsupported && result.AppliedActions == 0 && !result.Result.EndTurnTriggersResolved && result.Result.ForcedAttacks.Count == 0,
                 "An empty opposing board bypassed pinned-version or card-definition validation.");
         var unknownOwner = Minion(20, "VANILLA", 2, 3, 6);
         unknownOwner = unknownOwner with { Tags = unknownOwner.Tags.Where(pair => pair.Key != "CONTROLLER").ToFrozenDictionary() };

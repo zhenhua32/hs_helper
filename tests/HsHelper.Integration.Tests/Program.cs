@@ -232,6 +232,7 @@ await CliHistoryIntegration.RunLargeCardsAsync(temp, Pass);
 await LargeCardCoachingIntegration.RunAsync(temp, Pass);
 await DarkGiftStaticIntegration.RunAsync(temp, Pass);
 await DarkGiftExpandedIntegration.RunAsync(temp, Pass);
+await EnchantmentPrivacyIntegration.RunAsync(temp, Pass);
 await FindLethalCandidateIntegration.RunAsync(temp, Pass);
 await MultiStageChoiceIntegration.RunAsync(temp, Pass);
 await HunterHistoryIntegration.RunAsync(temp, Pass);

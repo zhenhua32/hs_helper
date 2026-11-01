@@ -83,7 +83,8 @@ public partial class MainWindow
             (_historyContext?.CardBuild ?? DisplaySnapshot.ClientBuild ?? SessionBuildBox.Text.Trim()) == build;
         try
         {
-            var ids = state.Entities.Values.Select(e => e.CardId).OfType<string>()
+            var visible = AttachmentVisibility.Project(state);
+            var ids = visible.Entities.Values.Select(e => e.CardId).OfType<string>()
                 .Concat(state.DeckTracking?.KnownRemaining.Keys ?? [])
                 .Concat(state.PublicPlays?.Plays.Select(p => p.CardId).OfType<string>() ?? []).Distinct().ToArray();
             var cards = string.IsNullOrWhiteSpace(build) ? [] : await _catalog.GetByIdsBatchedAsync(ids, build, cancellationToken: token);
@@ -91,7 +92,7 @@ public partial class MainWindow
             if (!Current()) return;
             var names = cards.ToDictionary(c => c.Id, c => c.Name);
             string Name(string? id) => id is null ? "未知卡牌" : names.GetValueOrDefault(id, id);
-            var hand = state.Entities.Values.Where(e => state.LocalPlayerId is not null && e.ControllerId == state.LocalPlayerId && e.Zone == "HAND")
+            var hand = visible.Entities.Values.Where(e => state.LocalPlayerId is not null && e.ControllerId == state.LocalPlayerId && e.Zone == "HAND")
                 .OrderBy(e => e.ZonePosition).Select(e => $"({e.Cost?.ToString() ?? "?"}) {Name(e.CardId)}");
             var remaining = new List<string>();
             if (state.DeckTracking is { } tracking)

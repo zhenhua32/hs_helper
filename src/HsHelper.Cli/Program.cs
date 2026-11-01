@@ -165,7 +165,7 @@ static async Task<int> MainAsync(string[] args)
                 if (historical is null && snapshot.DeckTracking is { } tracking && tracking.MatchId == snapshot.MatchId && tracking.StateVersion == snapshot.StateVersion && tracking.CardBuild == build)
                     deck = await sessions.GetDeckVersionAsync(tracking.DeckVersion);
                 var deckVersionId = historical is null ? deck?.Id : historical.Context.DeckVersionId;
-                var relevantCards = (await catalog.GetByIdsBatchedAsync(snapshot.Entities.Values
+                var relevantCards = (await catalog.GetByIdsBatchedAsync(AttachmentVisibility.Project(snapshot).Entities.Values
                     .Where(e => e.Zone == "PLAY" || e.ControllerId == snapshot.LocalPlayerId && e.Zone is "HAND" or "SECRET")
                     .Select(e => e.CardId).OfType<string>()
                     .Concat(snapshot.Choice?.Options.Select(o => o.CardId).OfType<string>() ?? []).Distinct(), build)).ToDictionary(c => c.Id);
@@ -224,7 +224,8 @@ static async Task<int> MainAsync(string[] args)
                     adviceStage = "archive";
                     var archived = await archive.SaveAsync(new(snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence, build, context.TemplateVersion, advice.Summary)
                     {
-                        DeckVersionId = deckVersionId, Task = context.Task, UserQuestion = context.UserQuestion, Reasons = advice.Reasons, Alternative = advice.Alternative, Risks = advice.Risks,
+                        DeckVersionId = deckVersionId, VisibilityPolicy = context.VisibilityPolicy,
+                        Task = context.Task, UserQuestion = context.UserQuestion, Reasons = advice.Reasons, Alternative = advice.Alternative, Risks = advice.Risks,
                         Verification = advice.Verification, VerifiedLethal = advice.VerifiedLethal,
                         LimitationsVersion = advice.LimitationsVersion, Assumptions = advice.Assumptions, Unknowns = advice.Unknowns,
                         UnsupportedMechanics = advice.UnsupportedMechanics, HostRisks = advice.HostRisks,

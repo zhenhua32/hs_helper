@@ -8,6 +8,7 @@ public static class SnapshotCardEffects
 {
     public static IReadOnlyList<EntitySnapshot> VisibleCards(GameSnapshot snapshot, bool includePublicGraveyard = false)
     {
+        snapshot = AttachmentVisibility.Project(snapshot);
         var local = ChoiceVisibility.ConfirmedLocalPlayer(snapshot);
         var ownChoice = ChoiceVisibility.ConfirmedOwn(snapshot);
         return Array.AsReadOnly(snapshot.Entities.Values.Where(entity => entity is { Kind: EntityKind.Card, CardId: not null, Tags: not null } &&

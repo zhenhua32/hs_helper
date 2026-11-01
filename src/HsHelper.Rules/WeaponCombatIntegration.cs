@@ -167,6 +167,8 @@ public sealed partial class LineEvaluator
 
         public bool SupportedWeaponAttackProfile(Entity weapon)
         {
+            if (NativeCardDefinitions.IsRegistered(weapon.CardId) &&
+                !NativeCardDefinitions.IsAudited(_snapshot.ClientBuild, weapon.CardId, _cards.GetValueOrDefault(weapon.CardId!))) return false;
             if (weapon.CardId is not { } id || !_cards.TryGetValue(id, out var card) || card.Type != "WEAPON") return false;
             var profile = Profile(weapon); if (profile is null) return false;
             try
@@ -188,6 +190,7 @@ public sealed partial class LineEvaluator
 
         private bool NativeAttackingImmunityWeapon(Entity weapon) => _snapshot.ClientBuild == AuditedBuild &&
             weapon.CardId is { } id && _cards.TryGetValue(id, out var card) && card.Type == "WEAPON" &&
+            NativeCardDefinitions.IsAudited(_snapshot.ClientBuild, id, card) &&
             card.DbfId == (id switch { "DS1_188" => 311, "CORE_LOOT_222" => 86543, "LOOT_222" => 45537, _ => -1 }) &&
             card.Text == "你的英雄在攻击时<b>免疫</b>。";
 

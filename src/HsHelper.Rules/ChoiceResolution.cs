@@ -100,8 +100,15 @@ public sealed partial class LineEvaluator
             if (choice.SourceCardId == "JAIL_831") sideboardEvidence = SideboardChoiceEvidenceRules.Evaluate(snapshot, source.Id, cards, startingDeck: startingDeck);
             unknowns.Add("选择来源具有拼装文字，不能按原卡ID展开原生牌效。"); return Result(LineVerification.Unsupported, true);
         }
-        if (!cards.TryGetValue(source.CardId, out var sourceCard) || sourceCard.Id != source.CardId || string.IsNullOrWhiteSpace(sourceCard.Name))
-        { unknowns.Add("固定版本卡库缺少选择来源的资料，不能核对其效果。"); return Result(LineVerification.Unsupported, true); }
+        if (!cards.TryGetValue(source.CardId, out var sourceCard) || sourceCard.Id != source.CardId || string.IsNullOrWhiteSpace(sourceCard.Name) ||
+            NativeCardDefinitions.IsRegistered(source.CardId) && !NativeCardDefinitions.IsAuditedEntity(snapshot.ClientBuild, source, cards))
+        {
+            // Frozen earlier selections remain historical evidence, independently
+            // of whether this current source can execute its native effect.
+            if (choice.SourceCardId == "JAIL_831")
+                sideboardEvidence = SideboardChoiceEvidenceRules.Evaluate(snapshot, source.Id, cards, startingDeck: startingDeck);
+            unknowns.Add("固定版本卡库缺少选择来源的资料，不能核对其效果。"); return Result(LineVerification.Unsupported, true);
+        }
         sourceName = sourceCard.Name;
         if (source.CardId == "JAIL_831" && sourceCard.Type == "MINION")
             sideboardEvidence = SideboardChoiceEvidenceRules.Evaluate(snapshot, source.Id, cards, startingDeck: startingDeck);

@@ -211,6 +211,7 @@ public static class SideboardChoiceEvidenceRules
         (!tags.TryGetValue("202", out var numeric) || numeric is "MINION" or "4");
     private static bool AuditedSource(CardRecord? card)
     {
+        if (!NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, CardId, card)) return false;
         if (card is null || card.Id != CardId || card.DbfId != OwnerDbf || card.Type != "MINION" ||
             card.Text != "构筑套牌时，选择三张私藏的野兽牌。<b>战吼：</b>从中<b>发现</b>一张，其法力值消耗减少（3）点。") return false;
         try

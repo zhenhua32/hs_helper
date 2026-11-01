@@ -45,7 +45,7 @@ var cases = new (string Name, Action Run)[]
     ("public play gaps remain incomplete and cannot correlate across lost events", PublicPlayGaps),
     ("public play records reset across matches and reject rewinds", PublicPlayMatches),
     ("public play snapshots freeze source lists and survive JSON serialization", PublicPlaySerialization),
-}.Concat(ChoiceHistoryRegression.Cases()).Concat(TurnHistoryRegression.Cases()).Concat(AssembledTagRegression.Cases()).Concat(QuestTagRegression.Cases()).Concat(SecretSlotPrivacyChecks.Cases()).Concat(WeaponDurabilityChecks.Cases()).Concat(ProjectedChoiceEntityChecks.Cases()).Concat(ElusiveTagChecks.Cases()).ToArray();
+}.Concat(ChoiceHistoryRegression.Cases()).Concat(TurnHistoryRegression.Cases()).Concat(AssembledTagRegression.Cases()).Concat(QuestTagRegression.Cases()).Concat(SecretSlotPrivacyChecks.Cases()).Concat(WeaponDurabilityChecks.Cases()).Concat(ProjectedChoiceEntityChecks.Cases()).Concat(ElusiveTagChecks.Cases()).Concat(AttachmentPrivacyChecks.Cases()).ToArray();
 var failures = 0;
 foreach (var test in cases)
 {
@@ -118,6 +118,7 @@ static void RevealTransformHide()
     engine.ProcessLine("tag=ZONE value=PLAY");
     Assert(engine.Snapshot().Entities[20].CardId == "REVEALED", "Show entity lost");
     engine.ProcessLine("CHANGE_ENTITY - Updating Entity=20 CardID=TRANSFORMED");
+    engine.ProcessLine("tag=CARDTYPE value=MINION");
     engine.ProcessLine("tag=COST value=2");
     Assert(engine.Snapshot().Entities[20].CardId == "TRANSFORMED" && engine.Snapshot().Entities[20].Cost == 2, "Transform failed");
     engine.ProcessLine("HIDE_ENTITY - Entity=20 tag=ZONE value=DECK");

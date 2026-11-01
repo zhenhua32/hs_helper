@@ -265,6 +265,7 @@ public static class DrawResolutionRules
     }
     private static bool AuditedSource(CardRecord card)
     {
+        if (!NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, card.Id, card)) return false;
         try
         {
             using var raw = JsonDocument.Parse(card.RawJson);
@@ -278,6 +279,7 @@ public static class DrawResolutionRules
     private static bool? ClassifyBeast(string id, IReadOnlyDictionary<string, CardRecord> cards)
     {
         if (!cards.TryGetValue(id, out var card) || card is null || card.Id != id) return null;
+        if (NativeCardDefinitions.IsRegistered(id) && !NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, id, card)) return null;
         if (card.Type != "MINION") return string.IsNullOrWhiteSpace(card.Type) ? null : false;
         try
         {

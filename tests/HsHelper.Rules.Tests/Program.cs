@@ -29,14 +29,14 @@ var cards = new Dictionary<string, CardRecord>(StringComparer.Ordinal)
     ["WEAPON"] = Card("WEAPON", "WEAPON", attack: 3, text: ""),
     ["CHARGE"] = Card("CHARGE", attack: 2, health: 2, text: "冲锋", mechanics: ["CHARGE"])
 };
-foreach (var fixtureName in new[] { "beast-hunter-255790.json", "lethal-search-255790.json" })
+foreach (var fixtureName in new[] { "beast-hunter-255790.json", "lethal-search-255790.json", "native-definitions-255790.json" })
 {
     using var fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", fixtureName)));
     Equal("255790", fixture.RootElement.GetProperty("build").GetString());
     foreach (var raw in fixture.RootElement.GetProperty("cards").EnumerateArray())
     {
         var id = raw.GetProperty("id").GetString()!;
-        cards[id] = new(id, raw.GetProperty("dbfId").GetInt32(), raw.GetProperty("name").GetString()!, raw.GetProperty("text").GetString()!,
+        cards[id] = new(id, raw.GetProperty("dbfId").GetInt32(), raw.GetProperty("name").GetString()!, raw.TryGetProperty("text", out var printedText) ? printedText.GetString()! : "",
             raw.GetProperty("cardClass").GetString()!, raw.GetProperty("set").GetString()!, raw.GetProperty("type").GetString()!,
             raw.TryGetProperty("cost", out var cost) ? cost.GetInt32() : null,
             raw.TryGetProperty("collectible", out var collectible) && collectible.GetBoolean(), [], [], raw.GetRawText());
@@ -245,7 +245,9 @@ Run("friendly secrets and unaudited builds retain explicit uncertainty", () =>
     var snapshot = Replace(Fixture(Minion(21, "VANILLA", 1, 4, 6), secret), Hero(11, 2, 4));
     Equal(LineVerification.Conditional, Eval(snapshot, new PlannedAction(ActionKind.Attack, 21, 11)).Verification);
     var unaudited = Fixture(Minion(21, "VANILLA", 1, 4, 6), Minion(22, "EDR_480", 1, 9, 9)) with { ClientBuild = "999999" };
-    Equal(LineVerification.Conditional, Eval(unaudited, new PlannedAction(ActionKind.Attack, 21, 11)).Verification);
+    var declined = Eval(unaudited, new PlannedAction(ActionKind.Attack, 21, 11));
+    Equal(LineVerification.Unsupported, declined.Verification); Equal(0, declined.AppliedActions);
+    Equal(true, declined.UnsupportedMechanics.Contains("UNAUDITED_CARD_BUILD"));
 });
 Run("minions immune while attacking also avoid retaliation", () =>
 {
@@ -396,8 +398,8 @@ Run("magma hound preserves random targets and does not trigger after dying silen
     Equal(LineVerification.Verified, face.Verification); Equal(15, Find(face, 11).RemainingHealth);
     var unknownBuild = Eval(Fixture(Minion(21, "FIR_953", 1, 5, 8), Minion(20, "VANILLA", 2, 1, 5)) with { ClientBuild = "999999" },
         new PlannedAction(ActionKind.Attack, 21, 20));
-    Equal(LineVerification.Conditional, unknownBuild.Verification);
-    Equal(true, unknownBuild.UnsupportedMechanics.Contains("UNAUDITED_MAGMA_HOUND_BUILD"));
+    Equal(LineVerification.Unsupported, unknownBuild.Verification); Equal(0, unknownBuild.AppliedActions);
+    Equal(true, unknownBuild.UnsupportedMechanics.Contains("UNAUDITED_CARD_BUILD"));
 });
 Run("magma hound damage packets respect divine shield immunity and goldrinn without spell damage", () =>
 {
@@ -683,6 +685,7 @@ foreach (var (name, run) in TerrorEndTurnResolutionChecks.Cases()) Run(name, run
 foreach (var (name, run) in DarkGiftStaticChecks.Cases()) Run(name, run);
 foreach (var (name, run) in DarkGiftExpandedChecks.Cases()) Run(name, run);
 foreach (var (name, run) in LethalCandidateChecks.Cases()) Run(name, run);
+foreach (var (name, run) in NativeDefinitionChecks.Cases()) Run(name, run);
 
 if (args.Length == 1)
 {

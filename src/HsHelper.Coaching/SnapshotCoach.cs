@@ -45,7 +45,7 @@ public sealed class SnapshotCoach
         StartingDeckBinding? startingDeck = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot); ArgumentNullException.ThrowIfNull(context); ArgumentNullException.ThrowIfNull(catalog);
-        _snapshot = snapshot;
+        _snapshot = AttachmentVisibility.Project(snapshot);
         _context = (JsonObject)context.DeepClone();
         _catalog = catalog;
         _build = cardBuild is null or "" or "unknown" ? null : cardBuild;

@@ -258,6 +258,7 @@ public static class MapFollowupRules
     }
     private static bool FixedMap(IReadOnlyDictionary<string, CardRecord> cards)
     {
+        if (!NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, "TLC_824", cards.GetValueOrDefault("TLC_824"))) return false;
         if (!cards.TryGetValue("TLC_824", out var card) || card is null || card.Id != "TLC_824" || card.DbfId != 117596 || card.Type != "SPELL" ||
             card.Text != "<b>发现</b>一张攻击力为奇数的野兽牌，如果你在本回合中使用该牌，再从其余选项中选择一张。") return false;
         try

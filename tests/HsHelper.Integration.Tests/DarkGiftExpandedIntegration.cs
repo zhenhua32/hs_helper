@@ -151,7 +151,7 @@ internal static class DarkGiftExpandedIntegration
             if (variant == "gift-raw") modified.Single(card => card["id"]?.ToString() == spec.Gift)["mechanics"] = new JsonArray("TRIGGER_VISUAL");
             if (variant == "target-dbf") modified.Single(card => card["id"]?.ToString() == "EDR_227")["dbfId"] = 114021;
             if (variant == "source-owner") spec = spec with { Changes = ["TAG_CHANGE Entity=50 tag=CONTROLLER value=2"] };
-            if (variant == "attached") spec = spec with { Changes = ["TAG_CHANGE Entity=50 tag=ATTACHED value=999"] };
+            if (variant == "attached") spec = spec with { UnresolvedAttachment = true, Changes = ["TAG_CHANGE Entity=50 tag=ATTACHED value=999"] };
             if (variant == "source-type") spec = spec with { Changes = ["TAG_CHANGE Entity=50 tag=CARDTYPE value=SPELL"] };
             if (variant == "missing-attack") spec = spec with { Omit = ["ATK"] };
             if (variant == "missing-health") spec = spec with { Omit = ["HEALTH"] };
@@ -173,6 +173,7 @@ internal static class DarkGiftExpandedIntegration
         public bool DeathFollowup { get; init; }
         public bool TargetInitiallyDead { get; init; }
         public bool IncludeGift { get; init; } = true;
+        public bool UnresolvedAttachment { get; init; }
         public int EnemyHealth { get; init; } = 30;
         public string? ExtraGift { get; init; }
         public string[] Omit { get; init; } = [];
@@ -189,7 +190,8 @@ internal static class DarkGiftExpandedIntegration
         var catalog = new CardCatalog(Path.Combine(path, "cards.db")); await catalog.InitializeAsync();
         using (var stream = new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(cards))) await catalog.ImportAsync(stream, Build, source: "fixture://fixed-expanded-static-gifts");
         var frame = Engine(spec).Snapshot();
-        Check(frame.Quality is { IsStable: true, IsComplete: true, HasLocalPerspective: true } && frame.ClientBuild == Build && frame.Entities[60].CardId is null &&
+        Check(frame.Quality.HasLocalPerspective && frame.Quality.IsStable == !spec.UnresolvedAttachment && frame.Quality.IsComplete == !spec.UnresolvedAttachment &&
+            (!spec.UnresolvedAttachment || !frame.Entities.ContainsKey(50) && frame.Quality.Warnings.Any(warning => warning.Contains("关联目标未确认", StringComparison.Ordinal))) && frame.ClientBuild == Build && frame.Entities[60].CardId is null &&
             !SnapshotCodec.Serialize(frame).Contains(PrivateCard, StringComparison.Ordinal), "The real parser fixture lost its stable privacy boundary.");
         var database = Path.Combine(path, "history.db"); var store = new SessionStore(database); await store.InitializeAsync();
         var recorder = new SessionRecorder(store, new(null, Build, 1)); recorder.Observe(frame, 1); await recorder.CompleteAsync();

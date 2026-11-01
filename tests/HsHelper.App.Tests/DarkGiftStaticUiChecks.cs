@@ -119,11 +119,22 @@ internal static class DarkGiftStaticUiChecks
             try
             {
                 Await(wrongTools.BindingReady); AuthorLine(wrongTools, 21); Evaluate(wrongTools);
-                Check(wrongTools.ResultText.Contains("条件成立", StringComparison.Ordinal) && !wrongTools.ResultText.Contains("已验证斩杀：是", StringComparison.Ordinal),
+                Check(wrongTools.ResultText.Contains("验证级别：未覆盖 / 信息不足", StringComparison.Ordinal) &&
+                    wrongTools.ResultText.Contains("已应用动作：0", StringComparison.Ordinal) && wrongTools.ResultText.Contains("UNAUDITED_NATIVE_DEFINITION", StringComparison.Ordinal) &&
+                    !wrongTools.ResultText.Contains("已验证斩杀：是", StringComparison.Ordinal),
                     "The same enchantment ID with a wrong fixed definition bypassed source auditing: " + wrongTools.ResultText);
+                var wrongFrame = (GameSnapshot)Field(wrongTools, "_snapshot")!;
+                var wrongCoach = (HsHelper.Coaching.SnapshotCoach)Field(wrongTools, "_coach")!;
+                handler.Prepare(21, "DARK_GIFT_UI_WRONG_DEFINITION");
+                var refused = Await(new AdviceService(http).AnalyzeAsync(new(new("https://dark-gift-ui.invalid/v1/chat/completions"), "dark-gift-ui", 2),
+                    "fixture-dark-gift-key", HsHelper.Coaching.CompactAdviceContextBuilder.Create(wrongFrame, Build, AdviceTaskKind.Review),
+                    wrongCoach.ExecuteAsync, () => true, capabilities: wrongCoach.Capabilities()));
+                Check(refused.Verification == "unsupported" && refused.Actions.Count == 0 && !refused.VerifiedLethal &&
+                    handler.LastEvaluation!["AppliedActions"]!.GetValue<int>() == 0 && handler.LastEvaluation["Result"]!["AvailableMana"]!.GetValue<int>() == 10,
+                    "Final host advice retained actions/lethal or paid mana for an unaudited fixed definition.");
             }
             finally { wrongTools.Close(); }
-            Pass("ordinary new minions remain illegal hero attackers, while unknown or wrong-definition gifts retain conditional results and remove final actions/lethal claims");
+            Pass("ordinary new minions remain illegal hero attackers; unknown gifts remain conditional and wrong fixed definitions reject before payment with no final actions or lethal");
 
             var staleFrame = Frame(cards, "stale-advice", true); PinSaved(window, store, staleFrame);
             handler.Prepare(21, "DARK_GIFT_UI_STALE", delayed: true);

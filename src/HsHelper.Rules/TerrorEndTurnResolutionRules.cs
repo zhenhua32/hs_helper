@@ -62,21 +62,6 @@ public static class TerrorEndTurnResolutionRules
     public const int MaximumBranches = 256;
     public static bool IsAuditedSource(CardRecord? card) => AuditedTerror(card);
     // Same fixed type/text/mechanics fingerprints audited for the incoming Trap context.
-    private static readonly IReadOnlyDictionary<string, (int Dbf, string Fingerprint)> ActivePowers = new Dictionary<string, (int, string)>
-    {
-        ["EDR_850p"] = (114052, "ACE0D64FEF32A08AD76D5992D5EB701DBE7F59E57763A50CB209CEE643CBF501"),
-        ["HERO_01bp"] = (725, "29DB59083D4002189B0BEFC92D448A0A9102CB6E036776224113EDA8DC90D719"),
-        ["HERO_02bp"] = (687, "FA252E610387B747D4F7EC1D853F76FD47F8CEEF35D58729974942479EB4D614"),
-        ["HERO_03bp"] = (730, "42F8C5F9045F1BE30A430585C31BABE79378B791A39A003EDA2327F13D9DE18F"),
-        ["HERO_04bp"] = (472, "C546EF5FC608321448569418531C8E7C6BF5076CAD176B602F72C1938EE01DBA"),
-        ["HERO_05bp"] = (229, "938D049356F13E0A8BC78EB427F106765BAD46FDA5DD01B670AF255E28D473F1"),
-        ["HERO_06bp"] = (1123, "073509D747CD04CFD50413805036FFFE5E0A0C7C889EBEA1BF1D95FA976FE353"),
-        ["HERO_07bp"] = (300, "FE700C8EE079FE53B3C9201E87B0D2199D101D402BAF2263BD5FC63137090F65"),
-        ["HERO_08bp"] = (807, "39C40100227D93D81010A1B54D955AE94D96EB4FABEAF089AB87EEBBAF5F7B84"),
-        ["HERO_09bp"] = (479, "2E459FFB7D8C7BFB8A66E464C75D6A5B1955A85B4F14BFDCEB85BC3A8DD0084E"),
-        ["HERO_10bp"] = (60224, "55B7F672A61406178A32EF7D1B8D0D1E410C6206DF38ECA113B73F38430777D6"),
-        ["HERO_11bp"] = (78162, "84B054DF96F7FE8D2C983A1F74444875849DEA6EB88276265C87BCFDDE54E3AC")
-    };
     private static readonly HashSet<string> Passive = ["TAUNT", "DIVINE_SHIELD", "CHARGE", "RUSH", "WINDFURY", "MEGA_WINDFURY", "LIFESTEAL", "POISONOUS", "STEALTH", "ELUSIVE", "SPELLPOWER", "REBORN"];
     private static readonly (string Name, string? Alias)[] Flags = [("SILENCED", "188"), ("DORMANT", "1518"), ("UNTOUCHABLE", "448"), ("STEALTH", "191"), ("CANT_BE_ATTACKED", "245"),
         ("DIVINE_SHIELD", "194"), ("IMMUNE", "240"), ("IMMUNE_WHILE_ATTACKING", "373"), ("LIFESTEAL", "685"),
@@ -100,6 +85,8 @@ public static class TerrorEndTurnResolutionRules
         var branches = new List<TerrorEndTurnBranch>(); var seen = new HashSet<string>(StringComparer.Ordinal);
         var terminals = new HashSet<string>(StringComparer.Ordinal); bool? active = null; var limit = false;
         var pending = hostOverlay?.PriorResolutionPending == true;
+        if (NativeCardDefinitions.HasInvalidContext(snapshot, cards, terrorId, hostOverlay?.EntitiesAtEndTurn, includePowers: true))
+        { unknowns.Add("参与回合末强制交换的原生来源或公开上下文固定定义不一致，未执行原卡ID效果。"); return Result(); }
         if (snapshot.ClientBuild != "255790" || ChoiceVisibility.ConfirmedLocalPlayer(snapshot) is not (1 or 2) ||
             snapshot.ActivePlayerId != snapshot.LocalPlayerId || snapshot.Phase != GamePhase.Main ||
             !snapshot.Quality.HasGameStart || !snapshot.Quality.IsComplete || !snapshot.Quality.IsStable || snapshot.Quality.OpenBlockCount != 0 ||
@@ -193,8 +180,7 @@ public static class TerrorEndTurnResolutionRules
             {
                 if (Typed(entity, "HERO_POWER", "10") && Identity(entity) && !AssembledCardText.RequiresCustomText(entity.Tags) &&
                     entity.CardId is { } id && cards.TryGetValue(id, out var definition) && definition.Type == "HERO_POWER" &&
-                    ActivePowers.TryGetValue(id, out var power) && definition.DbfId == power.Dbf && Mechanics(entity, cards) is { } mechanics &&
-                    Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(definition.Type + "\n" + definition.Text + "\n" + string.Join("|", mechanics.Order(StringComparer.Ordinal))))) == power.Fingerprint) continue;
+                    NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, id, definition)) continue;
                 if (KnownStatEnchantment(entity, entities, cards)) continue;
                 if (KnownPlainWeapon(entity, cards)) continue;
                 unknowns.Add("存在未审计的场上附魔、武器或其它监听来源，未假定它不改变交换。"); return Result();
@@ -415,7 +401,7 @@ public static class TerrorEndTurnResolutionRules
         catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException or FormatException) { return null; }
     }
     private static bool Audit(CardRecord? card, string id, int dbf, string text, string[] mechanics) =>
-        card is { Type: "MINION" } && card.Id == id && card.DbfId == dbf && card.Text == text &&
+        NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, id, card) && card is { Type: "MINION" } && card.Id == id && card.DbfId == dbf && card.Text == text &&
         Mechanics(new(1, id, EntityKind.Card, FrozenDictionary<string, string>.Empty), new Dictionary<string, CardRecord> { [id] = card })?.SetEquals(mechanics) == true;
     private static bool AuditedTerror(CardRecord? card)
     {

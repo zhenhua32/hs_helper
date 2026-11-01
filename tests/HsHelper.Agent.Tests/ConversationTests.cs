@@ -133,7 +133,7 @@ static class ConversationTests
         { Model = o.Model, AnalysisRunId = o.AnalysisRunId, RequestId = o.RequestId, ToolCallId = o.ToolCallId, EventSequence = o.EventSequence }));
         var archive = new AdviceArchiveStore(Path.Combine(root, "archive.db")); await archive.InitializeAsync();
         var saved = await archive.SaveAsync(new(snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence, "255790", advice.TemplateVersion!, advice.Summary)
-        { Model = advice.Model, AnalysisRunId = advice.AnalysisRunId, RequestIds = advice.RequestIds, ConversationArchiveIds = advice.ConversationArchiveIds, KnowledgeAsOf = advice.KnowledgeAsOf });
+        { VisibilityPolicy = context.VisibilityPolicy, Model = advice.Model, AnalysisRunId = advice.AnalysisRunId, RequestIds = advice.RequestIds, ConversationArchiveIds = advice.ConversationArchiveIds, KnowledgeAsOf = advice.KnowledgeAsOf });
         var persistedRequests = await traces.ListRequestsAsync(snapshot.MatchId); var persistedTool = (await traces.ListToolsAsync(snapshot.MatchId)).Single();
         Check(saved.Advice.RequestIds!.ToHashSet(StringComparer.Ordinal).SetEquals(persistedRequests.Select(r => r.RequestId)) &&
             persistedRequests.All(r => r.AnalysisRunId == saved.Advice.AnalysisRunId) && persistedTool.AnalysisRunId == saved.Advice.AnalysisRunId &&
@@ -199,14 +199,14 @@ static class ConversationTests
         clock.Now = Cutoff.AddHours(1);
         var archive = new AdviceArchiveStore(Path.Combine(root, "archive.db"), clock); await archive.InitializeAsync();
         var liveRecord = await archive.SaveAsync(new(snapshot.MatchId, 5, 5, "255790", liveAdvice.TemplateVersion!, liveAdvice.Summary)
-        { DeckVersionId = "deck-a", KnowledgeAsOf = liveAdvice.KnowledgeAsOf, Model = liveAdvice.Model,
+        { DeckVersionId = "deck-a", VisibilityPolicy = liveContext.VisibilityPolicy, KnowledgeAsOf = liveAdvice.KnowledgeAsOf, Model = liveAdvice.Model,
             AnalysisRunId = liveAdvice.AnalysisRunId, RequestIds = liveAdvice.RequestIds });
         var historicalContext = baseContext with { KnowledgeAsOf = Cutoff };
         var initiallyEmpty = await ConversationHistoryBuilder.AttachAsync(historicalContext, archive, "deck-a", Cutoff.AddHours(2));
         Check(initiallyEmpty.Conversation.Count == 0 && (await archive.GetAsync(liveRecord.Id)) is not null,
             "Later live opinion on the exact same state was admitted to old-point history or erased instead of filtered.");
         var historicalRecord = await archive.SaveAsync(new(snapshot.MatchId, 5, 5, "255790", "hunter-v3/turn", "历史回答 OLD_PLAN")
-        { DeckVersionId = "deck-a", KnowledgeAsOf = Cutoff });
+        { DeckVersionId = "deck-a", VisibilityPolicy = historicalContext.VisibilityPolicy, KnowledgeAsOf = Cutoff });
         var followup = await ConversationHistoryBuilder.AttachAsync(historicalContext, archive, "deck-a", Cutoff.AddHours(2));
         Check(followup.Conversation.Single().ArchiveId == historicalRecord.Id, "Eligible same-point historical followup was lost.");
         var historicalLibrary = new CoachLibraryContext(sessions, knowledge, new(snapshot.MatchId, 5, "255790", "deck-a", Cutoff, EventSequence: 5));

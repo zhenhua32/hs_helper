@@ -284,7 +284,10 @@ public sealed partial class PowerLogStateEngine
             _eventSequence++;
             _currentEntity = ParseId(match.Groups[1].Value);
             var entity = GetEntity(_currentEntity.Value);
-            entity.CardId = NullIfEmpty(match.Groups[2].Value);
+            var cardId = NullIfEmpty(match.Groups[2].Value);
+            if (entity.CardId is not null && entity.CardId != cardId)
+                foreach (var tag in entity.Tags.Keys.Where(tag => !HiddenSafeTags.Contains(tag)).ToArray()) entity.Tags.Remove(tag);
+            entity.CardId = cardId;
             entity.Hidden = false;
             entity.Revision++;
             AddEvent("EntityCreated", entity, null, null, "创建卡牌实体");
@@ -318,6 +321,7 @@ public sealed partial class PowerLogStateEngine
             _currentEntity = null;
             if (ResolveReference(match.Groups[1].Value) is not { } id) return Unresolved();
             var entity = GetEntity(id);
+            var oldProof = ObservedIdentityProof(entity);
             var oldCard = IsIdentityVisible(entity) ? entity.CardId : null;
             var oldZone = entity.Tags.GetValueOrDefault("ZONE");
             entity.Hidden = true;
@@ -327,7 +331,7 @@ public sealed partial class PowerLogStateEngine
             entity.Revision++;
             ApplyTag(entity, match.Groups[2].Value, match.Groups[3].Value, recordEvent: false);
             if (oldZone != entity.Tags.GetValueOrDefault("ZONE"))
-                AddEvent("ZoneChanged", entity, oldZone, entity.Tags.GetValueOrDefault("ZONE"), "卡牌进入隐藏区域", oldCard);
+                AddEvent("ZoneChanged", entity, oldZone, entity.Tags.GetValueOrDefault("ZONE"), "卡牌进入隐藏区域", oldCard, oldProof);
             return Changed();
         }
         match = ChangePattern.Match(content);
@@ -414,7 +418,11 @@ public sealed partial class PowerLogStateEngine
         if (ownChoice is not null && !ownChoice.Ready) warnings.Add("当前选择详情尚未完整读取");
         if (!_taskComplete && ownChoice is not { Ready: true, TaskList: null }) warnings.Add("尚未观察到当前任务列表结算完成");
         var phase = GetPhase();
-        var isComplete = _sawStart && !_hasGap && _gameEntity.HasValue && playersValid && hasPerspective;
+        var unresolvedPublicType = _entities.Values.Any(entity => entity.Kind == EntityKind.Card &&
+            entity.Tags.GetValueOrDefault("ZONE") == "PLAY" && !IsAttachmentEntity(entity) &&
+            IdentityObservation(entity).Audience == AttachmentVisibility.Audience.Unresolved);
+        if (unresolvedPublicType) warnings.Add("公开区域仍有类型未确认的实体，不能把尚未分清的附魔当作公开卡牌。");
+        var isComplete = _sawStart && !_hasGap && _gameEntity.HasValue && playersValid && hasPerspective && !unresolvedPublicType;
         var step = _gameEntity is { } currentGame ? _entities[currentGame].Tags.GetValueOrDefault("STEP") : null;
         var decisionPhase = phase is GamePhase.Mulligan or GamePhase.Complete || step == "MAIN_ACTION";
         var choiceReady = ownChoice is { Ready: true } && (ownChoice.TaskList is null || _taskComplete);
@@ -423,7 +431,7 @@ public sealed partial class PowerLogStateEngine
         var visibleChoice = playersValid && ownChoice is { Ready: true } ? ownChoice : null;
         var entities = _entities.Values.ToFrozenDictionary(e => e.Id, e => ToSnapshot(e, hasPerspective, visibleChoice));
         var activePlayers = players.Where(e => IntTag(e, "CURRENT_PLAYER") == 1).ToArray();
-        return new GameSnapshot($"{_sessionId}-{_matchNumber:D4}", _version, _eventSequence,
+        var snapshot = new GameSnapshot($"{_sessionId}-{_matchNumber:D4}", _version, _eventSequence,
             _gameEntity is { } gameId ? IntTag(_entities[gameId], "TURN") : null,
             activePlayers.Length == 1 ? IntTag(activePlayers[0], "PLAYER_ID") : null,
             hasPerspective ? _localPlayerId : null, phase, entities,
@@ -446,6 +454,7 @@ public sealed partial class PowerLogStateEngine
             PerspectiveSource = hasPerspective ? (_manualPerspective ? "manual" : "initial_private_hand") : "unconfirmed",
             IsSpectating = _isSpectating
         };
+        return AttachmentVisibility.Project(snapshot);
     }
 
     private EntitySnapshot ToSnapshot(Entity entity, bool hasPerspective, ChoiceBuilder? ownChoice)
@@ -454,6 +463,7 @@ public sealed partial class PowerLogStateEngine
         var own = hasPerspective && IntTag(entity, "CONTROLLER") == _localPlayerId;
         var visible = entity.Kind is EntityKind.Game or EntityKind.Player ||
             (!entity.Hidden && (zone is "PLAY" or "GRAVEYARD" || (own && zone is "HAND" or "SECRET")));
+        if (visible && !IsAttachmentEntity(entity) && !IsIdentityVisible(entity)) visible = false;
         // SETASIDE cards remain private unless this exact observed offer names them for the
         // confirmed chooser. This projection has its own whitelist and never enters the
         // general visible cache, so finishing a choice cannot leave private tags exposed.
@@ -501,19 +511,22 @@ public sealed partial class PowerLogStateEngine
         var value = NormalizeValue(tag, rawValue.Trim());
         if (entity.Tags.GetValueOrDefault(tag) == value) return false;
         var fromZone = entity.Tags.GetValueOrDefault("ZONE");
+        var oldProof = ObservedIdentityProof(entity);
         var oldCard = IsIdentityVisible(entity) ? entity.CardId : null;
         entity.Tags[tag] = value;
         entity.Revision++;
         ObserveTurnTag(entity, tag, value);
         if (tag == "ZONE") ObserveTurnZone(entity, fromZone, value);
         if (recordEvent && tag == "ZONE")
-            AddEvent("ZoneChanged", entity, fromZone, value, "卡牌区域发生变化", oldCard);
+            AddEvent("ZoneChanged", entity, fromZone, value, "卡牌区域发生变化", oldCard, oldProof);
         else if (recordEvent && tag is "TURN" or "RESOURCES" or "RESOURCES_USED" or "PLAYSTATE" or "DAMAGE" or "HEALTH")
             AddEvent("AttributeChanged", entity, null, null, tag switch
             {
                 "TURN" => "进入新的回合", "PLAYSTATE" => "玩家对局结果变化",
                 "RESOURCES" or "RESOURCES_USED" => "法力资源变化", _ => "生命或伤害变化"
             });
+        else if (recordEvent && oldCard is null && tag is "CARDTYPE" or "ATTACHED" or "CONTROLLER" && IsIdentityVisible(entity) && entity.CardId is not null)
+            AddEvent("CardRevealed", entity, null, null, "卡牌身份已确认可见");
         return true;
     }
 
@@ -830,21 +843,19 @@ public sealed partial class PowerLogStateEngine
             warnings.Order(StringComparer.Ordinal).ToArray());
     }
 
-    private bool IsIdentityVisible(Entity entity) => entity.Kind is EntityKind.Game or EntityKind.Player ||
-        (!entity.Hidden && (entity.Tags.GetValueOrDefault("ZONE") is "PLAY" or "GRAVEYARD" ||
-            (_localPlayerId.HasValue && IntTag(entity, "CONTROLLER") == _localPlayerId &&
-             entity.Tags.GetValueOrDefault("ZONE") is "HAND" or "SECRET")));
+    private bool IsIdentityVisible(Entity entity) => AttachmentVisibility.CanObserve(IdentityObservation(entity).Audience, IdentityObserver);
 
-    private void AddEvent(string kind, Entity entity, string? fromZone, string? toZone, string summary, string? previousVisibleCard = null)
+    private void AddEvent(string kind, Entity entity, string? fromZone, string? toZone, string summary,
+        string? previousVisibleCard = null, EventIdentityVisibility? previousProof = null)
     {
         var owner = IntTag(entity, "CONTROLLER");
-        var zone = entity.Tags.GetValueOrDefault("ZONE");
-        var card = IsIdentityVisible(entity) ? entity.CardId : previousVisibleCard;
-        // Entering PLAY or leaving an already public zone preserves the identity as a public fact.
-        // Private hand/deck observations remain tied to the perspective that actually saw them.
-        var publiclyVisible = zone is "PLAY" or "GRAVEYARD" || fromZone is "PLAY" or "GRAVEYARD";
-        int? privateOwner = !publiclyVisible && (zone is "HAND" or "SECRET" || fromZone is "HAND" or "SECRET") ? owner : null;
-        _recentEvents.Enqueue((new(_eventSequence, kind, entity.Id, owner, card, fromZone, toZone, summary), privateOwner));
+        var proof = ObservedIdentityProof(entity);
+        var card = proof != EventIdentityVisibility.Unobserved ? entity.CardId : previousVisibleCard;
+        if (proof == EventIdentityVisibility.Unobserved && previousVisibleCard is not null) proof = previousProof ?? EventIdentityVisibility.Unobserved;
+        if (proof == EventIdentityVisibility.Unobserved) card = null;
+        int? privateOwner = proof switch { EventIdentityVisibility.PlayerOne => 1, EventIdentityVisibility.PlayerTwo => 2, _ => null };
+        _recentEvents.Enqueue((new ObservedGameEvent(_eventSequence, kind, entity.Id, owner, card, fromZone, toZone, summary)
+            { IdentityVisibility = proof }, privateOwner));
         while (_recentEvents.Count > 80) _eventHistoryTruncatedThrough = _recentEvents.Dequeue().Event.Sequence;
     }
 
@@ -921,7 +932,7 @@ public sealed partial class PowerLogStateEngine
         "17" => "PLAYSTATE", "19" => "STEP", "20" => "TURN", "23" => "CURRENT_PLAYER", "24" => "FIRST_PLAYER",
         "25" => "RESOURCES_USED", "26" => "RESOURCES", "27" => "HERO_ENTITY", "30" => "PLAYER_ID",
         "43" => "EXHAUSTED", "44" => "DAMAGE", "45" => "HEALTH", "47" => "ATK", "48" => "COST",
-        "49" => "ZONE", "50" => "CONTROLLER", "51" => "OWNER", "53" => "ENTITY_ID", "202" => "CARDTYPE",
+        "40" => "ATTACHED", "49" => "ZONE", "50" => "CONTROLLER", "51" => "OWNER", "53" => "ENTITY_ID", "202" => "CARDTYPE",
         "199" => "CLASS", "200" => "CARDRACE", "1635" => "SPELL_SCHOOL", "204" => "STATE", "263" => "ZONE_POSITION", "292" => "ARMOR", "305" => "MULLIGAN_STATE",
         "176" => "MAXRESOURCES", "187" => "DURABILITY", "188" => "SILENCED", "189" => "WINDFURY",
         "190" => "TAUNT", "191" => "STEALTH", "192" => "SPELLPOWER", "194" => "DIVINE_SHIELD", "197" => "CHARGE",

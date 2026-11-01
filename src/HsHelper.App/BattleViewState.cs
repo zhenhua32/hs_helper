@@ -118,6 +118,7 @@ public static class BattleViewBuilder
         string? fixedBuild = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        snapshot = AttachmentVisibility.Project(snapshot);
         var warnings = snapshot.Quality.Warnings.ToList();
         var local = ConfirmedLocalPlayer(snapshot);
         var players = snapshot.Entities.Values.Where(e => e.Kind == EntityKind.Player)
@@ -229,6 +230,7 @@ public static class BattleViewBuilder
 
     public static IReadOnlyList<string> VisibleCardIds(GameSnapshot snapshot, string? fixedBuild = null)
     {
+        snapshot = AttachmentVisibility.Project(snapshot);
         var local = ConfirmedLocalPlayer(snapshot);
         var ids = snapshot.Entities.Values.Where(e => e.Kind == EntityKind.Card &&
             (e.Zone == "PLAY" || local.HasValue && e.ControllerId == local && e.Zone == "HAND"))
@@ -244,6 +246,7 @@ public static class BattleViewBuilder
     /// <summary>Observed donor references of the actual visible instances, never hidden hand/deck identities.</summary>
     public static IReadOnlyList<int> VisibleEffectDbfIds(GameSnapshot snapshot, string? fixedBuild = null)
     {
+        snapshot = AttachmentVisibility.Project(snapshot);
         if (fixedBuild != "255790" || snapshot.ClientBuild != fixedBuild) return Array.Empty<int>();
         var local = ConfirmedLocalPlayer(snapshot);
         var visible = snapshot.Entities.Values.Where(entity => entity.Kind == EntityKind.Card && entity.CardId is not null &&

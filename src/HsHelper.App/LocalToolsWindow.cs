@@ -178,6 +178,7 @@ public sealed class LocalToolsWindow : Window
         StartingDeckBinding? startingDeck = null)
     {
         Dispatcher.VerifyAccess(); ArgumentNullException.ThrowIfNull(snapshot);
+        snapshot = AttachmentVisibility.Project(snapshot);
         if (_closed) throw new ObjectDisposedException(nameof(LocalToolsWindow));
         Invalidate();
         _snapshot = snapshot; _fixedBuild = fixedBuild; _historical = isHistorical;

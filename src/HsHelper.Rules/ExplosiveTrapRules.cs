@@ -60,21 +60,6 @@ public sealed record ExplosiveTrapOutcome(string MatchId, long StateVersion, lon
 public static class ExplosiveTrapRules
 {
     // Fixed-255790 type + complete native text + sorted mechanics fingerprints, not card-ID-only exemptions.
-    private static readonly IReadOnlyDictionary<string, (int Dbf, string Fingerprint)> ActivePowers = new Dictionary<string, (int, string)>
-    {
-        ["EDR_850p"] = (114052, "ACE0D64FEF32A08AD76D5992D5EB701DBE7F59E57763A50CB209CEE643CBF501"),
-        ["HERO_01bp"] = (725, "29DB59083D4002189B0BEFC92D448A0A9102CB6E036776224113EDA8DC90D719"),
-        ["HERO_02bp"] = (687, "FA252E610387B747D4F7EC1D853F76FD47F8CEEF35D58729974942479EB4D614"),
-        ["HERO_03bp"] = (730, "42F8C5F9045F1BE30A430585C31BABE79378B791A39A003EDA2327F13D9DE18F"),
-        ["HERO_04bp"] = (472, "C546EF5FC608321448569418531C8E7C6BF5076CAD176B602F72C1938EE01DBA"),
-        ["HERO_05bp"] = (229, "938D049356F13E0A8BC78EB427F106765BAD46FDA5DD01B670AF255E28D473F1"),
-        ["HERO_06bp"] = (1123, "073509D747CD04CFD50413805036FFFE5E0A0C7C889EBEA1BF1D95FA976FE353"),
-        ["HERO_07bp"] = (300, "FE700C8EE079FE53B3C9201E87B0D2199D101D402BAF2263BD5FC63137090F65"),
-        ["HERO_08bp"] = (807, "39C40100227D93D81010A1B54D955AE94D96EB4FABEAF089AB87EEBBAF5F7B84"),
-        ["HERO_09bp"] = (479, "2E459FFB7D8C7BFB8A66E464C75D6A5B1955A85B4F14BFDCEB85BC3A8DD0084E"),
-        ["HERO_10bp"] = (60224, "55B7F672A61406178A32EF7D1B8D0D1E410C6206DF38ECA113B73F38430777D6"),
-        ["HERO_11bp"] = (78162, "84B054DF96F7FE8D2C983A1F74444875849DEA6EB88276265C87BCFDDE54E3AC")
-    };
     private const string Text = "<b>奥秘：</b>当你的英雄受到攻击，对所有敌人造成$2点伤害。";
     private static readonly HashSet<string> Passive = new(StringComparer.Ordinal)
         { "TAUNT", "DIVINE_SHIELD", "RUSH", "CHARGE", "WINDFURY", "MEGA_WINDFURY", "LIFESTEAL", "POISONOUS", "STEALTH", "ELUSIVE", "SPELLPOWER" };
@@ -90,6 +75,7 @@ public static class ExplosiveTrapRules
 
     public static bool IsAuditedSource(CardRecord? card)
     {
+        if (!NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, card?.Id, card)) return false;
         var dbf = card?.Id switch { "CORE_EX1_610" => 69603, "EX1_610" => 585, _ => 0 };
         if (dbf == 0 || card is null || card.DbfId != dbf || card.Type != "SPELL" || card.Text != Text) return false;
         try
@@ -110,6 +96,8 @@ public static class ExplosiveTrapRules
         var targets = new List<ExplosiveTrapDamageResult>(); string? sourceId = null; int? defender = null;
         bool? active = null, consumed = null, survives = null, stopped = null; long? spellPower = null, damage = null;
         var resolves = false; var pending = beforeTrigger?.PriorResolutionPending == true;
+        if (NativeCardDefinitions.HasInvalidContext(snapshot, cards, secretEntityId, beforeTrigger?.ParticipantsBeforeTrigger, includePowers: true))
+        { unknowns.Add("参与陷阱直接伤害的原生来源或公开上下文固定定义不一致，未执行原卡ID效果。"); return Result(); }
         if (snapshot.ClientBuild != "255790" || ChoiceVisibility.ConfirmedLocalPlayer(snapshot) is not (1 or 2) ||
             !snapshot.Quality.HasGameStart || !snapshot.Quality.IsComplete || !snapshot.Quality.IsStable || snapshot.Quality.OpenBlockCount != 0 ||
             snapshot.Phase != GamePhase.Main || snapshot.ActivePlayerId is not (1 or 2) ||
@@ -336,6 +324,7 @@ public static class ExplosiveTrapRules
     {
         card = null!; raw = null!;
         if (entity.CardId is not { } id || !cards.TryGetValue(id, out card!) || card is null) return false;
+        if (NativeCardDefinitions.IsRegistered(id) && !NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, id, card)) return false;
         try { raw = JsonDocument.Parse(card.RawJson); if (NativeIdentity(card, raw.RootElement)) return true; raw.Dispose(); return false; }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or ArgumentException) { raw?.Dispose(); return false; }
     }
@@ -366,9 +355,8 @@ public static class ExplosiveTrapRules
         if (!Definition(entity, cards, out var card, out var raw)) return false;
         using (raw)
         {
-            if (Typed(entity, "HERO_POWER", "10") && card.Type == "HERO_POWER" && ActivePowers.TryGetValue(card.Id, out var power) &&
-                card.DbfId == power.Dbf && Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(card.Type + "\n" + card.Text + "\n" +
-                    string.Join("|", Mechanics(card).Order(StringComparer.Ordinal))))) == power.Fingerprint) return true;
+            if (Typed(entity, "HERO_POWER", "10") && card.Type == "HERO_POWER" &&
+                NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, card.Id, card)) return true;
             if (card.Id == "EDR_480" && card.DbfId == 114254 && card.Text == "<b>突袭</b>。友方野兽造成的伤害翻倍。" && Mechanics(card).SetEquals(["AURA", "RUSH"])) return true;
             if (card.Id == "FIR_953" && MagmaSplitRules.IsAuditedSource(card)) return true;
             if (card.Id == "EDR_849" && card.DbfId == 114933 && card.Text == "在你使用一张随从牌后，随机使其获得一项<b>额外效果</b>。" && Mechanics(card).SetEquals(["TRIGGER_VISUAL"])) return true;

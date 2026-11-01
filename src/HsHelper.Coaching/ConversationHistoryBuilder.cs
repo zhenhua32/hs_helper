@@ -15,7 +15,8 @@ public static class ConversationHistoryBuilder
             throw new ArgumentException("连续追问需要带有卡库、事件序号和知识截止时间的固定上下文。");
         if (context.KnowledgeAsOf > asOf) throw new ArgumentException("知识截止时间不能晚于对话查询时间。");
         var history = await archive.GetConversationHistoryAsync(new(context.MatchId, deckVersionId,
-            context.CardBuild, context.StateVersion, context.EventSequence.Value, asOf, maxTurns, context.KnowledgeAsOf), cancellationToken);
+            context.CardBuild, context.StateVersion, context.EventSequence.Value, asOf, maxTurns, context.KnowledgeAsOf,
+            context.VisibilityPolicy), cancellationToken);
         var turns = history.Records.Select(record => new AdviceConversationTurn(record.Id, record.Advice.MatchId,
             record.Advice.StateVersion, record.Advice.EventSequence, record.Advice.CardBuild, record.Advice.DeckVersionId,
             record.RecordedAt, record.Advice.UserQuestion, record.Advice.Summary)

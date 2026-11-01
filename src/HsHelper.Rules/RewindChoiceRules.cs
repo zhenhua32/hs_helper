@@ -74,7 +74,8 @@ public static class RewindChoiceRules
             source.CardId != observedSource.CardId || choice.SourceEntityId != source.Id ||
             choice.SourceCardId != observedSource.CardId ||
             !TryCard(observedSource.CardId, cards, out var sourceCard) || sourceCard.Type != "MINION" ||
-            sourceCard.DbfId != (observedSource.CardId == "CORE_EDR_004_2026" ? 131356 : 119798))
+            sourceCard.DbfId != (observedSource.CardId == "CORE_EDR_004_2026" ? 131356 : 119798) ||
+            !NativeCardDefinitions.IsAuditedEntity(snapshot.ClientBuild, observedSource, cards))
             return null;
         source = observedSource;
         var selected = choice.Options.SingleOrDefault(option => option.EntityId == selectedOption.EntityId);
@@ -305,11 +306,12 @@ public static class RewindChoiceRules
 
     private static bool IsGift(string? id, IReadOnlyDictionary<string, CardRecord> cards) =>
         id is not null && Gifts.TryGetValue(id, out var gift) && TryCard(id, cards, out var card) &&
-        card.Type == "SPELL" && card.DbfId == gift.DbfId;
+        card.Type == "SPELL" && card.DbfId == gift.DbfId && NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, id, card);
 
     private static bool IsTimelineButton(string? id, IReadOnlyDictionary<string, CardRecord> cards) =>
         TryCard(id, cards, out var card) && card.Type == "SPELL" &&
-        (id == "TIME_000ta" && card.DbfId == 119589 || id == "TIME_000tb" && card.DbfId == 119636);
+        (id == "TIME_000ta" && card.DbfId == 119589 || id == "TIME_000tb" && card.DbfId == 119636) &&
+        NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, id, card);
 
     private static bool ObservedBeastIsCompatible(EntitySnapshot? entity) => entity is null ||
         entity.Kind == EntityKind.Card && entity.Tags is not null &&

@@ -18,9 +18,11 @@ public sealed partial class LineEvaluator
 
         private void InitializeOpponentHealthPayment()
         {
-            var observed = Entities.Values.Where(e => e.Alive && e.Type == "ENCHANTMENT" &&
+            var candidates = Entities.Values.Where(e => e.Alive &&
                 e.CardId is { } id && OpponentHealthEnchantments.Contains(id) &&
                 e.Zone is "PLAY" or "SETASIDE" && e.Controller == Local).ToArray();
+            var observed = candidates.Where(e => e.Type == "ENCHANTMENT" &&
+                NativeCardDefinitions.IsAudited(_snapshot.ClientBuild, e.CardId, _cards.GetValueOrDefault(e.CardId!))).ToArray();
             var active = observed.Where(e => e.Int("ATTACHED") is { } attached &&
                 (attached == OwnHero?.Id || attached == Player?.Id) && Profile(e) is not null).ToArray();
             if (_snapshot.ClientBuild == AuditedBuild && observed.Length == 1 && active.Length == 1)
@@ -29,7 +31,7 @@ public sealed partial class LineEvaluator
                 _observedOpponentHealthEnchantments.Add(active[0].Id);
                 Coverage.Add("EDR_489-observed-player-or-hero-enchantment");
             }
-            else if (observed.Length > 0 || Entities.Values.Any(e => e.CardId == "EDR_489" &&
+            else if (candidates.Length > 0 || Entities.Values.Any(e => e.CardId == "EDR_489" &&
                 e.Controller == Local && e.Zone is not ("HAND" or "DECK")))
             {
                 // A battlecry survives its body's death or silence, but may already have been spent.

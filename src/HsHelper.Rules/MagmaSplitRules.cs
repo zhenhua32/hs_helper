@@ -90,6 +90,8 @@ public static class MagmaSplitRules
         bool? active = null; bool resolves = false, complete = false; long? packets = null, perPacket = null;
         var singleHeroAudited = false;
         var pending = afterCombat?.PriorResolutionPending == true;
+        if (NativeCardDefinitions.HasInvalidContext(snapshot, cards, sourceEntityId, afterCombat?.EntitiesAfterCombat))
+        { unknowns.Add("参与分配伤害的原生来源或公开上下文固定定义不一致，未执行原卡ID效果。"); return Result(); }
         if (snapshot.ClientBuild != "255790" || ChoiceVisibility.ConfirmedLocalPlayer(snapshot) is not (1 or 2) ||
             !snapshot.Quality.HasGameStart || !snapshot.Quality.IsComplete || !snapshot.Quality.IsStable ||
             snapshot.Quality.OpenBlockCount != 0 || snapshot.Phase != GamePhase.Main ||
@@ -364,6 +366,7 @@ public static class MagmaSplitRules
     }
     private static bool Audit(CardRecord? card, string id, int dbf, string type, string text, string[] mechanics)
     {
+        if (!NativeCardDefinitions.IsAudited(NativeCardDefinitions.Build, id, card)) return false;
         if (card is null || card.Id != id || card.DbfId != dbf || card.Type != type || card.Text != text) return false;
         try
         {

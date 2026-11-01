@@ -180,7 +180,7 @@ internal static class AssembledRuleChecks
     private static EntitySnapshot Source(string id) => Entity(30, id, "HAND", 1, ("COST", 2), ("ATK", 2), ("HEALTH", 3));
     private static EntitySnapshot Entity(int id, string card, string zone, int owner, params (string Key, int Value)[] values)
     {
-        var tags = new Dictionary<string, string> { ["CONTROLLER"] = owner.ToString(), ["ZONE"] = zone, ["CARDTYPE"] = "MINION", ["DAMAGE"] = "0", ["ARMOR"] = "0" };
+        var tags = new Dictionary<string, string> { ["CONTROLLER"] = owner.ToString(), ["ZONE"] = zone, ["CARDTYPE"] = NativeCardDefinitions.ExpectedType(card) ?? "MINION", ["DAMAGE"] = "0", ["ARMOR"] = "0" };
         foreach (var (key, value) in values) tags[key] = value.ToString();
         return new(id, card, EntityKind.Card, tags.ToFrozenDictionary());
     }

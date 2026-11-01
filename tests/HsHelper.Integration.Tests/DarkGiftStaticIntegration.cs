@@ -58,7 +58,7 @@ internal static class DarkGiftStaticIntegration
                 "type" => new[] { "TAG_CHANGE Entity=50 tag=CARDTYPE value=SPELL" },
                 _ => new[] { "TAG_CHANGE Entity=30 tag=CARDTYPE value=SPELL" }
             };
-            var invalid = await CreateAsync(directory, definitions, Engine(false, changes: changes));
+            var invalid = await CreateAsync(directory, definitions, Engine(false, changes: changes), unresolvedAttachment: binding == "attached");
             var result = await CompleteAsync(invalid, false);
             AssertNotVerified(result, "An explicit " + binding + " conflict acquired static gift coverage.");
         }
@@ -114,14 +114,15 @@ internal static class DarkGiftStaticIntegration
     private sealed record Saved(string Directory, CardCatalog Catalog, SessionStore Sessions, GameSnapshot Frame, DecisionPoint Point);
     private sealed record Completed(JsonNode Line, StrategyAdvice Advice, ArchivedAdviceRecord Archive);
 
-    private static async Task<Saved> CreateAsync(string directory, JsonElement[] cards, PowerLogStateEngine engine)
+    private static async Task<Saved> CreateAsync(string directory, JsonElement[] cards, PowerLogStateEngine engine, bool unresolvedAttachment = false)
     {
         var path = Path.Combine(directory, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(path);
         var catalog = new CardCatalog(Path.Combine(path, "cards.db")); await catalog.InitializeAsync();
         using (var input = new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(cards)))
             await catalog.ImportAsync(input, Build, source: "fixture://fixed-dark-gift-integration");
         var frame = engine.Snapshot();
-        Check(frame.Quality is { IsComplete: true, IsStable: true, HasLocalPerspective: true } && frame.ClientBuild == Build &&
+        Check(frame.Quality.HasLocalPerspective && frame.Quality.IsComplete == !unresolvedAttachment && frame.Quality.IsStable == !unresolvedAttachment &&
+            (!unresolvedAttachment || !frame.Entities.ContainsKey(50) && frame.Quality.Warnings.Any(warning => warning.Contains("关联目标未确认", StringComparison.Ordinal))) && frame.ClientBuild == Build &&
             frame.Entities[60].CardId is null && !SnapshotCodec.Serialize(frame).Contains(PrivateCard, StringComparison.Ordinal),
             "The real parser fixture lost its stable local frame or exposed a private opposing hand.");
         var sessions = new SessionStore(Path.Combine(path, "history.db")); await sessions.InitializeAsync();

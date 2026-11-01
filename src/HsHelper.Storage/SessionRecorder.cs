@@ -30,6 +30,7 @@ public sealed class SessionRecorder
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentOutOfRangeException.ThrowIfNegative(sourceLineNumber);
+        snapshot = AttachmentVisibility.Project(snapshot);
         SessionStore.ValidatePerspective(snapshot, _binding, inspectEntities: false);
         lock (_sync)
         {
@@ -112,8 +113,17 @@ public sealed class SessionRecorder
     {
         var events = new List<SessionEvent>();
         void Add(string kind, int? id, string? cardId, string? from, string? to, string summary, object data)
-            => events.Add(new(current.EventSequence, events.Count, sourceLine, kind, id, cardId, from, to, summary,
-                JsonSerializer.Serialize(data, SnapshotCodec.Options)));
+        {
+            var json = JsonSerializer.Serialize(data, SnapshotCodec.Options);
+            if (kind is "EntityObserved" or "EntityChanged" or "ZoneChanged" && id is { } entityId &&
+                current.Entities.TryGetValue(entityId, out var entity) && AttachmentVisibility.IsAttachment(entity))
+            {
+                var node = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+                node["IdentityVisibility"] = AttachmentVisibility.IdentityAt(current, entityId).ToString();
+                json = node.ToJsonString();
+            }
+            events.Add(new(current.EventSequence, events.Count, sourceLine, kind, id, cardId, from, to, summary, json));
+        }
         if (previous is null)
             Add("SessionObserved", null, null, null, null, current.Quality.HasGameStart ? "观察到对局开始" : "从不完整日志开始记录", new { current.Quality });
         if (previous?.Turn != current.Turn || previous?.Phase != current.Phase || previous?.ActivePlayerId != current.ActivePlayerId)

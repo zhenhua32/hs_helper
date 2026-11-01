@@ -363,7 +363,8 @@ internal static partial class CliHistoryIntegration
         AdviceRecordDraft Draft(string summary) => new(fixture.Frame.MatchId, fixture.Frame.StateVersion, fixture.Frame.EventSequence, Build,
             AdviceTaskTemplates.Get(AdviceTaskKind.Turn).Version, summary)
         {
-            DeckVersionId = fixture.Deck.Id, Task = "turn", UserQuestion = "QUESTION_" + summary,
+            DeckVersionId = fixture.Deck.Id, VisibilityPolicy = HsHelper.Coaching.CompactAdviceContextBuilder.VisibilityPolicy,
+            Task = "turn", UserQuestion = "QUESTION_" + summary,
             KnowledgeAsOf = clock.Now.AddMinutes(-1), Model = "prior-cli-model", AnalysisRunId = "run-" + summary, RequestIds = ["request-" + summary]
         };
         for (var index = 0; index < 6; index++)

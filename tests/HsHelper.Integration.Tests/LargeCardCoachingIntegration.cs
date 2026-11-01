@@ -107,7 +107,7 @@ internal static class LargeCardCoachingIntegration
         new JsonObject { ["kind"] = "end_turn", ["source_entity_id"] = 2 }) };
     private static JsonNode Entity(JsonNode line, int id) => line["Result"]!["Entities"]!.AsArray().Single(entity => entity!["EntityId"]!.GetValue<int>() == id)!;
     private static EntitySnapshot EffectEntity(int id, int donor, string zone, int owner) => new(id, "FIR_953", EntityKind.Card,
-        new Dictionary<string, string> { ["CONTROLLER"] = owner.ToString(), ["ZONE"] = zone, ["CARDTYPE"] = "ENCHANTMENT",
+        new Dictionary<string, string> { ["CONTROLLER"] = owner.ToString(), ["ZONE"] = zone, ["CARDTYPE"] = "MINION",
             ["CRAFTABLE_FIRST_HALF_DBID"] = "0", ["CRAFTABLE_SECOND_HALF_DBID"] = donor.ToString() }.ToFrozenDictionary());
     private static PowerLogStateEngine Start()
     {

@@ -74,7 +74,8 @@ internal static class HunterExplosiveTrapInstallChecks
             frame = frame with { Entities = entities.ToFrozenDictionary() };
             var altered = cards.ToDictionary(); altered["CORE_EX1_610"] = cards["CORE_EX1_610"] with { Text = "unreviewed persistent secret" };
             var line = evaluator.EvaluateLine(frame, [new(ActionKind.EndTurn, 2)], altered);
-            Check(line.Verification == LineVerification.Conditional && line.UnsupportedMechanics.Contains("FRIENDLY_SECRET_OR_QUEST"),
+            Check(line.Verification == LineVerification.Unsupported && line.AppliedActions == 0 && !line.Result.TurnEnded &&
+                line.UnsupportedMechanics.Contains("UNAUDITED_NATIVE_DEFINITION"),
                 "An altered installed trap bypassed all interaction checks by its ID alone.");
         });
     }
