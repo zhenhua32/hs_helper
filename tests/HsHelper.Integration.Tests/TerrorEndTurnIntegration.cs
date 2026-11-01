@@ -56,9 +56,12 @@ internal static class TerrorEndTurnIntegration
         Check(Preview(denied)["ResolvesBranches"]?.GetValue<bool>() != true && Preview(denied)["Branches"]!.AsArray().Count == 0,
             "Host projection repaired a contradictory original terror health alias.");
         var duplicate = await Line(Coach(Start(secondTerror: true).Snapshot(), catalog), EndTurn());
-        Check(duplicate["Result"]?["TerrorEndTurnPreviews"]!.AsArray().Count == 0 && duplicate["Result"]?["PendingForcedAttacks"]!.AsArray().Count == 2,
-            "Multiple native triggers were silently reduced to one independently resolved terror.");
-        pass("raw current-stat contradictions and multiple terror triggers cannot acquire a fabricated complete enumeration");
+        Check(duplicate["Result"]?["TerrorEndTurnPreviews"]!.AsArray().Count == 1 && duplicate["Result"]?["PendingForcedAttacks"]!.AsArray().Count == 2 &&
+            Preview(duplicate)["SourceEntityIds"]!.AsArray().Select(value => value!.GetValue<int>()).SequenceEqual([30, 31]) &&
+            Preview(duplicate)["HasAuthoritativeNextState"]?.GetValue<bool>() == false && Entity(duplicate, 30)["RemainingHealth"]?.GetValue<int>() == 5 &&
+            Entity(duplicate, 31)["RemainingHealth"]?.GetValue<int>() == 5,
+            "Multiple native triggers were independently resolved or their conditional branches changed the authoritative state.");
+        pass("raw current-stat contradictions remain unresolved while multiple terror triggers share one non-authoritative joint preview");
 
         var death = await Line(Coach(Start(secondCard: "EDR_227").Snapshot(), catalog), EndTurn());
         var deathBranches = Preview(death)["Branches"]!.AsArray();
@@ -93,7 +96,7 @@ internal static class TerrorEndTurnIntegration
         var context = CompactAdviceContextBuilder.Create(frame, Build, AdviceTaskKind.Turn);
         var advice = await new AdviceService(http).AnalyzeAsync(new(new Uri("https://terror-fixture.invalid/v1/chat/completions"), "terror-fixture"),
             "terror-fixture-unused-key", context, coach.ExecuteAsync, () => true, capabilities: coach.Capabilities());
-        Check(model.Calls == 2 && model.CheckedBranches && context.TemplateVersion == "hunter-v21/turn" &&
+        Check(model.Calls == 2 && model.CheckedBranches && context.TemplateVersion == "hunter-v22/turn" &&
             advice.Actions.Count == 0 && !advice.VerifiedLethal && advice.Risks.Length > 0 && JsonSerializer.Serialize(frame) == before,
             "The model promoted a favorable terror branch into executable actions or verified lethal.");
         pass("fake HTTP receives correlated terror branches but cannot promote a chosen outcome into executable verified advice");

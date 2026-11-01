@@ -777,6 +777,8 @@ public static class LocalToolResultFormatter
                     lines.Add($"· {entityName(payment["CardEntityId"]!.GetValue<int>())}：由{entityName(payment["PayingHeroEntityId"]!.GetValue<int>())}的生命支付 {payment["Cost"]}（生命 {payment["HealthBefore"]} → {payment["HealthAfter"]}，护甲不参与支付，支付不视为伤害）。");
             if (state["Entities"] is JsonArray entities)
             {
+                if (state["TerrorEndTurnPreviews"] is JsonArray { Count: > 0 })
+                    lines.Add("当前主体投影仍停在回合末触发前；相关结果见上方各自分支，后续行动等待新观察。");
                 foreach (var entity in entities.OfType<JsonObject>().Where(e => e["Type"]?.ToString() is "HERO" or "MINION"))
                     lines.Add($"· {entityName(entity["EntityId"]!.GetValue<int>())}：攻击 {entity["Attack"]?.ToString() ?? "未知"} / 生命 {entity["RemainingHealth"]?.ToString() ?? "未知"} / 护甲 {entity["Armor"]}；{(entity["IsAlive"]?.GetValue<bool>() == true ? "存活" : "已离场")}");
                 foreach (var weapon in entities.OfType<JsonObject>().Where(e => e["Type"]?.ToString() == "WEAPON" &&
@@ -901,40 +903,109 @@ public static class LocalToolResultFormatter
     {
         var branches = preview["Branches"] as JsonArray ?? [];
         var name = preview["TerrorEntityId"] is JsonValue id && id.TryGetValue<int>(out var source) ? entityName(source) : "神秘恐魔";
+        var multi = preview["SourceEntityIds"] is not null;
+        var sources = TerrorIds(preview["SourceEntityIds"]);
         var complete = preview["IsEnumerationComplete"]?.ToString() == "true";
-        lines.Add($"{name}回合末相关分支：{branches.Count} 个；枚举{(complete ? "完整（限已覆盖范围）" : "未完成")}。");
+        lines.Add($"{(multi ? "神秘恐魔联合" : name)}回合末相关分支：{branches.Count} 个；枚举{(complete ? "完整（限已覆盖范围）" : "未完成")}。");
+        if (multi)
+        {
+            lines.Add(sources is { Length: >= 2 and <= 7 }
+                ? $"联合来源 {sources.Length} 个（集合，不是触发顺序）：" + string.Join("、", sources.Select(SourceLabel)) + "。"
+                : "联合来源集合尚未确认，不能用单一来源或实体编号补出多源顺序。");
+            lines.Add("阶段顺序仅为该分支已开始阶段的见证前缀；未开始的来源不补顺序。");
+        }
         lines.Add("每个分支保留同一条见证顺序及其场面；顺序和分支没有概率，实际结果仍待观测，不能拼接不同分支、接续动作或证明斩杀。普通攻击次数与就绪字段仍未推导。");
         foreach (var branch in branches.OfType<JsonObject>().Take(8))
         {
             var status = branch["IsComplete"]?.ToString() == "true" ? "本分支结算完成" : "未完成，仅已计算前缀";
             lines.Add($"· 分支 {branch["Id"]}：{status}；我方英雄生命 {branch["OwnHeroHealthAfter"]?.ToString() ?? "未知"}，对方英雄生命 {branch["OpponentHeroHealthAfter"]?.ToString() ?? "未知"}；吸血实际恢复 {branch["LifestealHealing"]?.ToString() ?? "未知"}。");
             lines.Add("  停止原因：" + TerrorStop(branch["StopReason"]?.ToString()));
-            if (branch["Combats"] is JsonArray combats)
-                foreach (var combat in combats.OfType<JsonObject>())
-                    if (combat["AttackerEntityId"] is JsonValue attacker && attacker.TryGetValue<int>(out var attackerId) &&
-                        combat["TargetEntityId"] is JsonValue target && target.TryGetValue<int>(out var targetId))
-                        lines.Add($"  {entityName(attackerId)} → {entityName(targetId)}：对恐魔伤害 {combat["DamageToTerror"]}，反击伤害 {combat["DamageToAttacker"]}。");
+            var combats = branch["Combats"] as JsonArray ?? [];
+            if (multi)
+            {
+                var order = TerrorIds(branch["SourceOrder"]);
+                var stages = branch["Stages"] as JsonArray;
+                var witnessOrder = order ?? [];
+                var witnessStages = stages ?? [];
+                var validStages = sources is { Length: >= 2 and <= 7 } && order is not null && stages is not null &&
+                    order.All(sources.Contains) && stages.Count == order.Length;
+                var end = 0;
+                if (validStages)
+                    for (var stageIndex = 0; stageIndex < witnessStages.Count; stageIndex++)
+                    {
+                        var stage = witnessStages[stageIndex];
+                        if (!TerrorInt(stage?["SourceEntityId"], out var stageSource) || stageSource != witnessOrder[stageIndex] ||
+                            !TerrorInt(stage?["FirstCombatIndex"], out var first) || first != end ||
+                            !TerrorInt(stage?["CombatCount"], out var count) || count < 0 || count > combats.Count - first ||
+                            Enumerable.Range(first, count).Any(index => !TerrorInt(combats[index]?["TargetEntityId"], out var target) || target != stageSource))
+                        { validStages = false; break; }
+                        end += count;
+                    }
+                validStages &= end == combats.Count;
+                if (validStages)
+                {
+                    lines.Add(witnessOrder.Length == 0 ? "  尚未开始来源阶段。" : "  已开始阶段的见证前缀：" + string.Join(" → ", witnessOrder.Select(SourceLabel)) + "。");
+                    for (var index = 0; index < witnessStages.Count; index++)
+                    {
+                        var stage = witnessStages[index]!; var first = stage["FirstCombatIndex"]!.GetValue<int>(); var count = stage["CombatCount"]!.GetValue<int>();
+                        var range = count == 0 ? "无已计算战斗（0 次）" : count == 1 ? $"战斗 #{first + 1}" : $"战斗 #{first + 1}～#{first + count}";
+                        lines.Add($"  阶段 {index + 1} · {SourceLabel(witnessOrder[index])}：{range}；" +
+                            (stage["IsComplete"]?.ToString() == "true" ? "本源阶段已完成" : "本源阶段未完成，仅已计算前缀") + "；" + TerrorStop(stage["StopReason"]?.ToString(), stage: true) + "。");
+                        for (var combatIndex = first; combatIndex < first + count; combatIndex++) Combat(combats[combatIndex], combatIndex);
+                    }
+                    var unstarted = sources!.Except(witnessOrder).ToArray();
+                    if (unstarted.Length > 0) lines.Add("  未进入阶段的来源：" + string.Join("、", unstarted.Select(SourceLabel)) + "；其后顺序与结果未补出。");
+                }
+                else
+                {
+                    lines.Add("  来源阶段记录未提供或对应关系未确认；以下仅为已有战斗前缀，不按来源集合补造阶段顺序。");
+                    for (var index = 0; index < combats.Count; index++) Combat(combats[index], index);
+                }
+            }
+            else for (var index = 0; index < combats.Count; index++) Combat(combats[index], index);
             if (branch["Entities"] is JsonArray entities)
+            {
+                lines.Add(branch["IsComplete"]?.ToString() == "true"
+                    ? "  本分支相关终局（限已覆盖范围）：" : "  本分支已计算前缀的场面（后继未知）：");
                 foreach (var entity in entities.OfType<JsonObject>())
                     if (entity["EntityId"] is JsonValue value && value.TryGetValue<int>(out var entityId))
-                        lines.Add($"  {entityName(entityId)}：生命 {entity["RemainingHealth"]?.ToString() ?? "未知"} / 护甲 {entity["RemainingArmor"]?.ToString() ?? "未知"}；{(entity["IsAlive"]?.ToString() == "true" ? "存活" : "已离场")}；圣盾 {entity["DivineShield"]?.ToString() switch { "true" => "是", "false" => "否", _ => "未知" }}。");
+                        lines.Add($"  {entityName(entityId)}{(multi ? " #" + entityId : "")}：生命 {entity["RemainingHealth"]?.ToString() ?? "未知"} / 护甲 {entity["RemainingArmor"]?.ToString() ?? "未知"}；{entity["IsAlive"]?.ToString() switch { "true" => "存活", "false" => "已离场", _ => "存活状态未知" }}；圣盾 {entity["DivineShield"]?.ToString() switch { "true" => "是", "false" => "否", _ => "未知" }}。");
+            }
         }
         if (branches.Count > 8) lines.Add($"其余 {branches.Count - 8} 个分支未在此摘要展开；省略不表示不存在。");
         if (!complete) lines.Add("枚举截断或未覆盖效果之外的结果仍未知，未列出某个结果不能证明它不存在。");
         if (preview["Unknowns"] is JsonArray unknowns)
             foreach (var unknown in unknowns) lines.Add("  · " + unknown);
+
+        string SourceLabel(int entityId) => entityName(entityId) + " #" + entityId;
+        void Combat(JsonNode? combat, int index)
+        {
+            if (TerrorInt(combat?["AttackerEntityId"], out var attackerId) && TerrorInt(combat?["TargetEntityId"], out var targetId))
+                lines.Add($"  战斗 #{index + 1}：{entityName(attackerId)} → {entityName(targetId)}{(multi ? $"（#{attackerId} → #{targetId}）" : "")}：对恐魔伤害 {combat!["DamageToTerror"]?.ToString() ?? "未知"}，反击伤害 {combat["DamageToAttacker"]?.ToString() ?? "未知"}。");
+        }
     }
 
-    private static string TerrorStop(string? reason) => reason switch
+    private static bool TerrorInt(JsonNode? node, out int value) { value = 0; return node is JsonValue json && json.TryGetValue(out value); }
+    private static int[]? TerrorIds(JsonNode? node)
     {
+        if (node is not JsonArray { Count: <= 7 } values) return null;
+        var result = new List<int>();
+        foreach (var value in values) { if (!TerrorInt(value, out var id) || id <= 0 || result.Contains(id)) return null; result.Add(id); }
+        return result.ToArray();
+    }
+
+    private static string TerrorStop(string? reason, bool stage = false) => reason switch
+    {
+        "AllSourcesResolved" => "已处理本分支全部来源阶段（限已覆盖范围）",
         "AllEligibleAttackersResolved" => "已处理本次全部攻击者",
         "InactiveSource" => "来源已沉默、休眠、死亡或离场，本次不触发",
-        "TerrorDied" or "TerrorDead" => "恐魔已死亡，停止剩余强制战斗",
+        "TerrorDied" or "TerrorDead" => stage ? "本阶段恐魔已死亡，停止本阶段剩余强制战斗" : "恐魔已死亡，停止剩余强制战斗",
         "HeroDied" or "HeroDeath" => "英雄死亡，停止后续结算",
         "DeathOrRebornRequiresObservation" or "DeathrattleOrReborn" => "出现亡语或复生，等待后续观测",
         "AfterAttackRequiresObservation" => "攻击后效果仍待结算，等待后续观测",
         "StateLimit" or "BranchLimit" or "EnumerationLimit" or "Truncated" => "达到枚举限制，结果已截断",
         "PriorResolutionPending" => "前置效果仍待结算",
+        "SourceActivityRequiresObservation" => "未开始来源的活动状态尚待确认",
         _ => "停止原因尚待确认"
     };
 

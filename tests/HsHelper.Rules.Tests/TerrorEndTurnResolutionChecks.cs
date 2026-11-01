@@ -4,7 +4,7 @@ using HsHelper.Cards;
 using HsHelper.Core;
 using HsHelper.Rules;
 
-public static class TerrorEndTurnResolutionChecks
+public static partial class TerrorEndTurnResolutionChecks
 {
     public static IEnumerable<(string Name, Action Run)> Cases()
     {
@@ -147,10 +147,9 @@ public static class TerrorEndTurnResolutionChecks
                 Check(!result.ResolvesBranches && result.Branches.Count == 0 && result.Unknowns.Count > 0, "Unclassified active " + card + " was ignored until after fabricated damage/healing.");
             }
         });
-        yield return ("Terror unknown ownership type custom text and an additional live Terror cannot be omitted", () =>
+        yield return ("Terror unknown ownership type and custom text cannot be omitted", () =>
         {
-            foreach (var frame in new[] { Remove(Frame(), 21, "CONTROLLER"), Tag(Frame(), 22, "202", "SPELL"), Tag(Frame(), 21, "4573", "97376"),
-                Replace(Frame(), Card(40, "CORE_TTN_866", 1, 4, 10)) })
+            foreach (var frame in new[] { Remove(Frame(), 21, "CONTROLLER"), Tag(Frame(), 22, "202", "SPELL"), Tag(Frame(), 21, "4573", "97376") })
                 Check(!Eval(frame).ResolvesBranches, "A conflicting participant or extra end-turn source disappeared from the branch set.");
         });
         yield return ("Terror private opponent zones spectator and uncertain perspective never supply public combat identities", () =>

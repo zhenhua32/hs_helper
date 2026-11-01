@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using HsHelper.Cards;
 using HsHelper.Core;
@@ -38,12 +39,24 @@ public sealed record TerrorEntityResult(int EntityId, string Type, long Remainin
     bool DivineShield, bool IsAlive);
 public sealed record TerrorEndTurnBranch(string Id, bool IsComplete, string StopReason,
     IReadOnlyList<TerrorForcedCombat> Combats, IReadOnlyList<TerrorEntityResult> Entities,
-    long? OwnHeroHealthAfter, long? OpponentHeroHealthAfter, long LifestealHealing);
+    long? OwnHeroHealthAfter, long? OpponentHeroHealthAfter, long LifestealHealing)
+{
+    private IReadOnlyList<int>? _sourceOrder;
+    private IReadOnlyList<TerrorSourceStage>? _stages;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<int>? SourceOrder { get => _sourceOrder; init => _sourceOrder = value is null ? null : Array.AsReadOnly(value.ToArray()); }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<TerrorSourceStage>? Stages { get => _stages; init => _stages = value is null ? null : Array.AsReadOnly(value.ToArray()); }
+}
+public sealed record TerrorSourceStage(int SourceEntityId, int FirstCombatIndex, int CombatCount, bool IsComplete, string StopReason);
 public sealed record TerrorEndTurnOutcome(string MatchId, long StateVersion, long EventSequence,
     int TerrorEntityId, bool? TriggerActive, bool ResolvesBranches, bool IsEnumerationComplete,
     IReadOnlyList<TerrorEndTurnBranch> Branches, bool RequiresObservation, bool PriorResolutionPending,
     IReadOnlyList<string> Unknowns, IReadOnlyList<string> Assumptions, IReadOnlyList<string> RuleCoverage)
 {
+    private IReadOnlyList<int>? _sourceEntityIds;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<int>? SourceEntityIds { get => _sourceEntityIds; init => _sourceEntityIds = value is null ? null : Array.AsReadOnly(value.ToArray()); }
     public bool CanEvaluateFollowupActions => false;
     public bool HasAuthoritativeNextState => false;
     public bool? IsLegal => null;
@@ -75,7 +88,8 @@ public static class TerrorEndTurnResolutionRules
         bool Shield, bool Immune, bool WhileAttackingImmune, bool Poison, bool Life, bool CantHeal, bool Death,
         bool AfterAttack, bool Goldrinn, bool? Beast)
     { public bool Alive => Health > 0; }
-    private sealed record Node(Dictionary<int, Body> Bodies, int[] Remaining, List<TerrorForcedCombat> Combats, long Healing);
+    private sealed record Node(Dictionary<int, Body> Bodies, int[] Remaining, List<TerrorForcedCombat> Combats, long Healing,
+        int CurrentSource, int[] RemainingSources, List<int> SourceOrder, List<TerrorSourceStage> Stages, int StageStart);
 
     public static TerrorEndTurnOutcome Evaluate(GameSnapshot snapshot, int terrorId,
         IReadOnlyDictionary<string, CardRecord> cards, TerrorEndTurnState? hostOverlay = null)
@@ -85,6 +99,7 @@ public static class TerrorEndTurnResolutionRules
         var branches = new List<TerrorEndTurnBranch>(); var seen = new HashSet<string>(StringComparer.Ordinal);
         var terminals = new HashSet<string>(StringComparer.Ordinal); bool? active = null; var limit = false;
         var pending = hostOverlay?.PriorResolutionPending == true;
+        int[] sources = [];
         if (NativeCardDefinitions.HasInvalidContext(snapshot, cards, terrorId, hostOverlay?.EntitiesAtEndTurn, includePowers: true))
         { unknowns.Add("参与回合末强制交换的原生来源或公开上下文固定定义不一致，未执行原卡ID效果。"); return Result(); }
         if (snapshot.ClientBuild != "255790" || ChoiceVisibility.ConfirmedLocalPlayer(snapshot) is not (1 or 2) ||
@@ -187,9 +202,11 @@ public static class TerrorEndTurnResolutionRules
             }
         }
         var activeMinions = characters.Where(entity => Typed(entity, "MINION", "4") && Health(entity) > 0 && Flag(entity, "DORMANT", "1518") != true).ToArray();
+        sources = activeMinions.Where(entity => entity.ControllerId == local && entity.CardId == "CORE_TTN_866" && Flag(entity, "SILENCED", "188") != true)
+            .Select(entity => entity.Id).Order().ToArray();
         if (activeMinions.Count(entity => entity.ControllerId == local) > 7 || activeMinions.Count(entity => entity.ControllerId == opponent) > MaximumAttackers ||
-            activeMinions.Count(entity => entity.ControllerId == local && entity.CardId == "CORE_TTN_866" && Flag(entity, "SILENCED", "188") != true) != 1)
-        { unknowns.Add("仅枚举一个活动恐魔与至多七个敌方随从，不猜测多个回合末来源顺序。"); return Result(); }
+            sources.Length is < 1 or > 7 || !sources.Contains(terrorId))
+        { unknowns.Add("仅枚举一至七个活动恐魔与至多七个敌方随从，不遗漏超出当前场面范围的来源。"); return Result(); }
         var attackers = activeMinions.Where(entity => entity.ControllerId == opponent).Select(entity => entity.Id).Order().ToArray();
         var bodies = new Dictionary<int, Body>();
         foreach (var entity in characters)
@@ -205,7 +222,7 @@ public static class TerrorEndTurnResolutionRules
             if (Typed(entity, "MINION", "4") && Health(entity) <= 0 &&
                 (Keyword(entity, cards, "DEATHRATTLE", "217") || Keyword(entity, cards, "REBORN", "1085")))
             { pending = true; unknowns.Add("当前仍在PLAY的致死随从已有待结算亡语或复生，不能跳过它开始回合末交换。"); return Result(); }
-            if (entity.Id == terrorId && (Keyword(entity, cards, "IMMUNE", "240") || Keyword(entity, cards, "STEALTH", "191") || Keyword(entity, cards, "CANT_BE_ATTACKED", "245")) ||
+            if (sources.Contains(entity.Id) && (Keyword(entity, cards, "IMMUNE", "240") || Keyword(entity, cards, "STEALTH", "191") || Keyword(entity, cards, "CANT_BE_ATTACKED", "245") || Keyword(entity, cards, "UNTOUCHABLE", "448")) ||
                 attackers.Contains(entity.Id) && Flag(entity, "UNTOUCHABLE", "448") == true)
             { unknowns.Add("强制攻击包含尚未核验的不可选中或不可交互组合。"); return Result(); }
             var isMinion = Typed(entity, "MINION", "4");
@@ -222,7 +239,13 @@ public static class TerrorEndTurnResolutionRules
         assumptions.Add("枚举所有未排除的攻击先后条件，未主张客户端实际采用任意一种顺序、均匀随机或对应概率；同完整状态合并，Combats只保留一条见证路径。");
         assumptions.Add("强制攻击以原生效果可发动为条件；冻结、疲劳、普通攻击次数与入场回合字段保留最后观察值，不投影普通就绪状态，也不进入对手回合。");
         coverage.AddRange(["CORE_TTN_866-build255790-forced-end-turn-combat-schedules", "correlated-terminal-states-and-witness-paths", "simultaneous-combat-shield-armor-poison-lifesteal", "goldrinn-current-beast-damage", "no-authoritative-next-state-or-probability"]);
-        Walk(new(bodies, attackers, [], 0));
+        var multi = sources.Length > 1;
+        if (multi)
+        {
+            coverage.Add("correlated-multiple-terror-source-and-attacker-schedules");
+            assumptions.Add("来源集合不表示触发顺序；联合枚举所有未排除的来源与攻击者先后条件，SourceOrder和Stages只记录本分支已经开始的阶段见证，不补未来阶段或概率。");
+        }
+        Walk(new(bodies, multi ? [] : attackers, [], 0, multi ? 0 : terrorId, multi ? sources : [], [], [], 0));
         if (limit) unknowns.Add("有限状态或终局上限已达到；结果仅为已算相关前缀/终局，不提供完整全局范围。");
         return Result();
 
@@ -233,26 +256,42 @@ public static class TerrorEndTurnResolutionRules
             if (seen.Contains(key)) return;
             if (seen.Count >= MaximumStates) { limit = true; return; }
             seen.Add(key);
-            if (!node.Bodies[ownHeroId].Alive || !node.Bodies[enemyHeroId].Alive) { Finish(node, true, "HeroDied"); return; }
-            if (!node.Bodies[terrorId].Alive) { Finish(node, true, "TerrorDied"); return; }
-            if (node.Remaining.Length == 0) { Finish(node, true, "AllEligibleAttackersResolved"); return; }
+            if (!node.Bodies[ownHeroId].Alive || !node.Bodies[enemyHeroId].Alive)
+            { Finish(multi && node.CurrentSource != 0 ? RecordStage(node, true, "HeroDied") : node, true, "HeroDied"); return; }
+            if (multi && node.CurrentSource == 0)
+            {
+                if (node.RemainingSources.Length == 0) { Finish(node, true, "AllSourcesResolved"); return; }
+                foreach (var sourceId in node.RemainingSources)
+                {
+                    // In this audited direct-exchange scope no other source is damaged. Never infer
+                    // what a queued trigger would do if an unexpanded effect had killed its source.
+                    if (!node.Bodies[sourceId].Alive) { unknowns.Add("未开始来源已死亡，其排队语义尚未确认。"); Finish(node, false, "SourceActivityRequiresObservation"); continue; }
+                    Walk(node with { CurrentSource = sourceId, RemainingSources = node.RemainingSources.Where(id => id != sourceId).ToArray(),
+                        Remaining = attackers.Where(id => node.Bodies[id].Alive).ToArray(),
+                        SourceOrder = [.. node.SourceOrder, sourceId], StageStart = node.Combats.Count });
+                    if (limit) break;
+                }
+                return;
+            }
+            if (!node.Bodies[node.CurrentSource].Alive) { CompleteStage(node, "TerrorDied"); return; }
+            if (node.Remaining.Length == 0) { CompleteStage(node, "AllEligibleAttackersResolved"); return; }
             foreach (var id in node.Remaining)
             {
                 if (limit) break;
-                var next = node.Bodies.ToDictionary(); var source = next[id]; var target = next[terrorId];
+                var next = node.Bodies.ToDictionary(); var source = next[id]; var target = next[node.CurrentSource];
                 var remaining = node.Remaining.Where(value => value != id).ToArray();
                 if (!source.Alive) { Walk(node with { Remaining = remaining }); continue; }
                 var damageToTerror = Damage(source, target, Amount(source, node.Bodies), false, out var damagedTerror);
                 var damageToAttacker = Damage(target, source, Amount(target, node.Bodies), source.WhileAttackingImmune, out var damagedAttacker);
-                next[terrorId] = damagedTerror; next[id] = damagedAttacker;
+                next[node.CurrentSource] = damagedTerror; next[id] = damagedAttacker;
                 long healing = 0;
                 Heal(source, damageToTerror); Heal(target, damageToAttacker);
-                var path = new List<TerrorForcedCombat>(node.Combats) { new(id, terrorId, damageToTerror, damageToAttacker, next[id].Alive, next[terrorId].Alive) };
-                var state = new Node(next, remaining, path, checked(node.Healing + healing));
-                if ((!next[id].Alive && source.Death) || (!next[terrorId].Alive && target.Death))
-                { unknowns.Add("交换后的亡语或复生尚未展开，当前分支停在直接交换前缀，不伪造后续全局界。"); Finish(state, false, "DeathOrRebornRequiresObservation"); continue; }
+                var path = new List<TerrorForcedCombat>(node.Combats) { new(id, node.CurrentSource, damageToTerror, damageToAttacker, next[id].Alive, next[node.CurrentSource].Alive) };
+                var state = node with { Bodies = next, Remaining = remaining, Combats = path, Healing = checked(node.Healing + healing) };
+                if ((!next[id].Alive && source.Death) || (!next[node.CurrentSource].Alive && target.Death))
+                { unknowns.Add("交换后的亡语或复生尚未展开，当前分支停在直接交换前缀，不伪造后续全局界。"); StopPrefix(state, "DeathOrRebornRequiresObservation"); continue; }
                 if (next[id].Alive && source.AfterAttack)
-                { unknowns.Add("敌方熔岩猎犬存活后的分配伤害尚待结算，当前分支停在直接攻击交换。"); Finish(state, false, "AfterAttackRequiresObservation"); continue; }
+                { unknowns.Add("敌方熔岩猎犬存活后的分配伤害尚待结算，当前分支停在直接攻击交换。"); StopPrefix(state, "AfterAttackRequiresObservation"); continue; }
                 Walk(state);
                 void Heal(Body dealer, long dealt)
                 {
@@ -264,6 +303,14 @@ public static class TerrorEndTurnResolutionRules
                 }
             }
         }
+        Node RecordStage(Node node, bool complete, string reason) => node with { Stages = [.. node.Stages,
+            new(node.CurrentSource, node.StageStart, node.Combats.Count - node.StageStart, complete, reason)] };
+        void CompleteStage(Node node, string reason)
+        {
+            if (!multi) { Finish(node, true, reason); return; }
+            Walk(RecordStage(node, true, reason) with { CurrentSource = 0, Remaining = [] });
+        }
+        void StopPrefix(Node node, string reason) => Finish(multi ? RecordStage(node, false, reason) : node, false, reason);
         void Finish(Node node, bool complete, string reason)
         {
             var key = reason + ":" + Key(node);
@@ -271,13 +318,15 @@ public static class TerrorEndTurnResolutionRules
             if (branches.Count >= MaximumBranches) { limit = true; return; }
             branches.Add(new("branch-" + (branches.Count + 1), complete, reason, Array.AsReadOnly(node.Combats.ToArray()),
                 Array.AsReadOnly(node.Bodies.Values.OrderBy(body => body.Id).Select(body => new TerrorEntityResult(body.Id, body.Type, body.Health, body.Armor, body.Shield, body.Alive)).ToArray()),
-                node.Bodies[ownHeroId].Health, node.Bodies[enemyHeroId].Health, node.Healing));
+                node.Bodies[ownHeroId].Health, node.Bodies[enemyHeroId].Health, node.Healing)
+                { SourceOrder = multi ? node.SourceOrder : null, Stages = multi ? node.Stages : null });
         }
         TerrorEndTurnOutcome Result()
         {
             var complete = !limit && branches.Count > 0 && branches.All(branch => branch.IsComplete);
             return new(snapshot.MatchId, snapshot.StateVersion, snapshot.EventSequence, terrorId, active, complete, complete,
-                Array.AsReadOnly(branches.ToArray()), active != false || !complete, pending, Freeze(unknowns), Freeze(assumptions), Freeze(coverage));
+                Array.AsReadOnly(branches.ToArray()), active != false || !complete, pending, Freeze(unknowns), Freeze(assumptions), Freeze(coverage))
+                { SourceEntityIds = sources.Length > 1 ? sources : null };
         }
     }
 
@@ -292,7 +341,7 @@ public static class TerrorEndTurnResolutionRules
     }
     private static long Amount(Body source, IReadOnlyDictionary<int, Body> bodies) => checked(source.Attack *
         (source.Beast == true ? 1L << bodies.Values.Count(body => body.Owner == source.Owner && body.Goldrinn && body.Alive) : 1L));
-    private static string Key(Node node) => node.Healing + ":" + string.Join(',', node.Remaining) + ":" +
+    private static string Key(Node node) => node.CurrentSource + ":" + string.Join(',', node.RemainingSources) + ":" + node.Healing + ":" + string.Join(',', node.Remaining) + ":" +
         string.Join(';', node.Bodies.Values.OrderBy(body => body.Id).Select(body => $"{body.Id},{body.Health},{body.Armor},{body.Shield}"));
     private static IReadOnlyList<string> Freeze(IEnumerable<string> values) => Array.AsReadOnly(values.Distinct(StringComparer.Ordinal).ToArray());
     private static bool Valid(EntitySnapshot? entity) => entity is not null && entity.Tags is not null;

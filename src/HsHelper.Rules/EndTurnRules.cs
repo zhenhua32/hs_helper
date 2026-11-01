@@ -63,7 +63,7 @@ public sealed partial class LineEvaluator
                 Conditional("存在额外回合末触发次数修正，当前未展开重复触发。", "END_TURN_TRIGGER_MULTIPLIER");
 
             var triggers = Entities.Values.Where(e => e.Alive && e.Zone == "PLAY" && e.Controller == Local &&
-                e.CardId == "CORE_TTN_866" && !Silenced(e) && !Has(e, "DORMANT") && !Has(e, "UNTOUCHABLE")).ToArray();
+                e.CardId == "CORE_TTN_866" && !Silenced(e) && !Has(e, "DORMANT")).ToArray();
             foreach (var terror in triggers)
             {
                 var attackers = Entities.Values.Where(e => e.Alive && e.Zone == "PLAY" && e.Type == "MINION" &&
@@ -78,7 +78,7 @@ public sealed partial class LineEvaluator
                 if (attackers.Length == 0) { Coverage.Add("CORE_TTN_866-no-enemy-minions"); continue; }
                 if (triggers.Length != 1 || attackers.Length != 1)
                 {
-                    if (triggers.Length == 1 && attackers.Length > 1)
+                    if (_terrorEndTurnPreviews.Count == 0)
                     {
                         var overlay = new TerrorEndTurnState(_snapshot.MatchId, _snapshot.StateVersion, _snapshot.EventSequence,
                             terror.Id, Array.AsReadOnly(Entities.Values.OrderBy(entity => entity.Id).Select(FreezeTerrorEndTurn).ToArray()))
@@ -97,7 +97,7 @@ public sealed partial class LineEvaluator
                 if (source.Controller is null || source.Attack is null or < 0 || source.Health is null ||
                     terror.Attack is null or < 0 || terror.Health is null || Profile(source) is null)
                 { Pending(terror, attackers, "攻击者归属、当前属性或牌效未确认，不能用印刷属性代替。", "UNKNOWN_FORCED_COMBAT_VALUES"); continue; }
-                if (Has(source, "UNTOUCHABLE") || Has(terror, "IMMUNE") || Has(terror, "STEALTH") || Has(terror, "CANT_BE_ATTACKED"))
+                if (Has(source, "UNTOUCHABLE") || Has(terror, "UNTOUCHABLE") || Has(terror, "IMMUNE") || Has(terror, "STEALTH") || Has(terror, "CANT_BE_ATTACKED"))
                 { Pending(terror, attackers, "强制战斗含不可交互或特殊防御限制，尚未核验该组合。", "UNCONFIRMED_FORCED_ATTACK_TARGET"); continue; }
 
                 // Keep the last observed normal attack counters. The reference simulator distinguishes

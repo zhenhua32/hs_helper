@@ -40,12 +40,12 @@ internal static class TerrorToolChecks
                     !text.Contains("找到已验证的斩杀路线", StringComparison.Ordinal), "A forged banner promoted a conditional terror branch into verified lethal.");
             }
         });
-        yield return ("turn and choice v14 policies constrain terror branch correlation and observation scope", () =>
+        yield return ("turn and choice v22 policies constrain terror branch correlation and observation scope", () =>
         {
             foreach (var task in new[] { AdviceTaskKind.Turn, AdviceTaskKind.Choice })
             {
                 var policy = AdviceTaskTemplates.Get(task);
-                Check(policy.Version == "hunter-v21/" + task.ToString().ToLowerInvariant() && policy.Instructions.Contains("TerrorEndTurnPreviews", StringComparison.Ordinal) &&
+                Check(policy.Version == "hunter-v22/" + task.ToString().ToLowerInvariant() && policy.Instructions.Contains("TerrorEndTurnPreviews", StringComparison.Ordinal) &&
                     policy.Instructions.Contains("等概率", StringComparison.Ordinal) && policy.Instructions.Contains("普通攻击次数/就绪字段", StringComparison.Ordinal),
                     "The model policy omitted conditional forced-combat branches or their unobserved ordinary counters.");
             }

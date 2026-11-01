@@ -36,7 +36,12 @@ public sealed class SnapshotCoach
     private readonly AdviceTaskKind? _taskKind;
     private readonly StartingDeckBinding? _startingDeck;
     private readonly LineEvaluator _rules = new();
-    private readonly AsyncLocal<AgentToolInvocation?> _toolSource = new();
+    private sealed class ToolInvocationSlot(AgentToolInvocation source)
+    {
+        private AgentToolInvocation? _source = source;
+        public AgentToolInvocation? Take() => Interlocked.Exchange(ref _source, null);
+    }
+    private readonly AsyncLocal<ToolInvocationSlot?> _toolSource = new();
     private bool IsDeckPlanning => _taskKind == AdviceTaskKind.DeckPlan || _snapshot.Phase == GamePhase.Unknown;
 
     public SnapshotCoach(GameSnapshot snapshot, JsonObject context, CardCatalog catalog, string? cardBuild,
@@ -94,20 +99,23 @@ public sealed class SnapshotCoach
                 (source.EventSequence.HasValue && source.EventSequence != _snapshot.EventSequence) ||
                 (source.KnowledgeAsOf.HasValue && _library is not null && source.KnowledgeAsOf != _library.Binding.AsOf))
                 throw new InvalidOperationException("工具来源不属于当前固定局面。");
-            _toolSource.Value = source;
+            _toolSource.Value = new(source);
         }
     };
 
     public async Task<JsonNode> ExecuteAsync(string name, JsonObject arguments, CancellationToken token)
     {
         var stopwatch = Stopwatch.StartNew();
-        var source = _toolSource.Value;
+        // Consume the shared slot as well as clearing this async flow. The caller's context
+        // must not reuse a completed model invocation for a later local-tool request.
+        var source = _toolSource.Value?.Take();
         var success = false;
         string? resultJson = null;
         try
         {
             token.ThrowIfCancellationRequested();
             var result = await ExecuteCoreAsync(name, arguments, token);
+            if (source is not null && name == "evaluate_line") BoundTerrorBranchesForModel(result);
             resultJson = result.ToJsonString();
             success = true;
             return result;
@@ -120,6 +128,28 @@ public sealed class SnapshotCoach
                 { Model = source?.Model, AnalysisRunId = source?.AnalysisRunId, RequestId = source?.RequestId,
                     ToolCallId = source?.ToolCallId, EventSequence = source?.EventSequence });
             _toolSource.Value = null;
+        }
+    }
+
+    private static void BoundTerrorBranchesForModel(JsonNode result)
+    {
+        const int maximumBranches = 8;
+        if (result["Result"]?["TerrorEndTurnPreviews"] is not JsonArray previews) return;
+        foreach (var preview in previews.OfType<JsonObject>())
+        {
+            if (preview["Branches"] is not JsonArray branches || branches.Count <= maximumBranches) continue;
+            var total = branches.Count;
+            // ExecuteCoreAsync produced this owned JSON tree. Keep complete correlated
+            // branches while leaving the fixed snapshot, rules result and local tools intact.
+            preview["Branches"] = new JsonArray(branches.Take(maximumBranches).Select(branch => branch?.DeepClone()).ToArray());
+            preview["BranchProjection"] = new JsonObject
+            {
+                ["TotalBranches"] = total,
+                ["ShownBranches"] = maximumBranches,
+                ["MaximumShownBranches"] = maximumBranches,
+                ["AllBranchesIncluded"] = false,
+                ["Scope"] = "本次模型摘要只展示工具已计算分支的前8条，TotalBranches为摘要前已计算并保留的数量。IsEnumerationComplete仍只描述计算范围；未展示分支及未展开触发的结果、优劣和概率保持未知。保留分支的阶段、战斗、场面及治疗共同使用，不从摘要推导全局上下界、唯一结果或斩杀。本地工具保留完整计算结果。"
+            };
         }
     }
 
@@ -420,7 +450,7 @@ public sealed class SnapshotCoach
             args => args.Count == 2 && Integer(args["choice_id"], 1, int.MaxValue) && args["selected_entity_ids"] is JsonArray { Count: <= 30 } ids && ids.All(id => Integer(id, 1, int.MaxValue))),
         new AgentToolDefinition("calculate_draw_odds", "仅在牌库组成有完整证据时，计算无放回抽牌概率。未知时返回限制。", Schema("""{"type":"object","properties":{"card_id":{"type":"string"},"draws":{"type":"integer","minimum":1,"maximum":30}},"required":["card_id","draws"],"additionalProperties":false}"""),
             args => args.Count == 2 && args["card_id"] is JsonValue id && id.TryGetValue<string>(out var card) && !string.IsNullOrWhiteSpace(card) && card.Length <= 100 && Integer(args["draws"], 1, 30)),
-        new AgentToolDefinition("evaluate_line", "验证候选出牌和攻击顺序；仅Verified代表已覆盖全部相关规则，Conditional和Unsupported不能断言结果。", Schema("""{"type":"object","properties":{"actions":{"type":"array","minItems":1,"maxItems":16,"items":{"type":"object","properties":{"kind":{"type":"string","enum":["play","attack","hero_power","end_turn"]},"source_entity_id":{"type":"integer","minimum":1},"target_entity_id":{"type":"integer","minimum":1}},"required":["kind","source_entity_id"],"additionalProperties":false}}},"required":["actions"],"additionalProperties":false}"""), ValidActions),
+        new AgentToolDefinition("evaluate_line", "验证候选出牌、攻击、技能与结束回合；end_turn的来源必须是当前我方PLAYER实体。多个神秘恐魔返回共享伤害、存活及治疗的联合相关分支，来源集合不是触发顺序，见证阶段可能只有前缀，不接受指定来源顺序、战斗顺序或分支。预览不修改真实局面或证明后续动作及斩杀；仅Verified代表已覆盖全部相关规则，Conditional和Unsupported不能断言结果。", Schema("""{"type":"object","properties":{"actions":{"type":"array","minItems":1,"maxItems":16,"items":{"type":"object","properties":{"kind":{"type":"string","enum":["play","attack","hero_power","end_turn"]},"source_entity_id":{"type":"integer","minimum":1},"target_entity_id":{"type":"integer","minimum":1}},"required":["kind","source_entity_id"],"additionalProperties":false}}},"required":["actions"],"additionalProperties":false}"""), ValidActions),
         new AgentToolDefinition("find_lethal", "在有限深度和节点预算内搜索斩杀。未发现不代表没有斩杀；只有VerifiedLethalFound可作确定依据。", Schema("""{"type":"object","properties":{"maximum_depth":{"type":"integer","minimum":1,"maximum":6},"maximum_nodes":{"type":"integer","minimum":1,"maximum":5000}},"required":["maximum_depth","maximum_nodes"],"additionalProperties":false}"""),
             args => args.Count == 2 && Integer(args["maximum_depth"], 1, 6) && Integer(args["maximum_nodes"], 1, 5000))
     });

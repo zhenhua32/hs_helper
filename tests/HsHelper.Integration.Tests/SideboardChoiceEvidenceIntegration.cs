@@ -136,7 +136,7 @@ internal static class SideboardChoiceEvidenceIntegration
         var advice = await new AdviceService(http).AnalyzeAsync(new(new Uri("https://sideboard-fixture.invalid/v1/chat/completions"), "sideboard-fixture"),
             "sideboard-fixture-unused-key", context, coach.ExecuteAsync, () => true, capabilities: coach.Capabilities());
         Check(model.Calls == 2 && advice.Actions is [{ Kind: "choose", SourceEntityId: 81 }] && !advice.VerifiedLethal &&
-            context.TemplateVersion == "hunter-v21/choice" && AdviceTaskTemplates.Get(AdviceTaskKind.Turn).Version == "hunter-v21/turn" &&
+            context.TemplateVersion == "hunter-v22/choice" && AdviceTaskTemplates.Get(AdviceTaskKind.Turn).Version == "hunter-v22/turn" &&
             observed.Last() is { Name: "evaluate_choice", Success: true, ResultHash.Length: 64, RequestId: not null },
             "The v16 model loop lost its sideboard scope policy or promoted historical choice facts into a lethal proof.");
         pass("v16 fake HTTP receives JAIL evidence with an explicit incomplete-pool policy while only the current legal choice survives validation");
@@ -182,7 +182,7 @@ internal static class SideboardChoiceEvidenceIntegration
             Calls++; var text = await request.Content!.ReadAsStringAsync(token); object message;
             if (Calls == 1)
             {
-                Check(text.Contains("hunter-v21/choice", StringComparison.Ordinal) && text.Contains("SideboardEvidence", StringComparison.Ordinal) &&
+                Check(text.Contains("hunter-v22/choice", StringComparison.Ordinal) && text.Contains("SideboardEvidence", StringComparison.Ordinal) &&
                     text.Contains("不是当前完整边栏池", StringComparison.Ordinal) && text.Contains("次数仅为已观察下限", StringComparison.Ordinal),
                     "The v16 model policy did not distinguish actual sideboard evidence from a complete current pool.");
                 message = new { role = "assistant", tool_calls = new[] { new { id = "sideboard-evidence", type = "function", function = new { name = "evaluate_choice", arguments = "{\"choice_id\":9,\"selected_entity_ids\":[81]}" } } } };
