@@ -62,7 +62,8 @@ public sealed class DeckTracker(PinnedDeck deck)
             if (_baseline) _qualityLost = true;
             return;
         }
-        if (_baseline && (!snapshot.Quality.IsComplete || snapshot.EventHistoryTruncatedThrough > _lastEventSequence)) _qualityLost = true;
+        if (_baseline && ((!snapshot.Quality.IsComplete && !snapshot.Quality.AwaitingPublicEntityTypeOnly) ||
+            snapshot.EventHistoryTruncatedThrough > _lastEventSequence)) _qualityLost = true;
 
         if (!_baseline && snapshot.Quality.IsComplete && snapshot.Quality.HasGameStart &&
             (snapshot.Phase is GamePhase.Starting or GamePhase.Mulligan || snapshot.Turn is <= 1))

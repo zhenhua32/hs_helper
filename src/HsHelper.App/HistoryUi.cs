@@ -75,6 +75,7 @@ public partial class MainWindow
     {
         public string Time => Value.StartedAt.ToLocalTime().ToString("MM-dd HH:mm");
         public string Opponent => Value.OpponentClass ?? "未知";
+        public string Mode => GameTypeName(Value.GameType);
         public string Outcome => Value.Outcome switch { "Won" => "胜", "Lost" or "Conceded" => "负", "Tied" => "平", _ => "未结束/未知" };
     }
     private sealed record DecisionItem(DecisionPoint Value)
@@ -252,7 +253,8 @@ public partial class MainWindow
     private SessionFilter HistoryFilter() => new(CardBuild: HistoryFilterText(StatsBuildBox.Text), DeckVersionId: HistoryFilterText(StatsDeckBox.Text),
         OpponentClass: HistoryFilterText(StatsOpponentBox.Text)?.ToUpperInvariant(),
         WentFirst: StatsFirstBox.SelectedIndex switch { 1 => true, 2 => false, _ => null },
-        Format: "STANDARD", PlayerClass: "HUNTER", Region: "CN", GameType: RankedOnlyBox.IsChecked == true ? "GT_RANKED" : null);
+        Format: RankedOnlyBox.IsChecked == true ? "STANDARD" : null, PlayerClass: RankedOnlyBox.IsChecked == true ? "HUNTER" : null,
+        Region: "CN", GameType: RankedOnlyBox.IsChecked == true ? "GT_RANKED" : null);
     private static string? HistoryFilterText(string text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
 
     private void ClearHistoryPageSelection()

@@ -16,7 +16,11 @@
 
 在“AI 教练”页填写自己的服务地址、模型和密钥并保存，连接测试由使用者主动执行。Windows 加密配置仅供当前 Windows 用户使用。发行包不含 `.env`、模型密钥、历史数据库或用户日志；本机开发用 `.env` 不应放进解压目录或随包分享。AI 只给建议，不会自动操作游戏。复杂牌效、未知奥秘和随机结果仍会标记限制。
 
-## 当前版本：preview29
+## 当前版本 preview30
+
+鼠标兼容入口位于 `.local\publish\0.1.0-preview.30-self-contained\HsHelper.InputCompatibility.cmd`。本版在当前会话等待新日志，支持开局后绑定卡库并计算抽牌概率。取消“仅标准猎人天梯”可以查看练习赛，有限搜索会列出需要核对触发的场攻路线。重读同一份日志时，只有原始局面及套牌绑定一致才允许补全历史记牌数据。
+
+## preview29
 
 2026 年 11 月 1 日生成的 `0.1.0-preview.29` 自包含包来自干净提交 `9bce9bc4d4fe7ce5f2e29cbe3317b57510dd6450`，`sourceDirty=false`。本机入口是 `.local\publish\0.1.0-preview.29-self-contained\HsHelper.InputCompatibility.cmd`，标题显示“鼠标兼容”；此模式使用兼容绘制并限制界面自动化访问。普通 `HsHelper.App.exe` 保留正常无障碍能力，两个入口使用相同个人数据。
 

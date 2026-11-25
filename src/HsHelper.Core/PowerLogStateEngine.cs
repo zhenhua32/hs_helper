@@ -457,7 +457,8 @@ public sealed partial class PowerLogStateEngine
             entity.Tags.GetValueOrDefault("ZONE") == "PLAY" && !IsAttachmentEntity(entity) &&
             IdentityObservation(entity).Audience == AttachmentVisibility.Audience.Unresolved);
         if (unresolvedPublicType) warnings.Add("公开区域仍有类型未确认的实体，不能把尚未分清的附魔当作公开卡牌。");
-        var isComplete = _sawStart && !_hasGap && _gameEntity.HasValue && playersValid && hasPerspective && !unresolvedPublicType;
+        var continuous = _sawStart && !_hasGap && _gameEntity.HasValue && playersValid && hasPerspective;
+        var isComplete = continuous && !unresolvedPublicType;
         var step = _gameEntity is { } currentGame ? _entities[currentGame].Tags.GetValueOrDefault("STEP") : null;
         var decisionPhase = phase is GamePhase.Mulligan or GamePhase.Complete || step == "MAIN_ACTION";
         var choiceReady = ownChoice is { Ready: true } && (ownChoice.TaskList is null || _taskComplete);
@@ -471,7 +472,7 @@ public sealed partial class PowerLogStateEngine
             activePlayers.Length == 1 ? IntTag(activePlayers[0], "PLAYER_ID") : null,
             hasPerspective ? _localPlayerId : null, phase, entities,
             new SnapshotQuality(_sawStart, isComplete, stable, hasPerspective, _blockCount,
-                Array.AsReadOnly(warnings.ToArray())))
+                Array.AsReadOnly(warnings.ToArray())) { AwaitingPublicEntityTypeOnly = continuous && unresolvedPublicType })
         {
             Choice = ownChoice is null ? null : new CurrentChoiceSnapshot(ownChoice.Id, ownChoice.PlayerId,
                 ownChoice.Type, ownChoice.SourceId, ownChoice.Minimum, ownChoice.Maximum,

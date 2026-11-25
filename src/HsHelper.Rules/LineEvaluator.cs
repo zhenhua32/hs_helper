@@ -52,7 +52,8 @@ public sealed partial class LineEvaluator
     // Search reads the same current keyword/profile semantics as a manually evaluated line.
     // Keeping this runtime private avoids reconstructing flags from a projected result or printed data.
     private Runtime EvaluateLineRuntime(GameSnapshot snapshot, IReadOnlyList<PlannedAction> actions,
-        IReadOnlyDictionary<string, CardRecord> cards, CancellationToken cancellationToken, bool previewMagmaOnly)
+        IReadOnlyDictionary<string, CardRecord> cards, CancellationToken cancellationToken, bool previewMagmaOnly,
+        bool previewFaceAttacks = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot); ArgumentNullException.ThrowIfNull(actions); ArgumentNullException.ThrowIfNull(cards);
         cancellationToken.ThrowIfCancellationRequested();
@@ -87,7 +88,7 @@ public sealed partial class LineEvaluator
                 if (state.EnemyHero!.Health <= 0 || state.OwnHero!.Health <= 0)
                 { state.Invalid("英雄已达到零生命，不能继续执行后续动作。"); break; }
                 if (!Enum.IsDefined(action.Kind)) { state.Invalid("未知动作类型。"); break; }
-                state.InspectInteractions(action);
+                state.InspectInteractions(action, previewFaceAttacks);
                 if (state.Stopped) break;
                 try
                 {
@@ -143,7 +144,50 @@ public sealed partial class LineEvaluator
                 if (paths.Count >= maximumNodes) break;
             }
         }
-        return new(false, [], null, nodes, false, SearchCoverage + " 未找到已验证方案不表示不存在斩杀。");
+        var candidate = FindBoardAttackCandidate(snapshot, cards, maximumDepth, maximumNodes, ref nodes, cancellationToken);
+        return new(false, [], null, nodes, false, SearchCoverage + " 未找到已验证方案不表示不存在斩杀。")
+            { BoardCandidate = candidate };
+    }
+
+    // A minion can have fully observed combat stats even when its bespoke text is outside our simulator.
+    // Keep this bounded, conditional line separate from verified actions returned to the coach.
+    private BoardLethalCandidate? FindBoardAttackCandidate(GameSnapshot snapshot, IReadOnlyDictionary<string, CardRecord> cards,
+        int maximumDepth, int maximumNodes, ref int nodes, CancellationToken token)
+    {
+        if (!snapshot.Quality.IsComplete || !snapshot.Quality.IsStable || !snapshot.Quality.HasLocalPerspective ||
+            snapshot.IsSpectating || snapshot.Phase != GamePhase.Main || snapshot.LocalPlayerId is not (1 or 2) ||
+            snapshot.ActivePlayerId != snapshot.LocalPlayerId || nodes >= maximumNodes) return null;
+        var initial = new Runtime(snapshot, cards);
+        if (initial.EnemyHero is not { Health: > 0 } hero || hero.Armor < 0 ||
+            new[] { "HEALTH_MINIMUM", "MINIMUM_HEALTH", "DAMAGE_CANT_KILL", "HERO_CANT_BE_DESTROYED" }
+                .Any(tag => hero.Int(tag) is > 0)) return null;
+        var health = (long)hero.Health.Value + hero.Armor;
+        if (health > int.MaxValue) return null;
+        var sources = initial.Entities.Values.Where(e => e.Controller == initial.Local && e.Alive && e.Zone == "PLAY" &&
+            e.Type == "MINION" && e.Attack > 0 && e.Int("CANT_DAMAGE") is not > 0).OrderBy(e => e.Id).ToArray();
+        var paths = new Queue<(PlannedAction[] Actions, BoardAttackStep[] Steps, long Remaining)>();
+        paths.Enqueue(([], [], health));
+        while (nodes < maximumNodes && paths.TryDequeue(out var path))
+        {
+            foreach (var source in sources)
+            {
+                token.ThrowIfCancellationRequested();
+                if (nodes >= maximumNodes) break;
+                PlannedAction[] actions = [.. path.Actions, new(ActionKind.Attack, source.Id, hero.Id)];
+                nodes++;
+                var runtime = EvaluateLineRuntime(snapshot, actions, cards, token, previewMagmaOnly: false, previewFaceAttacks: true);
+                if (runtime.Stopped || runtime.Applied != actions.Length || runtime.EnemyHero?.Health is not { } after) continue;
+                var remaining = (long)after + runtime.EnemyHero.Armor;
+                var damage = path.Remaining - remaining;
+                if (damage is <= 0 or > int.MaxValue) continue;
+                BoardAttackStep[] steps = [.. path.Steps, new(source.Id, hero.Id, (int)damage)];
+                if (remaining <= 0 && runtime.OwnHero?.Health > 0)
+                    return new((int)health, Array.AsReadOnly(steps), runtime.Build().Assumptions);
+                if (actions.Length < maximumDepth && paths.Count < maximumNodes - nodes)
+                    paths.Enqueue((actions, steps, remaining));
+            }
+        }
+        return null;
     }
     private const string SearchCoverage = "有限深度搜索，枚举攻击、稳固射击、硬币衔接已覆盖动作、已支持直伤、猎人印记、简单武器装备及已覆盖随从入场；包括当前可靠冲锋的简单或已支持原生随从、阿迦玛甘生命支付组合与神秘恐魔结束回合。每条路线仍须完整验证，不跨随机、发现、抽牌等观察边界，也不穷尽完整召唤组合。";
 
@@ -633,9 +677,9 @@ public sealed partial class LineEvaluator
         {
             if (entity.Alive) ResolveDeathBatch([entity]);
         }
-        public void InspectInteractions(PlannedAction action)
+        public void InspectInteractions(PlannedAction action, bool previewFaceAttacks = false)
         {
-            if (Entities.TryGetValue(action.SourceEntityId, out var selectedSource) && HasCustomAssembledText(selectedSource) && AssembledDefinition(selectedSource) is null)
+            if (!previewFaceAttacks && Entities.TryGetValue(action.SourceEntityId, out var selectedSource) && HasCustomAssembledText(selectedSource) && AssembledDefinition(selectedSource) is null)
             { Unsupported("CUSTOM_ASSEMBLED_SOURCE", "拼装牌的自定义文字尚未模拟，不能按原卡ID结算。"); return; }
             if (!InspectNativeDefinitions(action)) return;
             foreach (var entity in Entities.Values.Where(e => e.Alive && (e.Zone is "PLAY" or "HAND" || e.Type == "PLAYER" ||
@@ -643,9 +687,11 @@ public sealed partial class LineEvaluator
             {
                 if (HasCustomAssembledText(entity) && AssembledDefinition(entity) is null)
                 {
-                    if (entity.Zone == "PLAY")
+                    if (entity.Zone == "PLAY" && !previewFaceAttacks)
                     { Unsupported("CUSTOM_ASSEMBLED_ACTIVE", "场上拼装文字可能改变光环或触发，不能按原牌效验证动作。"); return; }
-                    Conditional("存在未覆盖的拼装文字，手牌或附加触发可能改变后果。", "CUSTOM_ASSEMBLED_HAND");
+                    if (entity.Zone == "PLAY")
+                        Conditional("按当前攻击力计算，拼装文字和攻击触发可能改变后续伤害或目标。", "CUSTOM_ASSEMBLED_ACTIVE");
+                    else Conditional("存在未覆盖的拼装文字，手牌或附加触发可能改变后果。", "CUSTOM_ASSEMBLED_HAND");
                     continue;
                 }
                 if (AssembledDefinition(entity) is not null && !ValidAssembledFlags(entity))

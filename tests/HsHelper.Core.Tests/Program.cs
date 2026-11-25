@@ -385,6 +385,13 @@ static void TrackUnknownChanges()
 
 static void TrackLateAndGap()
 {
+    var continuous = new DeckTracker(TestDeck());
+    continuous.Observe(TrackingState(1, BaselineEntities()));
+    var partial = TrackingState(2, BaselineEntities(), complete: false);
+    continuous.Observe(partial with { Quality = partial.Quality with { AwaitingPublicEntityTypeOnly = true } });
+    Assert(!continuous.Snapshot().IsExact, "An unsettled public entity type must not yield exact odds");
+    continuous.Observe(TrackingState(3, BaselineEntities()));
+    Assert(continuous.Snapshot().IsExact, "Resolving the type of an uninterrupted entity invalidated the deck baseline");
     var tracker = new DeckTracker(TestDeck()); tracker.Observe(TrackingState(1, BaselineEntities(), turn: 5));
     Assert(!tracker.Snapshot().IsExact && tracker.Snapshot().UnknownCount == 2, "Midgame attachment invented a starting deck mapping");
     tracker = new(TestDeck()); tracker.Observe(TrackingState(1, BaselineEntities()));

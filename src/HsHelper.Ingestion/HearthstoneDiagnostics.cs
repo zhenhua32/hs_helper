@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using Microsoft.Win32;
 
 namespace HsHelper.Ingestion;
@@ -184,6 +185,18 @@ public static class LogSessionDiscovery
             return null;
 
         var logRoot = Directory.Exists(System.IO.Path.Combine(root, "Logs")) ? System.IO.Path.Combine(root, "Logs") : root;
+        // The client creates its session directory at startup, sometimes minutes before Power.log.
+        // A write to an older session must not displace the current one.
+        try
+        {
+            var latestSession = Directory.EnumerateDirectories(logRoot, "Hearthstone_*")
+                .Where(directory => (File.GetAttributes(directory) & FileAttributes.ReparsePoint) == 0 &&
+                    DateTime.TryParseExact(System.IO.Path.GetFileName(directory), "'Hearthstone_'yyyy_MM_dd_HH_mm_ss",
+                        CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+                .OrderDescending(StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            if (latestSession is not null) return Describe(System.IO.Path.Combine(latestSession, "Power.log"));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         var found = new List<PowerLogDiagnostic>();
         var queue = new Queue<(string Directory, int Depth)>();
         queue.Enqueue((logRoot, 0));

@@ -13,11 +13,17 @@ public partial class MainWindow
     private DateTimeOffset? _sourceFileLastWriteAt;
     private bool _sourceFailed;
     private bool _catchingUp;
+    private bool _sourceObservedLive;
     private bool _viewIsFileReplay;
     private SnapshotViewKind? _lastAccessKind;
     private long _battleRenderRevision;
     private Func<string, GameSnapshot, string?, CancellationToken, Task>? _aggregatedCardReadCompleted = null;
     private LocalToolsWindow? _localTools;
+
+    private bool WaitingForLiveFrame => _historyContext is null && !_viewIsFileReplay && _timer.IsEnabled &&
+        (_catchingUp || _currentLogFile is null || _liveFrame?.Quality.HasGameStart != true ||
+         !_sourceObservedLive);
+    private string WaitingForLiveText => _catchingUp ? "正在追赶已有日志，追赶完成后显示当前对局。" : "等待当前对局的日志更新。";
 
     private StartingDeckBinding? StartingDeckForSnapshot(GameSnapshot snapshot, string? build)
     {
@@ -45,7 +51,7 @@ public partial class MainWindow
             _ = Run(UpdateOverlayAsync);
         }
         _lastAccessKind = access.Kind;
-        if (AccessText is not null) AccessText.Text = $"{access.Label} · {access.Reason}";
+        if (AccessText is not null) AccessText.Text = WaitingForLiveFrame ? WaitingForLiveText : $"{access.Label} · {access.Reason}";
         UpdateConnectionStatus();
     }
 
@@ -58,6 +64,7 @@ public partial class MainWindow
         var sourceDeck = _sourceDeckVersion;
         var token = _source.Token;
         var readCompleted = _aggregatedCardReadCompleted;
+        if (WaitingForLiveFrame) { BattleViewRoot.DataContext = null; return; }
         var handMemory = PublicHandMemoryVisibility.Confirmed(AttachmentVisibility.Project(snapshot));
         bool Current() => !_closing && !token.IsCancellationRequested && revision == _battleRenderRevision &&
             DisplaySnapshot.MatchId == snapshot.MatchId && DisplaySnapshot.StateVersion == snapshot.StateVersion &&
@@ -91,6 +98,7 @@ public partial class MainWindow
 
     private LocalToolsWindow? BindLocalToolsWindow()
     {
+        if (WaitingForLiveFrame) { StatusText.Text = WaitingForLiveText; return null; }
         var snapshot = DisplaySnapshot;
         if (snapshot.Entities.Count == 0) { StatusText.Text = "请先读取或选择一个局面。"; return null; }
         var build = _historyContext?.CardBuild ?? snapshot.ClientBuild ?? SessionBuildBox.Text.Trim();

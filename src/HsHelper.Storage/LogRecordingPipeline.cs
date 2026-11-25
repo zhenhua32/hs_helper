@@ -59,7 +59,7 @@ public sealed class LogRecordingPipeline
                 return;
             }
             recorder = new SessionRecorder(_store, new(_deckVersionId,
-                _cardBuild == "unknown" ? snapshot.ClientBuild ?? _cardBuild : _cardBuild,
+                snapshot.ClientBuild ?? _cardBuild,
                 local, snapshot.Format ?? _format, _region, snapshot.LocalClass ?? _playerClass));
             _recorders.Add(snapshot.MatchId, recorder);
             _perspectives.Add(snapshot.MatchId, local);

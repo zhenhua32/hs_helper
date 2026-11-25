@@ -188,7 +188,7 @@ public partial class MainWindow
     private void PublishHistoryStats(PersonalStats stats, HistoryPageRequest request)
     {
         StatsMatchupsGrid.ItemsSource = stats.Matchups.Select(HistoryMatchupRow.From).ToArray();
-        StatsText.Text = $"{(request.Scope.GameType is null ? "标准猎人" : "标准猎人天梯")} · {stats.Games} 局 · {stats.Wins}胜 {stats.Losses}负 {stats.Ties}平 · 未完成/未知 {stats.Unknown} 局 · " +
+        StatsText.Text = $"{(request.Scope.GameType is null ? "全部模式与职业" : "标准猎人天梯")} · {stats.Games} 局 · {stats.Wins}胜 {stats.Losses}负 {stats.Ties}平 · 未完成/未知 {stats.Unknown} 局 · " +
             $"有效胜负 {stats.Wins + stats.Losses} 局 · 胜率 {(stats.WinRate is { } rate ? rate.ToString("P1") : "样本不足")}";
         string DateText(DateTime? date) => date?.ToString("d", StatsSincePicker.Culture) ?? "不限";
         StatsDateRangeText.Text = $"本机首次观察/导入日期：{DateText(StatsSincePicker.DateValue)} 至 {DateText(StatsUntilPicker.DateValue)}（含首尾）" +

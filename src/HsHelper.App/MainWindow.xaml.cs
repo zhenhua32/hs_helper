@@ -142,7 +142,7 @@ public partial class MainWindow : Window
                     lineNumber++;
                     if (engine.ProcessLine(line))
                     {
-                        lastFrame = tracking.Observe(engine.Snapshot());
+                        lastFrame = await tracking.ObserveAsync(engine.Snapshot(), token);
                         capture.Observe(lastFrame, lineNumber);
                     }
                     if (capture.PendingCount >= 512) await capture.FlushAsync(token);
@@ -204,6 +204,7 @@ public partial class MainWindow : Window
         _lastLiveRenderAt = DateTimeOffset.MinValue;
         StatusText.Text = CatchingUpStatus;
         _timer.Start();
+        RenderSnapshot();
         UpdateConnectionStatus(force: true);
         await ReadLiveAsync();
     }
@@ -224,6 +225,18 @@ public partial class MainWindow : Window
     }
     private void RenderSnapshot()
     {
+        if (WaitingForLiveFrame)
+        {
+            _battleRenderRevision++;
+            BattleViewRoot.DataContext = null;
+            EntityGrid.ItemsSource = null;
+            StateText.Text = WaitingForLiveText;
+            AccessText.Text = WaitingForLiveText;
+            _localTools?.Invalidate(WaitingForLiveText);
+            _ = Run(UpdateOverlayAsync);
+            UpdateConnectionStatus();
+            return;
+        }
         var state = AttachmentVisibility.Project(DisplaySnapshot);
         if (state.MatchId != _renderedMatchId || state.StateVersion != _renderedVersion)
         {

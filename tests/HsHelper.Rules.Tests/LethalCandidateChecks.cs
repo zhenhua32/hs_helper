@@ -25,6 +25,23 @@ internal static class LethalCandidateChecks
         yield return ("Parser-observed hand restrictions survive entry and protect manual and searched combat", CarryAttackRestrictions);
         yield return ("new candidate profile inspection safely rejects malformed or excessive effect data", CandidateDataLimits);
         yield return ("new search paths remain bounded cancellable stable and immutable", SearchLimits);
+        yield return ("board lethal reports three plus six across custom text while enforcing combat restrictions", BoardAttackCandidate);
+    }
+
+    private static void BoardAttackCandidate()
+    {
+        var frame = Frame(7, 9,
+            Card(30, "CORE_DRG_256", "MINION", "PLAY", ("ATK","3"), ("HEALTH","5"), ("EXHAUSTED","0"), ("CRAFTABLE_FIRST_HALF_DBID","128058")),
+            Card(31, "BOT_562", "MINION", "PLAY", ("ATK","6"), ("HEALTH","10"), ("DAMAGE","6"), ("RUSH","1"), ("NUM_TURNS_IN_PLAY","2")));
+        var rules = new LineEvaluator();
+        var result = rules.FindLethal(frame, FixedCards.Value);
+        Check(!result.VerifiedLethalFound && result.Actions.Count == 0 && result.BoardCandidate is { EnemyEffectiveHealth: 9 } candidate &&
+            candidate.Attacks.SequenceEqual([new BoardAttackStep(30,21,3),new BoardAttackStep(31,21,6)]) && candidate.Assumptions.Count > 0,
+            "Search discarded visible attack damage or promoted unverified text to a guaranteed kill.");
+        foreach (var blocked in new[] { Tag(frame,31,"FROZEN","1"), Tag(frame,31,"NUM_TURNS_IN_PLAY","0"),
+            Tag(frame,21,"ARMOR","1"), Tag(frame,21,"IMMUNE","1"), Tag(frame,21,"HEALTH_MINIMUM","1"),
+            Add(frame,Card(40,"guard","MINION","PLAY",("TAUNT","1"),owner:2)), frame with { ActivePlayerId=2 } })
+            Check(rules.FindLethal(blocked,FixedCards.Value).BoardCandidate is null,"An unavailable attack produced a board lethal candidate.");
     }
 
     private static void Provenance()

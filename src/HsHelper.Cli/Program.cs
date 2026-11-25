@@ -308,7 +308,7 @@ static async Task<int> MainAsync(string[] args)
                         await foreach (var line in SharedLogReplay.ReadLinesAsync(path, recordingCancellation.Token))
                         {
                             lines++;
-                            if (engine.ProcessLine(line)) recorder.Observe(tracking.Observe(engine.Snapshot()), lines);
+                            if (engine.ProcessLine(line)) recorder.Observe(await tracking.ObserveAsync(engine.Snapshot(), recordingCancellation.Token), lines);
                             if (recorder.PendingCount >= 512) await recorder.FlushAsync(recordingCancellation.Token);
                         }
                     }

@@ -25,13 +25,14 @@ public static class SnapshotAccessPolicy
         if (!listening) return new(SnapshotViewKind.Unavailable, false, "最后观察局面", "监听已停止。可重新连接，或显式复盘最后局面。");
         if (sourceFailed) return new(SnapshotViewKind.Unavailable, false, "连接异常", "当前连接无法确认，请重建或复盘最后局面。");
         if (catchingUp) return new(SnapshotViewKind.Unavailable, false, "日志追赶中", "正在读取已有记录，尚未确认实时位置。");
-        var readAge = lastSuccessfulRead is { } read ? now - read : (TimeSpan?)null;
-        var writeAge = fileLastWrite is { } write ? now - write : (TimeSpan?)null;
-        if (readAge is null || readAge < TimeSpan.Zero || readAge > TimeSpan.FromSeconds(5) ||
-            writeAge is null || writeAge < TimeSpan.Zero || writeAge > TimeSpan.FromSeconds(90))
+        if (!HasRecentLog(now, lastSuccessfulRead, fileLastWrite))
             return new(SnapshotViewKind.Unavailable, false, "实时状态未确认", "日志读取或文件更新已停滞；已有局面仍可用于显式复盘。");
         if (snapshot.Phase == GamePhase.Complete)
             return new(SnapshotViewKind.Review, usable, "对局已结束", "这是结束时的局面，仅提供复盘建议。");
         return new(SnapshotViewKind.Live, usable, "最近实时观察", usable ? "每次建议仍绑定当前观察版本。" : "等待结算结束并确认我方视角。");
     }
+
+    internal static bool HasRecentLog(DateTimeOffset now, DateTimeOffset? read, DateTimeOffset? write) =>
+        read.HasValue && now - read.Value >= TimeSpan.Zero && now - read.Value <= TimeSpan.FromSeconds(5) &&
+        write.HasValue && now - write.Value >= TimeSpan.Zero && now - write.Value <= TimeSpan.FromSeconds(90);
 }

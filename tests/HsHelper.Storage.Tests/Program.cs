@@ -379,6 +379,10 @@ async Task TrackingHistory()
     Check(second.DeckTracking!.IsExact && tracker.CalculateDrawOdds("OWN_CARD", 1).Probability == 1,
         "later tracking fixture is not exact");
     var recorder = new SessionRecorder(store, Binding(version.Id));
+    var legacy = new SessionRecorder(store, Binding(version.Id));
+    legacy.Observe(first with { DeckTracking = null }, 1);
+    legacy.Observe(second with { DeckTracking = null }, 2);
+    await legacy.CompleteAsync();
     recorder.Observe(first, 1); recorder.Observe(second, 2);
     await recorder.CompleteAsync();
     var old = (await store.GetHistoricalContextAtAsync("tracking-flow", 1))!.Snapshot.DeckTracking!;

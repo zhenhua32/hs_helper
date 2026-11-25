@@ -154,6 +154,7 @@ public static class AttachmentVisibility
         var quality = unresolvedActive ? snapshot.Quality with
         {
             IsComplete = false, IsStable = false,
+            AwaitingPublicEntityTypeOnly = snapshot.Quality.IsComplete || snapshot.Quality.AwaitingPublicEntityTypeOnly,
             Warnings = Array.AsReadOnly(snapshot.Quality.Warnings.Append("存在关联目标未确认的附魔，未公开其身份，相关精确分析等待完整局面。").Distinct(StringComparer.Ordinal).ToArray())
         } : snapshot.Quality;
         return snapshot with

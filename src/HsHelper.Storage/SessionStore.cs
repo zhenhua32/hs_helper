@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using HsHelper.Cards;
 using HsHelper.Core;
 using Microsoft.Data.Sqlite;
@@ -435,7 +436,7 @@ public sealed class SessionStore
             foreach (var entry in observation.Events)
                 await InsertEventAsync(connection, transaction, snapshot.MatchId, entry, snapshot.StateVersion, token);
             if (observation.SaveSnapshot)
-                await InsertSnapshotAsync(connection, transaction, observation, token);
+                await InsertSnapshotAsync(connection, transaction, binding, observation, token);
         }
         foreach (var last in observations.GroupBy(o => o.Snapshot.MatchId, StringComparer.Ordinal).Select(group => group.Last()))
             await UpdateMetadataAsync(connection, transaction, last.Snapshot, binding, last.ObservedAt, token);
@@ -525,7 +526,7 @@ public sealed class SessionStore
     }
 
     private static async Task InsertSnapshotAsync(SqliteConnection connection, SqliteTransaction transaction,
-        PendingObservation observation, CancellationToken token)
+        SessionBinding binding, PendingObservation observation, CancellationToken token)
     {
         var snapshot = observation.Snapshot;
         var json = SnapshotCodec.Serialize(snapshot);
@@ -543,8 +544,38 @@ public sealed class SessionStore
         if (await command.ExecuteNonQueryAsync(token) != 0) return;
         command.CommandText = "SELECT snapshot_json FROM session_snapshots WHERE session_id=$id AND event_seq=$seq AND state_version=$version";
         var existing = await command.ExecuteScalarAsync(token);
-        if (existing is null or DBNull || Unpack(existing) != json)
-            throw new InvalidDataException("相同时间点的快照不一致，已拒绝覆盖。");
+        var savedJson = existing is null or DBNull ? null : Unpack(existing);
+        if (savedJson == json) return;
+        if (savedJson is not null)
+        {
+            // Only derived counts may improve on re-reading the same bound log. Preserve timestamps,
+            // raw observations and a previously more informative deck if a catalog is unavailable.
+            var saved = JsonNode.Parse(savedJson)!.AsObject();
+            var updated = JsonNode.Parse(json)!.AsObject();
+            var savedDeck = saved[nameof(snapshot.DeckTracking)]?.Deserialize<DeckTrackingSnapshot>(SnapshotCodec.Options);
+            saved.Remove(nameof(snapshot.DeckTracking));
+            updated.Remove(nameof(snapshot.DeckTracking));
+            if (JsonNode.DeepEquals(saved, updated))
+            {
+                bool Bound(DeckTrackingSnapshot? deck) => deck is null || deck.MatchId == snapshot.MatchId &&
+                    deck.StateVersion == snapshot.StateVersion && deck.CardBuild == binding.CardBuild && deck.DeckVersion == binding.DeckVersionId;
+                if (Bound(savedDeck) && Bound(snapshot.DeckTracking))
+                {
+                    if (Covers(savedDeck, snapshot.DeckTracking)) return;
+                    if (Covers(snapshot.DeckTracking, savedDeck))
+                    {
+                        command.CommandText = "UPDATE session_snapshots SET snapshot_json=$json WHERE session_id=$id AND event_seq=$seq AND state_version=$version";
+                        await command.ExecuteNonQueryAsync(token);
+                        return;
+                    }
+                }
+            }
+        }
+        throw new InvalidDataException("相同时间点的快照不一致，已拒绝覆盖。");
+
+        static bool Covers(DeckTrackingSnapshot? more, DeckTrackingSnapshot? less) => less is null || more is not null &&
+            (!less.IsExact || more.IsExact) && (less.TotalCards is null || more.TotalCards == less.TotalCards) &&
+            less.KnownRemaining.All(pair => more.KnownRemaining.GetValueOrDefault(pair.Key) >= pair.Value);
     }
 
     private static async Task UpdateMetadataAsync(SqliteConnection connection, SqliteTransaction transaction,

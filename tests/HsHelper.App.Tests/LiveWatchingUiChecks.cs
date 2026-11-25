@@ -49,6 +49,7 @@ internal static class LiveWatchingUiChecks
     public static void RunOnDispatcher()
     {
         CatchUpKeepsInputResponsiveAndRecordsEveryChange();
+        EmptyLogBindsDeckWhenGameStarts();
         StopWaitsForProducerAndSavesPartial("stop");
         StopWaitsForProducerAndSavesPartial("path");
         StopWaitsForProducerAndSavesPartial("player");
@@ -74,6 +75,8 @@ internal static class LiveWatchingUiChecks
         try
         {
             Await(InvokeTask(window, "StartWatchingAsync"));
+            Check(C<TextBlock>(window, "StateText").Text.Contains("追赶") &&
+                C<FrameworkElement>(window, "BattleViewRoot").DataContext is null, "A catch-up frame was displayed as the current game.");
             WaitUntil(() => Offset(window) == fixture.LogBytes && !Reading(window), "The live reader did not catch up with the synthetic log.");
         }
         finally { heartbeat.Stop(); }
@@ -83,6 +86,26 @@ internal static class LiveWatchingUiChecks
         Await(InvokeTask(window, "StopRecordingAsync"));
         fixture.AssertSaved(frame, expectPartial: false, expectedArmorChanges: ArmorChanges);
         Pass("real multi-batch start permits Input heartbeats and reopened storage retains every ordered change once");
+    }
+
+    private static void EmptyLogBindsDeckWhenGameStarts()
+    {
+        using var fixture = new Fixture("empty-before-game", settledEnd: true);
+        var window = fixture.Window;
+        var log = C<TextBox>(window, "LogPathBox").Text;
+        var source = File.ReadAllText(log);
+        File.WriteAllText(log, "");
+        var catalog = (CardCatalog)Get(window, "_catalog")!;
+        using var json = new MemoryStream(Encoding.UTF8.GetBytes("""[{"id":"SYN_DECK","dbfId":321,"name":"测试牌","type":"MINION","cardClass":"HUNTER"}]"""));
+        Await(catalog.ImportAsync(json, Build));
+        Await(InvokeTask(window, "StartWatchingAsync"));
+        Check(C<FrameworkElement>(window, "BattleViewRoot").DataContext is null, "An empty log retained the prior board.");
+        var boundary = source.IndexOf("PowerProcessor.EndCurrentTaskList", StringComparison.Ordinal);
+        source = source[..boundary] + "FULL_ENTITY - Creating ID=100 CardID=\ntag=CONTROLLER value=1\ntag=ZONE value=DECK\n" + source[boundary..];
+        File.AppendAllText(log, source);
+        WaitUntil(() => Frame(window).DeckTracking is { IsExact: true, TotalCards: 1 } track &&
+            track.KnownRemaining.GetValueOrDefault("SYN_DECK") == 1 && C<TextBox>(window, "SessionBuildBox").Text == Build,
+            "Starting on an empty Power.log never bound the later build and actual starting deck.");
     }
 
     private static void StopWaitsForProducerAndSavesPartial(string change)

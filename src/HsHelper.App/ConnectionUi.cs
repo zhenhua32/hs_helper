@@ -16,6 +16,7 @@ public partial class MainWindow
         _lastStateObservedAt = null; _lastLogActivityAt = null; _lastReadAttemptAt = null;
         _currentLogFile = null; _currentLogOffset = 0;
         _lastSuccessfulReadAt = null; _sourceFileLastWriteAt = null;
+        _sourceObservedLive = false;
         _sourceFailed = false; _catchingUp = false;
         _lastConnectionUpdateAt = DateTimeOffset.MinValue;
     }
@@ -31,13 +32,17 @@ public partial class MainWindow
         var snapshot = DisplaySnapshot;
         var deck = _historyContext is null ? _sourceDeckVersion : _historyContext.Deck;
         var updated = _historyContext is not null ? _historyObservedAt : _lastStateObservedAt;
-        var format = snapshot.Format switch { "STANDARD" => "标准", "WILD" => "狂野", null => "模式未知", _ => snapshot.Format };
-        var gameType = snapshot.GameType switch { "GT_RANKED" => "天梯", "GT_CASUAL" => "休闲", null => "对局类型未知", _ => "其他对局" };
-        var text = $"{mode} · {format} / {gameType} · " +
+        var format = snapshot.Format?.ToUpperInvariant() switch { "STANDARD" => "标准", "WILD" => "狂野", null => "模式未知", _ => snapshot.Format };
+        var gameType = GameTypeName(snapshot.GameType);
+        var matchMode = WaitingForLiveFrame ? WaitingForLiveText : $"{format} / {gameType}";
+        var text = $"{mode} · {matchMode} · " +
             $"套牌：{deck?.Name ?? "本局未绑定"} · 局面更新时间（本机）：{(updated is { } at ? at.ToLocalTime().ToString("HH:mm:ss") : "暂无")}" +
             (_lastReadAttemptAt is { } read ? $" · 最近读取 {read.ToLocalTime():HH:mm:ss}" : "") +
             (_currentLogFile is null ? "" : $"\n{_currentLogOffset:N0} 字节 · 已处理 {_sourceLine:N0} 行 · {_currentLogFile}");
         if (_historyContext is not null) text = "历史局面 · " + text;
         if (ConnectionText.Text != text) ConnectionText.Text = text;
     }
+
+    private static string GameTypeName(string? type) => type switch
+    { "GT_RANKED" => "天梯", "GT_CASUAL" => "休闲", "GT_VS_AI" => "练习赛", null => "类型未知", _ => type };
 }

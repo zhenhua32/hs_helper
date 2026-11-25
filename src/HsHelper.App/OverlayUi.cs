@@ -70,6 +70,12 @@ public partial class MainWindow
     private async Task UpdateOverlayStateAsync(OverlayWindow overlay, bool requireVisible)
     {
         var revision = ++_overlayRevision;
+        if (WaitingForLiveFrame)
+        {
+            overlay.Update(new OverlayState(_catchingUp ? "日志追赶中" : "等待当前对局", [], [], [],
+                WaitingForLiveText, _currentLogFile is null ? "等待 Power.log" : $"已读取 {_currentLogOffset:N0} 字节", false, false));
+            return;
+        }
         var state = DisplaySnapshot;
         var build = _historyContext?.CardBuild ?? state.ClientBuild ?? SessionBuildBox.Text.Trim();
         var history = _historyContext;
@@ -108,10 +114,11 @@ public partial class MainWindow
             var plays = state.PublicPlays?.Plays.Where(p => state.LocalPlayerId is not null && p.ControllerId is not null && p.ControllerId != state.LocalPlayerId)
                 .Select(p => $"#{p.Sequence} {Name(p.CardId)}").ToList() ?? [];
             if (state.PublicPlays is not { IsComplete: true }) plays.Add("记录可能不完整");
-            overlay.Update(new OverlayState($"{(CurrentAccess.Kind == SnapshotViewKind.Live ? "最近观察" : "历史/未确认实时")} · 回合 {state.Turn?.ToString() ?? "?"} · v{state.StateVersion}",
+            var access = CurrentAccess;
+            overlay.Update(new OverlayState($"{(access.Kind == SnapshotViewKind.Live ? "最近观察" : access.Label)} · 回合 {state.Turn?.ToString() ?? "?"} · v{state.StateVersion}",
                 hand, remaining, plays, _overlayAdvice,
                 $"{(state.Quality.IsStable ? "稳定" : "结算中")} · {(state.Quality.IsComplete ? "记录完整" : "记录有缺口")}\n" +
-                    CurrentAccess.Reason + "\n" + string.Join("；", state.Quality.Warnings),
+                    access.Reason + "\n" + string.Join("；", state.Quality.Warnings),
                 state.Quality.IsComplete, state.Quality.IsStable,
                 memory.Entries.Select(entry => entry.DisplayText), memory.Status));
         }

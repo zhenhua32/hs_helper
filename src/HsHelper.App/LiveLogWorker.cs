@@ -32,6 +32,7 @@ public partial class MainWindow
         public string? Build { get; private set; }
         public long Offset { get; private set; }
         public bool HasMoreData { get; private set; }
+        public bool SawRecentWrite { get; private set; }
         public DateTimeOffset? LastReadAt { get; private set; }
         public DateTimeOffset? LastActivityAt { get; private set; }
         public DateTimeOffset? FileWriteAt { get; private set; }
@@ -44,11 +45,17 @@ public partial class MainWindow
             token.ThrowIfCancellationRequested();
             var batch = await tailer.ReadAvailableAsync(root, token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
-            if (batch.Path is null) return batch;
+            if (batch.Path is null)
+            {
+                Path = null; HasMoreData = false; FileWriteAt = null; LastReadAt = null; SawRecentWrite = false;
+                return batch;
+            }
             Path = batch.Path; Offset = batch.ByteOffset; HasMoreData = batch.HasMoreData;
             LastReadAt = DateTimeOffset.UtcNow;
             var written = File.GetLastWriteTimeUtc(batch.Path);
             FileWriteAt = written == DateTime.FromFileTimeUtc(0) ? null : new DateTimeOffset(written);
+            if (batch.ResetReason != LogResetReason.None) SawRecentWrite = false;
+            SawRecentWrite |= SnapshotAccessPolicy.HasRecentLog(LastReadAt.Value, LastReadAt, FileWriteAt);
             if (batch.Lines.Count > 0) LastActivityAt = DateTimeOffset.UtcNow;
             if (batch.ResetReason != LogResetReason.None)
             {
@@ -72,7 +79,9 @@ public partial class MainWindow
                 if (Engine.ProcessLine(line))
                 {
                     var current = Engine.Snapshot();
-                    Frame = Tracking?.Observe(current) ?? current;
+                    // Once the engine accepts a line, finish that frame before honoring cancellation.
+                    Frame = Tracking is null ? current : await Tracking.ObserveAsync(current).ConfigureAwait(false);
+                    Build = current.ClientBuild ?? Build;
                     ObservedAt = DateTimeOffset.UtcNow;
                     Capture?.Observe(Frame, SourceLine);
                 }
@@ -106,23 +115,25 @@ public partial class MainWindow
         var worker = _liveWorker ??= new LiveLogWorker(_engine, _trackingFrames, _capture, _sourceLine,
             _liveFrame, _lastStateObservedAt);
         var catchUp = false;
+        var previousBuild = worker.Build;
         try
         {
             var batch = await Task.Run(() => worker.ReadAsync(tailer, root, _catalog, _store, deck,
                 playerIndex, started, token), token);
             if (generation != _sourceGeneration || _closing) return;
+            var wasWaiting = WaitingForLiveFrame;
             PublishLiveWorker(worker);
             _sourceFailed = false;
             catchUp = batch.HasMoreData;
-            if (_historyContext is null && batch.ResetReason != LogResetReason.None)
+            if (_historyContext is null && (batch.ResetReason != LogResetReason.None || worker.Build != previousBuild))
                 SessionBuildBox.Text = worker.Build ?? "";
             if (_historyContext is null && (worker.Frame.MatchId != _renderedMatchId ||
                 worker.Frame.StateVersion != _renderedVersion)) InvalidateAdvice();
             var now = DateTimeOffset.UtcNow;
-            if (!batch.HasMoreData || now - _lastLiveRenderAt >= LiveRenderInterval)
+            if (!batch.HasMoreData || wasWaiting != WaitingForLiveFrame || now - _lastLiveRenderAt >= LiveRenderInterval)
             {
                 _lastLiveRenderAt = now;
-                if (batch.Lines.Count > 0 || batch.ResetReason != LogResetReason.None) RenderSnapshot();
+                if (batch.Lines.Count > 0 || batch.ResetReason != LogResetReason.None || wasWaiting != WaitingForLiveFrame) RenderSnapshot();
                 UpdateConnectionStatus(force: true);
             }
             if (!batch.HasMoreData && StatusText.Text == CatchingUpStatus)
@@ -154,9 +165,9 @@ public partial class MainWindow
     {
         _engine = worker.Engine; _trackingFrames = worker.Tracking; _capture = worker.Capture;
         _sourceLine = worker.SourceLine; _liveFrame = worker.Frame; _lastStateObservedAt = worker.ObservedAt;
-        if (worker.Path is null) return;
-        _currentLogFile = worker.Path; _currentLogOffset = worker.Offset;
+        _currentLogFile = worker.Path; _currentLogOffset = worker.Path is null ? 0 : worker.Offset;
         _lastSuccessfulReadAt = worker.LastReadAt; _sourceFileLastWriteAt = worker.FileWriteAt;
         _lastLogActivityAt = worker.LastActivityAt; _catchingUp = worker.HasMoreData;
+        _sourceObservedLive = worker.SawRecentWrite;
     }
 }

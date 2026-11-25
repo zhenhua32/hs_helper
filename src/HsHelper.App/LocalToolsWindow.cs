@@ -356,9 +356,12 @@ public sealed class LocalToolsWindow : Window
         {
             var result = await coach.ExecuteAsync(tool, args, cancellation.Token);
             if (Current(revision) && ReferenceEquals(_calculation, cancellation))
+            {
                 _result.Text = (_historical ? "【历史局面结果，不用于当前游戏操作】\n" : "") +
                     LocalToolResultFormatter.Format(tool, result, id => EntityName(id),
                         id => _cards.TryGetValue(id, out var card) ? card.Name : id);
+                if (tool == "find_lethal") _result.BringIntoView();
+            }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         { if (Current(revision)) _result.Text = "计算已取消。"; }
@@ -385,6 +388,7 @@ public sealed class LocalToolsWindow : Window
             $"（攻 {card.Attack?.ToString(CultureInfo.InvariantCulture) ?? "未知"} / 血 {card.Health?.ToString(CultureInfo.InvariantCulture) ?? "未知"}）");
     private string EntityName(int id)
     {
+        if (_snapshot.Board.Any(entity => entity.Id == id && entity.GetIntTag("ZOMBEAST") == 1)) return $"僵尸兽 #{id}";
         var cards = _view is null ? [] : _view.Local.Hand.Concat(_view.Local.Board).Concat(_view.Opponent.Board)
             .Concat(new[] { _view.Local.Hero, _view.Opponent.Hero, _view.Local.HeroPower, _view.Opponent.HeroPower,
                 _view.Local.Weapon, _view.Opponent.Weapon }.OfType<BattleCardView>());
@@ -706,7 +710,17 @@ public static class LocalToolResultFormatter
         if (tool == "find_lethal")
         {
             var found = result["VerifiedLethalFound"]?.GetValue<bool>() == true && !PendingChoiceBoundary(result["Evaluation"]);
-            lines.Add(found ? "找到已验证的斩杀路线。" : "在本次有限搜索中未找到已验证的斩杀；不代表没有斩杀。");
+            if (!found && result["BoardCandidate"] is JsonObject candidate && candidate["Attacks"] is JsonArray hits)
+            {
+                lines.Add("场攻斩杀候选（需核对触发）");
+                lines.Add($"对方生命与护甲合计 {candidate["EnemyEffectiveHealth"]}，预计伤害 {string.Join(" + ", hits.Select(hit => hit?["Damage"]?.ToString()))}。");
+                foreach (var hit in hits.OfType<JsonObject>())
+                    lines.Add($"· {entityName(hit["SourceEntityId"]!.GetValue<int>())} → {entityName(hit["TargetEntityId"]!.GetValue<int>())}（{hit["Damage"]} 点）");
+                if (candidate["Assumptions"] is JsonArray conditions)
+                    lines.AddRange(conditions.Select(condition => condition!.ToString()));
+                lines.Add("每次攻击结算后，请核对剩余生命和可攻击目标。");
+            }
+            else lines.Add(found ? "找到已验证的斩杀路线。" : "在本次有限搜索中未找到已验证的斩杀；不代表没有斩杀。");
             lines.Add($"已搜索节点：{result["ExploredNodes"]}；穷尽当前覆盖分支：{(result["IsExhaustive"]?.GetValue<bool>() == true ? "是" : "否")}");
             if (result["Coverage"] is { } coverage) lines.Add("搜索范围：" + coverage);
             if (result["Actions"] is JsonArray actions)

@@ -101,6 +101,14 @@ public static class HistoryPagingChecks
             Check(!previous.IsEnabled && !next.IsEnabled && grid.Items.OfType<object>().All(item => Session(item).OpponentClass == "MAGE") &&
                 ReferenceEquals(pinned, Field(window, "_historyContext")), "A stale filter query overwrote the latest results or unpinned the fixed review.");
             Check(!window.IsVisible && new WindowInteropHelper(window).Handle == IntPtr.Zero, "History paging created a visible test window.");
+            var practice = new SessionRecorder(store, new(deck.Id, "255790", 1, Format: "Wild", PlayerClass: "HUNTER"));
+            practice.Observe(Frame(0) with { MatchId = "history-practice", Format = "Wild", GameType = "GT_VS_AI" }, 1);
+            Await(practice.CompleteAsync());
+            ranked.IsChecked = false;
+            WaitUntil(() => !Paging(window).IsLoading && grid.Items.Cast<object>().Any(item => Session(item).Id == "history-practice"),
+                "Removing the ranked filter still hid the saved practice game.");
+            Check(Paging(window).Scope is { Format: null, GameType: null, PlayerClass: null } &&
+                Control<TextBlock>(window, "StatsText").Text.Contains("全部模式与职业"), "Practice list and statistics disagree about scope.");
         }
         finally
         {

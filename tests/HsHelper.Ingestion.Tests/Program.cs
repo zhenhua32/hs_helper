@@ -76,6 +76,14 @@ Task Discovery()
     Check(LogSessionDiscovery.FindLatestPowerLog(root)?.Path == latest, "newest nested session not discovered");
     Check(LogSessionDiscovery.FindLatestPowerLog(old)?.Path == old, "explicit path not respected");
     Check(HearthstoneDiagnostics.Inspect(root, In("missing-config", "log.config")).PowerLog?.Path == latest, "manual log root unavailable in diagnostics");
+    var previous = In("discovery", "Logs", "Hearthstone_2026_10_01_19_00_00", "Power.log");
+    File.WriteAllText(previous, "old session");
+    var current = In("discovery", "Logs", "Hearthstone_2026_10_02_09_00_00", "Power.log");
+    Check(LogSessionDiscovery.FindLatestPowerLog(root) is null, "Displayed an old match before the new session opened its log");
+    File.WriteAllText(current, "current");
+    File.SetLastWriteTimeUtc(previous, DateTime.UtcNow.AddMinutes(1));
+    Check(LogSessionDiscovery.FindLatestPowerLog(root)?.Path == current && LogSessionDiscovery.FindLatestPowerLog(previous)?.Path == previous,
+        "A late old-file write displaced the current session or the explicitly selected replay");
     return Task.CompletedTask;
 }
 

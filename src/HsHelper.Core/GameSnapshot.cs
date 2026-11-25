@@ -104,7 +104,12 @@ public sealed record SnapshotQuality(
     bool IsStable,
     bool HasLocalPerspective,
     int OpenBlockCount,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings)
+{
+    // CREATE/FULL_ENTITY can expose a PLAY zone one line before its type. No input was lost.
+    [JsonIgnore]
+    public bool AwaitingPublicEntityTypeOnly { get; init; }
+}
 
 public sealed record GameSnapshot(
     string MatchId,

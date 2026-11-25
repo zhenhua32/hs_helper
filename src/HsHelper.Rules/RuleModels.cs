@@ -88,7 +88,14 @@ public sealed record LineEvaluation(string MatchId, long StateVersion, LineVerif
     public string? CardBuild { get; init; }
 }
 public sealed record LethalSearchResult(bool VerifiedLethalFound, IReadOnlyList<PlannedAction> Actions,
-    LineEvaluation? Evaluation, int ExploredNodes, bool IsExhaustive, string Coverage);
+    LineEvaluation? Evaluation, int ExploredNodes, bool IsExhaustive, string Coverage)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BoardLethalCandidate? BoardCandidate { get; init; }
+}
+public sealed record BoardLethalCandidate(int EnemyEffectiveHealth, IReadOnlyList<BoardAttackStep> Attacks,
+    IReadOnlyList<string> Assumptions);
+public sealed record BoardAttackStep(int SourceEntityId, int TargetEntityId, int Damage);
 public sealed record ChoiceValidationResult(string MatchId, long StateVersion, int? ChoiceId,
     LineVerification Verification, bool IsLegal, IReadOnlyList<int> SelectedEntityIds,
     IReadOnlyList<string> Errors, IReadOnlyList<string> Assumptions, IReadOnlyList<string> RuleCoverage)
