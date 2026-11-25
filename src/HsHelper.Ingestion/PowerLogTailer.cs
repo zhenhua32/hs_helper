@@ -129,7 +129,7 @@ public sealed class PowerLogTailer : IDisposable
     {
         var interval = pollInterval ?? TimeSpan.FromMilliseconds(250);
         if (interval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(pollInterval));
-        while (!cancellationToken.IsCancellationRequested)
+        while (true)
         {
             LogReadBatch batch;
             try

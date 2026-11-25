@@ -712,12 +712,12 @@ public static class LocalToolResultFormatter
             var found = result["VerifiedLethalFound"]?.GetValue<bool>() == true && !PendingChoiceBoundary(result["Evaluation"]);
             if (!found && result["BoardCandidate"] is JsonObject candidate && candidate["Attacks"] is JsonArray hits)
             {
-                lines.Add("场攻斩杀候选（需核对触发）");
+                lines.Add("场攻斩杀候选");
                 lines.Add($"对方生命与护甲合计 {candidate["EnemyEffectiveHealth"]}，预计伤害 {string.Join(" + ", hits.Select(hit => hit?["Damage"]?.ToString()))}。");
                 foreach (var hit in hits.OfType<JsonObject>())
                     lines.Add($"· {entityName(hit["SourceEntityId"]!.GetValue<int>())} → {entityName(hit["TargetEntityId"]!.GetValue<int>())}（{hit["Damage"]} 点）");
-                if (candidate["Assumptions"] is JsonArray conditions)
-                    lines.AddRange(conditions.Select(condition => condition!.ToString()));
+                if (candidate["Assumptions"] is JsonArray { Count: > 0 } conditions)
+                    lines.AddRange(conditions.Select(condition => "待核对：" + condition));
                 lines.Add("每次攻击结算后，请核对剩余生命和可攻击目标。");
             }
             else lines.Add(found ? "找到已验证的斩杀路线。" : "在本次有限搜索中未找到已验证的斩杀；不代表没有斩杀。");

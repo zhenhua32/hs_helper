@@ -91,8 +91,21 @@ public sealed record EntitySnapshot(
     public int? ZonePosition => GetIntTag("ZONE_POSITION");
     public int? Cost => GetIntTag("COST");
     public int? Attack => GetIntTag("ATK");
-    public int? RemainingHealth => GetIntTag("HEALTH") is { } health && GetIntTag("DAMAGE") is { } damage
-        ? health - damage : null;
+    public int? RemainingHealth => HealthAfterDamage(null);
+
+    public int? GetMaximumHealth() => NonnegativeTag("HEALTH", "45");
+
+    internal int? HealthAfterDamage(int? missingDamage) =>
+        GetMaximumHealth() - NonnegativeTag("DAMAGE", "44", missingDamage);
+
+    internal int? NonnegativeTag(string name, string alias, int? missing = null)
+    {
+        var named = GetIntTag(name);
+        var numeric = GetIntTag(alias);
+        if ((Tags.ContainsKey(name) && named is not >= 0) || (Tags.ContainsKey(alias) && numeric is not >= 0) ||
+            (named.HasValue && numeric.HasValue && named != numeric)) return null;
+        return named ?? numeric ?? missing;
+    }
 
     public int? GetIntTag(string tag) => Tags.TryGetValue(tag, out var value) &&
         int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) ? number : null;
@@ -162,6 +175,30 @@ public sealed record GameSnapshot(
     public IEnumerable<EntitySnapshot> Board => Entities.Values
         .Where(e => e.Kind == EntityKind.Card && e.Zone == "PLAY")
         .OrderBy(e => e.ControllerId).ThenBy(e => e.ZonePosition ?? int.MaxValue).ThenBy(e => e.Id);
+
+    // In complete build 255790 frames the client omits zero damage on visible characters.
+    // Keep raw tags intact for consumers that require explicit evidence of an effect.
+    public int? GetRemainingHealth(int entityId) => Entities.TryGetValue(entityId, out var entity)
+        ? entity.HealthAfterDamage(HasSparseCharacterStats(entity) ? 0 : null) : null;
+
+    public int? GetArmor(int entityId) => Entities.TryGetValue(entityId, out var entity)
+        ? entity.NonnegativeTag("ARMOR", "292", HasSparseCharacterStats(entity) && IsHero(entity) ? 0 : null) : null;
+
+    private bool HasSparseCharacterStats(EntitySnapshot entity)
+    {
+        if (ClientBuild != "255790" || Quality is not { HasGameStart: true, IsComplete: true, IsStable: true } ||
+            entity.Kind != EntityKind.Card || string.IsNullOrEmpty(entity.CardId) || entity.ControllerId is not (1 or 2))
+            return false;
+        var type = entity.Tags.GetValueOrDefault("CARDTYPE");
+        if (IsHero(entity)) return entity.Zone == "PLAY";
+        return type is "MINION" or "4" && entity.Tags.GetValueOrDefault("202") is null or "MINION" or "4" &&
+            (entity.Zone == "PLAY" || (entity.Zone == "HAND" && Quality.HasLocalPerspective &&
+                !IsSpectating && entity.ControllerId == LocalPlayerId));
+    }
+
+    private static bool IsHero(EntitySnapshot entity) =>
+        entity.Tags.GetValueOrDefault("CARDTYPE") is "HERO" or "3" &&
+        entity.Tags.GetValueOrDefault("202") is null or "HERO" or "3";
 
     private EntitySnapshot? Player(int? id) => id is null ? null : Entities.Values
         .FirstOrDefault(e => e.Kind == EntityKind.Player && e.GetIntTag("PLAYER_ID") == id);

@@ -11,6 +11,8 @@ public static class BattleViewRegression
     public static IEnumerable<(string Name, Action Run)> Cases()
     {
         yield return ("Chinese battle view uses observed hero, mana, weapon and power values", ObservedBattle);
+        yield return ("complete sparse character health is consistent in live and archived battle views", SparseCharacterHealth);
+        yield return ("completed battle view retains the player's referenced graveyard hero", FinalHero);
         yield return ("battle view never substitutes printed stats for unknown current attributes", UnknownAttributes);
         yield return ("battle view excludes hidden opposing hands and unconfirmed perspective", Perspective);
         yield return ("battle view rejects cross-state deck and public-play ledgers", FutureLedgers);
@@ -53,6 +55,54 @@ public static class BattleViewRegression
         Check(view.Local.ManaAvailable is null && view.Local.ManaTotal == 6 && view.Local.TemporaryMana is null, "Unobserved mana component was silently filled.");
         Check(view.Opponent.HandCount is null, "Incomplete entity inventory became a precise opposing hand count.");
         Check(!view.DeckIsExact, "Incomplete log evidence advertised exact composition.");
+    }
+
+    private static void SparseCharacterHealth()
+    {
+        var frame = Frame();
+        var entities = frame.Entities.ToDictionary();
+        foreach (var id in new[] { 10, 11, 31 })
+            entities[id] = entities[id] with
+            {
+                Tags = entities[id].Tags.Where(p => p.Key is not ("DAMAGE" or "ARMOR")).ToFrozenDictionary()
+            };
+        entities[30] = Entity(30, "UI_HAND", EntityKind.Card, ("CONTROLLER","1"), ("ZONE","HAND"), ("CARDTYPE","MINION"), ("HEALTH","3"));
+        frame = frame with { Entities = entities.ToFrozenDictionary() };
+        var archived = HsHelper.Storage.SnapshotCodec.Deserialize(HsHelper.Storage.SnapshotCodec.Serialize(frame));
+        foreach (var actual in new[] { frame, archived })
+        {
+            var view = BattleViewBuilder.Build(actual, Cards(), Build);
+            Check(view.Local.Hero is { Health: 30, Armor: 0 } && view.Opponent.Hero is { Health: 29, Armor: 2 } &&
+                view.Local.Board.Single().Health == 4 && view.Local.Hand.Single().Health == 3 &&
+                view.Local.Weapon is { Health: null, Durability: null }, "Sparse zeros were lost or applied to a weapon.");
+            Check(!actual.Entities[10].Tags.ContainsKey("DAMAGE"), "A display default became a recorded tag.");
+        }
+        foreach (var uncertain in new[] { frame with { ClientBuild = null }, frame with { ClientBuild = "other" },
+            frame with { Quality = frame.Quality with { IsStable = false } },
+            frame with { Quality = frame.Quality with { IsComplete = false } },
+            frame with { Quality = frame.Quality with { HasGameStart = false } } })
+            Check(uncertain.GetRemainingHealth(10) is null && uncertain.GetArmor(10) is null &&
+                uncertain.GetRemainingHealth(20) == 29, "Unknown health was filled or explicit damage was discarded.");
+        foreach (var (key, value) in new[] { ("DAMAGE","invalid"), ("44","-1"), ("45","27"), ("202","WEAPON") })
+        {
+            var invalid = entities.ToDictionary();
+            invalid[10] = entities[10] with { Tags = entities[10].Tags.Append(KeyValuePair.Create(key,value)).ToFrozenDictionary() };
+            Check((frame with { Entities = invalid.ToFrozenDictionary() }).GetRemainingHealth(10) is null,
+                "Invalid or conflicting character evidence was accepted: " + key);
+        }
+    }
+
+    private static void FinalHero()
+    {
+        var frame = Frame();
+        var entities = frame.Entities.ToDictionary();
+        entities[20] = Entity(20, "HERO_08", EntityKind.Card, ("CONTROLLER","2"), ("ZONE","GRAVEYARD"), ("CARDTYPE","HERO"), ("HEALTH","30"), ("DAMAGE","30"));
+        frame = frame with { Entities = entities.ToFrozenDictionary() };
+        Check(BattleViewBuilder.Build(frame, Cards(), Build).Opponent.Hero is null &&
+            !BattleViewBuilder.VisibleCardIds(frame, Build).Contains("HERO_08"), "A departed hero was used during play.");
+        frame = frame with { Phase = GamePhase.Complete };
+        Check(BattleViewBuilder.Build(frame, Cards(), Build).Opponent.Hero is { CardId: "HERO_08", Health: 0 } &&
+            BattleViewBuilder.VisibleCardIds(frame, Build).Contains("HERO_08"), "The final defeated hero or its name lookup was lost.");
     }
 
     private static void Perspective()

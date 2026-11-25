@@ -133,6 +133,8 @@ async Task Cancellation()
     using var source = new CancellationTokenSource();
     source.Cancel();
     await Throws<OperationCanceledException>(() => reader.ReadAvailableAsync(testRoot, source.Token));
+    await using (var cancelled = reader.WatchAsync(testRoot, cancellationToken: source.Token).GetAsyncEnumerator())
+        await Throws<OperationCanceledException>(() => cancelled.MoveNextAsync().AsTask());
     using var watching = new CancellationTokenSource(TimeSpan.FromMilliseconds(40));
     await Throws<OperationCanceledException>(async () =>
     {

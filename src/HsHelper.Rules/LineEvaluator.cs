@@ -66,6 +66,8 @@ public sealed partial class LineEvaluator
             state.Unsupported("UNKNOWN_ACTIVE_PLAYER", "行动方未知。");
         else if (snapshot.ActivePlayerId != snapshot.LocalPlayerId) state.Invalid("当前不是我方回合。");
         else if (!state.HasBothHeroes) state.Unsupported("UNKNOWN_HERO", "双方英雄或其生命值尚未可靠识别。");
+        else if (state.OwnHero!.Armor < 0 || state.EnemyHero!.Armor < 0)
+            state.Unsupported("UNKNOWN_HERO_ARMOR", "英雄的护甲记录无效，无法验证伤害。");
         else if (!state.ManaKnown) state.Unsupported("UNKNOWN_MANA", "当前法力资源未知。");
         if (!state.Stopped)
         {
@@ -463,7 +465,6 @@ public sealed partial class LineEvaluator
                     .ToDictionary(t => t.Key, t => int.Parse(t.Value, CultureInfo.InvariantCulture), StringComparer.Ordinal);
                 var entity = new Entity { Id = source.Id, CardId = source.CardId, Controller = source.ControllerId, Zone = source.Zone ?? "",
                     Attack = source.Attack, MaximumHealth = source.GetIntTag("HEALTH"), Armor = source.GetIntTag("ARMOR") ?? 0,
-                    Health = source.GetIntTag("HEALTH") is { } health ? health - (source.GetIntTag("DAMAGE") ?? 0) : null,
                     Cost = source.Cost, Attacks = source.GetIntTag("NUM_ATTACKS_THIS_TURN") ?? 0, Flags = values };
                 entity.Type = source.Tags.GetValueOrDefault("CARDTYPE") switch
                 { "1" => "GAME", "2" => "PLAYER", "3" => "HERO", "4" => "MINION", "5" => "SPELL", "6" => "ENCHANTMENT", "7" => "WEAPON", "10" => "HERO_POWER", var type => type ?? "" };
@@ -471,12 +472,20 @@ public sealed partial class LineEvaluator
                 if (source.Kind == EntityKind.Player) entity.Type = "PLAYER";
                 if (string.IsNullOrEmpty(entity.Type)) entity.Type = NativeCardDefinitions.ExpectedType(entity.CardId) ?? Profile(entity)?.Type ??
                     (source.Kind == EntityKind.Player ? "PLAYER" : source.Kind == EntityKind.Game ? "GAME" : "");
-                if (entity.Type == "WEAPON")
+                if (entity.Type is "HERO" or "MINION")
+                {
+                    entity.MaximumHealth = source.GetMaximumHealth();
+                    entity.Health = snapshot.GetRemainingHealth(source.Id);
+                    if (entity.Type == "HERO" && (source.Tags.ContainsKey("ARMOR") || source.Tags.ContainsKey("292")))
+                        entity.Armor = snapshot.GetArmor(source.Id) ?? -1;
+                }
+                else if (entity.Type == "WEAPON")
                 {
                     entity.WeaponDurability = WeaponDurabilityEvidence.Resolve(snapshot.ClientBuild, source);
                     entity.MaximumHealth = entity.WeaponDurability.MaximumHealth;
                     entity.Health = entity.WeaponDurability.Remaining;
                 }
+                else entity.Health = entity.MaximumHealth - (source.GetIntTag("DAMAGE") ?? 0);
                 entity.Alive = entity.Health is null || entity.Health > 0;
                 NormalizeCurrentRace(entity, source);
                 PreserveDeathrattleBehavior(entity);
@@ -700,7 +709,8 @@ public sealed partial class LineEvaluator
                     pair.Key is "AURA" or "362" or "DEATHRATTLE" or "217" or "REBORN" or "1085" or "TRIGGER_VISUAL" or "32" &&
                     (!int.TryParse(pair.Value, out var flag) || flag != 0)))
                     Conditional("拼装体存在额外当前触发或光环证据，不能把纯战吼脚本当作全部已覆盖。", "ASSEMBLED_EXTRA_TRIGGER");
-                if (entity.Flags.Any(flag => flag.Value != 0 && flag.Key.Length > 0 && flag.Key.All(char.IsDigit) &&
+                if (!_unsupported.Contains("UNMAPPED_NUMERIC_TAG") &&
+                    entity.Flags.FirstOrDefault(flag => flag.Value != 0 && flag.Key.Length > 0 && flag.Key.All(char.IsDigit) &&
                     !IsKnownCurrentRaceNumeric(entity, flag.Key) &&
                     !IsBattlecryEvidenceNumericTag(entity, flag.Key) &&
                     !IsAssembledKnownNumericTag(entity, flag.Key) &&
@@ -708,8 +718,8 @@ public sealed partial class LineEvaluator
                     !IsObservedStaticDarkGiftNumericTag(entity, flag.Key) &&
                     !IsObservedDeathDrawNumericTag(entity, flag.Key) &&
                     !IsDeathrattleEvidenceNumericTag(entity, flag.Key) &&
-                    !((_snapshot.ClientBuild == AuditedBuild && entity.CardId == "EDR_850p" || IsObservedStatEnchantment(entity)) && flag.Key is "2" or "3")))
-                    Conditional("存在尚未解释的数字状态标签，不能确认已覆盖全部动作限制。", "UNMAPPED_NUMERIC_TAG");
+                    !((_snapshot.ClientBuild == AuditedBuild && entity.CardId == "EDR_850p" || IsObservedStatEnchantment(entity)) && flag.Key is "2" or "3")).Key is { } unknownTag)
+                    Conditional($"存在尚未解释的数字状态标签，例如实体 #{entity.Id} 的 {unknownTag}。其对动作的影响待确认。", "UNMAPPED_NUMERIC_TAG");
                 if (new[] { "HEALTH_MINIMUM", "MINIMUM_HEALTH", "DAMAGE_CANT_KILL", "INCOMING_DAMAGE_MULTIPLIER", "SPELL_DAMAGE_DOUBLE", "SPELLPOWER_DOUBLE", "SPELL_HEALING_DOUBLE", "HEALING_DOES_DAMAGE", "HEALING_DOUBLE", "MULTIPLY_HERO_DAMAGE", "RECEIVES_DOUBLE_SPELLDAMAGE_BONUS", "LIFESTEAL_DAMAGES_OPPOSING_HERO", "CANT_HEAL", "CANT_DAMAGE", "CANT_BE_DESTROYED", "HERO_CANT_BE_DESTROYED", "ALL_TARGETS_RANDOM", "FORGETFUL", "HEROPOWER_ADDITIONAL_ACTIVATIONS", "HEROPOWER_UNLIMITED_USES", "HEROPOWER_ACTIVATIONS_THIS_TURN", "CURRENT_HEROPOWER_DAMAGE_BONUS" }
                     .Any(tag => entity.Int(tag) is > 0))
                     Conditional("存在尚未覆盖的伤害或治疗修正，结果按未应用该修正的条件展示。", "DAMAGE_OR_HEALING_MODIFIER");
@@ -777,8 +787,11 @@ public sealed partial class LineEvaluator
                     continue;
                 }
                 if (_snapshot.ClientBuild == "255790" && entity.CardId is "EDR_480" or "EDR_227" or "DINO_421") continue;
-                if (!SimpleProfile(profile) && !profile.Mechanics.Contains("TRIGGER_VISUAL"))
-                    Conditional("假设未覆盖的场上卡牌文字不改变本序列。", "UNMAPPED_BOARD_TEXT");
+                if (!SimpleProfile(profile) && !profile.Mechanics.Contains("TRIGGER_VISUAL") && !_unsupported.Contains("UNMAPPED_BOARD_TEXT"))
+                {
+                    var name = entity.CardId is { } cardId && _cards.TryGetValue(cardId, out var card) ? card.Name : "随从";
+                    Conditional($"部分场上牌效尚未覆盖，例如{name}（#{entity.Id}）。本路线假设这些效果不改变结算。", "UNMAPPED_BOARD_TEXT");
+                }
             }
         }
         public void Invalid(string message)

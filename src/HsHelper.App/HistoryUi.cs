@@ -418,7 +418,7 @@ public partial class MainWindow
         return heading + "\n" +
             $"回合 {exact.Turn} · {exact.Phase} · 行动方 {exact.ActivePlayerId}\n我方视角 {exact.LocalPlayerId} · 完整 {exact.Quality.IsComplete} · 稳定 {exact.Quality.IsStable}\n手牌：\n" +
             string.Join("\n", exact.Hand.Select(entity => $"({entity.Cost?.ToString() ?? "?"}) {Name(entity)}")) + "\n\n场面：\n" +
-            string.Join("\n", exact.Board.Select(entity => $"玩家{entity.ControllerId} · {Name(entity)} {entity.Attack?.ToString() ?? "?"}/{entity.RemainingHealth?.ToString() ?? "?"}")) +
+            string.Join("\n", exact.Board.Select(entity => $"玩家{entity.ControllerId} · {Name(entity)} {entity.Attack?.ToString() ?? "?"}/{exact.GetRemainingHealth(entity.Id)?.ToString() ?? "?"}")) +
             "\n\n对手公开手牌记忆（仅曾公开身份）：\n" + memory.Status + "\n" + string.Join("\n", memory.Entries.Select(entry => entry.DisplayText)) +
             "\n\n" + string.Join("；", exact.Quality.Warnings.Concat(gaps));
     }

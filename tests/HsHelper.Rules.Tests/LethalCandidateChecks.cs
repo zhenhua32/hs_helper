@@ -26,6 +26,7 @@ internal static class LethalCandidateChecks
         yield return ("new candidate profile inspection safely rejects malformed or excessive effect data", CandidateDataLimits);
         yield return ("new search paths remain bounded cancellable stable and immutable", SearchLimits);
         yield return ("board lethal reports three plus six across custom text while enforcing combat restrictions", BoardAttackCandidate);
+        yield return ("board lethal handles sparse health and names unresolved conditions", SparseHealthCandidate);
     }
 
     private static void BoardAttackCandidate()
@@ -42,6 +43,24 @@ internal static class LethalCandidateChecks
             Tag(frame,21,"ARMOR","1"), Tag(frame,21,"IMMUNE","1"), Tag(frame,21,"HEALTH_MINIMUM","1"),
             Add(frame,Card(40,"guard","MINION","PLAY",("TAUNT","1"),owner:2)), frame with { ActivePlayerId=2 } })
             Check(rules.FindLethal(blocked,FixedCards.Value).BoardCandidate is null,"An unavailable attack produced a board lethal candidate.");
+    }
+
+    private static void SparseHealthCandidate()
+    {
+        var frame = Frame(8, 5, Card(30, "CS2_171", "MINION", "PLAY",
+            ("ATK","5"), ("HEALTH","5"), ("EXHAUSTED","0"), ("NUM_TURNS_IN_PLAY","2"), ("99999001","1")));
+        frame = Tag(frame, 11, "DAMAGE", null);
+        var rules = new LineEvaluator();
+        var result = rules.FindLethal(frame, FixedCards.Value);
+        Check(!result.VerifiedLethalFound && result.BoardCandidate is { EnemyEffectiveHealth: 5 } candidate &&
+            candidate.Attacks.SequenceEqual([new BoardAttackStep(30, 21, 5)]) &&
+            candidate.Assumptions.Any(reason => reason.Contains("#30") && reason.Contains("99999001")),
+            "The conditional exact-damage attack or its unresolved state evidence was lost.");
+        foreach (var invalid in new[] { Tag(frame, 11, "DAMAGE", "bad"), Tag(frame, 21, "292", "4") })
+        {
+            var rejected = rules.FindLethal(invalid, FixedCards.Value);
+            Check(!rejected.VerifiedLethalFound && rejected.BoardCandidate is null, "Invalid hero stats produced lethal.");
+        }
     }
 
     private static void Provenance()

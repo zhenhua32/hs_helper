@@ -170,8 +170,8 @@ public static class BattleViewBuilder
             }
             var effect = Effect(entity.CardId, entity.Tags);
             var durability = type == "WEAPON" ? WeaponDurabilityEvidence.Resolve(snapshot.ClientBuild, entity).Remaining : null;
-            return new(entity.Id, entity.CardId, Name(entity.CardId), type, entity.Cost, entity.Attack, entity.RemainingHealth,
-                entity.GetIntTag("ARMOR"), durability, entity.GetIntTag("EXHAUSTED") is { } exhausted ? exhausted != 0 : null,
+            return new(entity.Id, entity.CardId, Name(entity.CardId), type, entity.Cost, entity.Attack, snapshot.GetRemainingHealth(entity.Id),
+                snapshot.GetArmor(entity.Id), durability, entity.GetIntTag("EXHAUSTED") is { } exhausted ? exhausted != 0 : null,
                 entity.Zone, entity.ZonePosition, string.Join("、", statuses.Distinct(StringComparer.Ordinal)))
                 { EffectiveText = effect.Text, EffectTextStatus = effect.Status, IsAssembled = effect.Assembled, IsAssembledOffer = effect.Offer };
         }
@@ -183,7 +183,7 @@ public static class BattleViewBuilder
             EntitySnapshot? Unique(string type) => entities.Where(e => e.Zone == "PLAY" && Type(e) == type).Take(2).ToArray() is [var only] ? only : null;
             var heroId = player?.GetIntTag("HERO_ENTITY");
             var hero = heroId.HasValue && snapshot.Entities.TryGetValue(heroId.Value, out var observedHero) &&
-                observedHero.ControllerId == id && observedHero.Zone == "PLAY" ? observedHero : Unique("HERO");
+                observedHero.ControllerId == id && observedHero.Zone == "PLAY" ? observedHero : Unique("HERO") ?? FinalGraveyardHero(snapshot, player);
             var weapon = Unique("WEAPON"); var power = Unique("HERO_POWER");
             var total = player?.GetIntTag("RESOURCES"); var spent = player?.GetIntTag("RESOURCES_USED");
             var locked = player?.GetIntTag("OVERLOAD_LOCKED"); var temporary = player?.GetIntTag("TEMP_RESOURCES");
@@ -241,6 +241,9 @@ public static class BattleViewBuilder
         var ids = snapshot.Entities.Values.Where(e => e.Kind == EntityKind.Card &&
             (e.Zone == "PLAY" || local.HasValue && e.ControllerId == local && e.Zone == "HAND"))
             .Select(e => e.CardId).OfType<string>();
+        if (snapshot.Phase == GamePhase.Complete && local.HasValue)
+            ids = ids.Concat(snapshot.Entities.Values.Where(e => e.Kind == EntityKind.Player)
+                .Select(player => FinalGraveyardHero(snapshot, player)?.CardId).OfType<string>());
         if (snapshot.PublicPlays is { } ledger && ledger.MatchId == snapshot.MatchId && ledger.StateVersion == snapshot.StateVersion)
             ids = ids.Concat(ledger.Plays.Where(p => p.Sequence <= snapshot.EventSequence).Select(p => p.CardId).OfType<string>());
         if (ConfirmedChoice(snapshot, local) is { } choice)
@@ -269,6 +272,15 @@ public static class BattleViewBuilder
         .Replace("<br/>", "\n", StringComparison.OrdinalIgnoreCase).Replace("[x]", "", StringComparison.Ordinal), "<[^>]*>", "", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)));
 
     private static int? ConfirmedLocalPlayer(GameSnapshot snapshot) => ChoiceVisibility.ConfirmedLocalPlayer(snapshot);
+
+    private static EntitySnapshot? FinalGraveyardHero(GameSnapshot snapshot, EntitySnapshot? player)
+    {
+        if (snapshot.Phase != GamePhase.Complete || player?.GetIntTag("HERO_ENTITY") is not { } id ||
+            !snapshot.Entities.TryGetValue(id, out var hero) || hero.Kind != EntityKind.Card ||
+            hero.CardId is null || hero.Zone != "GRAVEYARD" || CardType(hero.Tags.GetValueOrDefault("CARDTYPE")) != "HERO" ||
+            hero.ControllerId is not (1 or 2) || hero.ControllerId != player.GetIntTag("PLAYER_ID")) return null;
+        return hero;
+    }
 
     private static CurrentChoiceSnapshot? ConfirmedChoice(GameSnapshot snapshot, int? local) =>
         local.HasValue && local == snapshot.LocalPlayerId ? ChoiceVisibility.ConfirmedOwn(snapshot) : null;

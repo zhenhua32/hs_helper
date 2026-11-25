@@ -230,6 +230,7 @@ public partial class MainWindow : Window
             _battleRenderRevision++;
             BattleViewRoot.DataContext = null;
             EntityGrid.ItemsSource = null;
+            EntityGrid.Tag = null;
             StateText.Text = WaitingForLiveText;
             AccessText.Text = WaitingForLiveText;
             _localTools?.Invalidate(WaitingForLiveText);
@@ -245,6 +246,7 @@ public partial class MainWindow : Window
             _renderedMatchId = state.MatchId;
             _renderedVersion = state.StateVersion;
         }
+        EntityGrid.Tag = state;
         EntityGrid.ItemsSource = state.Entities.Values.OrderBy(x => x.ControllerId).ThenBy(x => x.Zone).ThenBy(x => x.ZonePosition).ToArray();
         StateText.Text = (_historyContext is null ? "当前日志 · " : "历史局面 · ") + $"回合 {state.Turn?.ToString() ?? "未知"} · 阶段 {state.Phase} · 局面版本 {state.StateVersion} · 行动方 {state.ActivePlayerId?.ToString() ?? "未知"}\n" +
             $"完整：{state.Quality.IsComplete} · 稳定：{state.Quality.IsStable} · 我方视角：{state.Quality.HasLocalPerspective}\n" + string.Join("；", state.Quality.Warnings);
