@@ -10,12 +10,12 @@ public static class ChoiceVisibility
     internal static bool IsObservedOptionTag(string tag) => ChoiceObservedTags.Contains(tag);
 
     /// <summary>Recognizes only an actual current own option entity carrying the shared anonymous projection.</summary>
-    public static bool IsProjectedCurrentOptionEntity(GameSnapshot snapshot, EntitySnapshot entity)
+    public static bool IsProjectedCurrentOptionEntity(GameSnapshot snapshot, EntitySnapshot entity, bool allowSpellInput = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         if (entity is null || entity.Kind != EntityKind.Card || string.IsNullOrWhiteSpace(entity.CardId) ||
             !snapshot.Entities.TryGetValue(entity.Id, out var actual) || !ReferenceEquals(actual, entity) ||
-            ConfirmedOwn(snapshot) is not { } choice || choice.PlayerId is not (1 or 2) ||
+            Confirmed(snapshot, allowSpellInput && entity.Zone == "SETASIDE") is not { } choice || choice.PlayerId is not (1 or 2) ||
             entity.ControllerId != choice.PlayerId || choice.SourceEntityId is not > 0 ||
             !snapshot.Entities.TryGetValue(choice.SourceEntityId.Value, out var source) || source.Id != choice.SourceEntityId.Value ||
             entity.Tags.Keys.Any(tag => !IsObservedOptionTag(tag))) return false;

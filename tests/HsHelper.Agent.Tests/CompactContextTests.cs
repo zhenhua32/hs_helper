@@ -15,6 +15,7 @@ static class CompactContextTests
         yield return ("compact context removes deck slots, hidden identities, names and raw JSON", () => Sync(Privacy));
         yield return ("compact context preserves live modifiers, complete card text and unknown quality", () => Sync(DynamicState));
         yield return ("compact context uses only current own confirmed choices", () => Sync(Choices));
+        yield return ("pending player input requests named card advice without simulated actions", PendingInputAdvice);
         yield return ("invalid choice identities never enter model context and choice requests make zero HTTP", ChoicePrivacyBoundaries);
         yield return ("spectator contexts omit both players' private cards tracking and private events", () => Sync(SpectatorPrivacy));
         yield return ("raw completed choice history stays local in ordinary and spectator contexts", () => Sync(ChoiceHistoryPrivacy));
@@ -112,6 +113,43 @@ static class CompactContextTests
         Phase = GamePhase.Choice, Quality = new(true, true, true, true, 0, []),
         Choice = new(7, 1, "GENERAL", 10, 1, 1, [new(90, "CHOICE_ONLY_PROBE", 1, 0)], true)
     };
+
+    private static async Task PendingInputAdvice()
+    {
+        var settled = ChoiceState();
+        var catalog = new CardCatalog(":memory:");
+        var settledCoach = new SnapshotCoach(settled, new(), catalog, "123");
+        Check(settledCoach.Capabilities().ValidateActions is not null, "Settled choice lost its action validator.");
+        var spell = Entity(10, "SOURCE", "PLAY", 1, ("CARDTYPE", "SPELL"));
+        var offered = Entity(90, "CHOICE_ONLY_PROBE", "SETASIDE", 1);
+        var pending = settled with
+        {
+            LocalSpellChoiceInput = true,
+            Quality = settled.Quality with { IsStable = false, OpenBlockCount = 2 },
+            Choice = settled.Choice! with { SourceCardId = "SOURCE" },
+            Entities = settled.Entities.Values.Where(e => e.Id != spell.Id).Append(spell).Append(offered).ToFrozenDictionary(e => e.Id)
+        };
+        Check(ChoiceVisibility.IsProjectedCurrentOptionEntity(pending, offered, allowSpellInput: true) &&
+            !ChoiceVisibility.IsProjectedCurrentOptionEntity(pending, offered) &&
+            !ChoiceVisibility.IsProjectedCurrentOptionEntity(pending, pending.Entities[30], allowSpellInput: true),
+            "Spell input exposed a private slot or lost an offered card.");
+        var context = CompactAdviceContextBuilder.Create(pending, "123", AdviceTaskKind.Choice);
+        var coach = new SnapshotCoach(pending, context.Snapshot, catalog, "123");
+        var capabilities = coach.Capabilities();
+        Check(capabilities.ValidateActions is null && capabilities.Tools.Count == 0, "Open spell advertised simulation.");
+        try { await coach.ExecuteAsync("find_lethal", new(), default); throw new Exception("Open spell allowed a simulation."); }
+        catch (ArgumentException) { }
+        var handler = new FakeHandler((_, _) => Reply(Final()));
+        var advice = await new AdviceService(new HttpClient(handler)).AnalyzeAsync(Settings(), "fixture-key", context,
+            coach.ExecuteAsync, () => true, capabilities: capabilities);
+        var prompt = JsonNode.Parse(handler.Requests.Single().Body)!["messages"]![0]!["content"]!.GetValue<string>();
+        Check(prompt.Contains("省略actions字段") && advice.Verification == "strategy" && advice.Actions.Count == 0,
+            "Choice did not return strategy advice with the candidate-only instruction.");
+        var mulligan = settled with { Phase = GamePhase.Mulligan, LocalMulliganInput = true,
+            Quality = settled.Quality with { IsStable = false, OpenBlockCount = 1 } };
+        Check(new SnapshotCoach(mulligan, new(), catalog, "123").Capabilities().ValidateActions is null,
+            "Pending mulligan advertised executable actions.");
+    }
 
     private static async Task ChoicePrivacyBoundaries()
     {

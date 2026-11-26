@@ -122,7 +122,7 @@ static async Task<int> MainAsync(string[] args)
                     snapshot.LocalPlayerId is not (1 or 2) || snapshot.Entities.Values.Any(entity =>
                         entity.Tags.Keys.Any(identityTags.Contains) || (entity.Kind == EntityKind.Card &&
                          !(entity.Zone is "PLAY" or "GRAVEYARD" || (entity.ControllerId == snapshot.LocalPlayerId && entity.Zone is "HAND" or "SECRET") ||
-                             ChoiceVisibility.IsProjectedCurrentOptionEntity(snapshot, entity)) &&
+                             ChoiceVisibility.IsProjectedCurrentOptionEntity(snapshot, entity, allowSpellInput: true)) &&
                          (entity.CardId is not null || entity.Tags.Any(tag => tag.Key is not ("ZONE" or "CONTROLLER" or "ZONE_POSITION" or "ENTITY_ID") &&
                              !PublicSecretClassification(entity, tag))))))
                     throw new InvalidDataException("需要稳定、完整且已过滤隐藏身份与账号信息的玩家视角局面。");

@@ -2,7 +2,9 @@
 
 面向 Windows 国服标准天梯的桌面助手，以猎人为主要使用场景，覆盖最新中文卡库、套牌管理、实时记牌、AI 建议和赛后复盘。
 
-现在可直接试用 **0.1.0-preview.35**。在本机打开 `.local\publish\0.1.0-preview.35-self-contained\HsHelper.App.exe`，包内自带 .NET 运行时。可复制分发的 ZIP 位于同级目录，完整解压后即可启动。首次使用会自动保存并选中“野兽快”。按[快速指南](doc/user-quickstart.zh-CN.md)准备日志、同步客户端版本卡库，再开始监听。AI 配置可按需填写。
+现在可直接试用 **0.1.0-preview.36**。在本机打开 `.local\publish\0.1.0-preview.36-self-contained\HsHelper.App.exe`，包内自带 .NET 运行时。可复制分发的 ZIP 位于同级目录，完整解压后即可启动。首次使用会自动保存并选中“野兽快”。按[快速指南](doc/user-quickstart.zh-CN.md)准备日志、同步客户端版本卡库，再开始监听。AI 配置可按需填写。
+
+preview36 修复了教练在换牌、追踪术等等待输入时返回无法执行的动作。教练会在建议里写出推荐牌名和理由。
 
 preview35 在追踪术等我方法术等待选择时，按日志中的任务编号和候选归属确认选择窗口，支持教练比较已展示的牌。
 

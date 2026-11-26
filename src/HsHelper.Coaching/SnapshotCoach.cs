@@ -43,6 +43,7 @@ public sealed class SnapshotCoach
     }
     private readonly AsyncLocal<ToolInvocationSlot?> _toolSource = new();
     private bool IsDeckPlanning => _taskKind == AdviceTaskKind.DeckPlan || _snapshot.Phase == GamePhase.Unknown;
+    private bool IsPendingInput => !_snapshot.Quality.IsStable && (_snapshot.LocalSpellChoiceInput || _snapshot.LocalMulliganInput);
 
     public SnapshotCoach(GameSnapshot snapshot, JsonObject context, CardCatalog catalog, string? cardBuild,
         Action<string, long, bool>? toolObserved = null, CoachLibraryContext? library = null,
@@ -88,11 +89,11 @@ public sealed class SnapshotCoach
 
     public AgentCapabilities Capabilities(AnalysisBudget? budget = null, Action<ModelUsage>? onUsage = null) => new()
     {
-        Tools = (IsDeckPlanning ? [] : Definitions)
+        Tools = (IsDeckPlanning || IsPendingInput ? [] : Definitions)
             .Concat(_library is null ? [] : CoachLibraryContext.Definitions).ToArray(),
         Budget = budget,
         OnUsage = onUsage,
-        ValidateActions = IsDeckPlanning ? null : ValidateActionsAsync,
+        ValidateActions = IsDeckPlanning || IsPendingInput ? null : ValidateActionsAsync,
         OnToolInvocation = source =>
         {
             if (source.MatchId != _snapshot.MatchId || source.StateVersion != _snapshot.StateVersion ||
@@ -160,6 +161,8 @@ public sealed class SnapshotCoach
             return await _library.ExecuteAsync(name, args, token);
         if (IsDeckPlanning && name is not ("get_snapshot" or "get_cards"))
             throw new ArgumentException("赛前计划不开放实时动作、选择或牌库概率计算工具。");
+        if (IsPendingInput && name is not ("get_snapshot" or "get_cards"))
+            throw new ArgumentException("等待玩家选择期间只开放局面、卡牌和个人资料查询。");
         var valid = name switch
         {
             "get_snapshot" => Empty(args),
