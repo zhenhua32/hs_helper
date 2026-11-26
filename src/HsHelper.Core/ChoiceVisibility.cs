@@ -33,13 +33,25 @@ public static class ChoiceVisibility
                 ? local : null;
     }
 
-    public static CurrentChoiceSnapshot? ConfirmedOwn(GameSnapshot snapshot)
+    public static CurrentChoiceSnapshot? ConfirmedOwn(GameSnapshot snapshot) => Confirmed(snapshot, false);
+
+    public static CurrentChoiceSnapshot? ConfirmedDecision(GameSnapshot snapshot) => Confirmed(snapshot, true);
+
+    private static CurrentChoiceSnapshot? Confirmed(GameSnapshot snapshot, bool allowSpellInput)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        if (ConfirmedLocalPlayer(snapshot) is not { } local || !snapshot.Quality.IsComplete || !snapshot.Quality.IsStable ||
-            snapshot.Quality.OpenBlockCount != 0 || snapshot.Phase is not (GamePhase.Choice or GamePhase.Mulligan) ||
+        if (ConfirmedLocalPlayer(snapshot) is not { } local || !snapshot.Quality.IsComplete ||
+            snapshot.Phase is not (GamePhase.Choice or GamePhase.Mulligan) ||
             snapshot.Choice is not { IsReady: true, Options.Count: > 0 } choice || choice.Id <= 0 || choice.PlayerId != local)
             return null;
+        if (!snapshot.Quality.IsStable || snapshot.Quality.OpenBlockCount != 0)
+        {
+            if (!allowSpellInput || !snapshot.LocalSpellChoiceInput || snapshot.Phase != GamePhase.Choice ||
+                snapshot.Quality.OpenBlockCount != 2 || choice is not { Type: "GENERAL", CountMin: 1, CountMax: 1, SourceEntityId: int source } ||
+                !snapshot.Entities.TryGetValue(source, out var spell) || spell.ControllerId != local || spell.Zone != "PLAY" ||
+                spell.CardId is null || spell.CardId != choice.SourceCardId || spell.Tags.GetValueOrDefault("CARDTYPE") is not ("SPELL" or "5") ||
+                choice.Options.Any(option => option is null || option.ControllerId != local || string.IsNullOrEmpty(option.CardId))) return null;
+        }
         var options = choice.Options.ToArray();
         if (choice.CountMin < 0 || choice.CountMax < choice.CountMin || choice.CountMax > options.Length ||
             options.Any(option => option is null || option.EntityId <= 0 || option.ControllerId is { } owner && owner != local) ||

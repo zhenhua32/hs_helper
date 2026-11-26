@@ -27,6 +27,7 @@ var cases = new (string Name, Action Run)[]
     ("dormant cached attributes do not overwrite current tags", DormantCachedAttributes),
     ("automatic perspective requires exclusive initial private hand and task boundary", AutomaticPerspective),
     ("settled local mulligan input can wait inside a game trigger", MulliganInputBoundary),
+    ("own discover prompt requires the matching spell tasks and explicit local options", SpellChoiceInputBoundary),
     ("spectating blocks automatic perspective", SpectatorPerspective),
     ("recent events retain only the selected perspective's private card identities", RecentEventPrivacy),
     ("deck tracker subtracts draws rather than subsequent plays", TrackDrawAndPlay),
@@ -315,6 +316,36 @@ static void SpectatorPerspective()
     engine.ProcessLine("HIDE_ENTITY - Entity=20 tag=ZONE value=HAND");
     engine.ProcessLine("D 12:00:01.0 PowerProcessor.EndCurrentTaskList() - complete");
     Assert(engine.Snapshot().IsSpectating && engine.Snapshot().LocalPlayerId is null, "Spectator log inferred own player");
+}
+
+static void SpellChoiceInputBoundary()
+{
+    var engine = Replay();
+    foreach (var line in new[]
+    {
+        "FULL_ENTITY - Creating ID=75 CardID=DISCOVER_SPELL", "tag=CARDTYPE value=SPELL", "tag=CONTROLLER value=1", "tag=ZONE value=PLAY",
+        "BLOCK_START BlockType=PLAY Entity=75 EffectCardId= EffectIndex=-1 Target=0",
+        "BLOCK_START BlockType=POWER Entity=75 EffectCardId= EffectIndex=-1 Target=0",
+        "GameState.DebugPrintEntityChoices() - id=8 Player=1 TaskList=223 ChoiceType=GENERAL CountMin=1 CountMax=1",
+        "GameState.DebugPrintEntityChoices() - Source=[entityName=Anonymous id=75 zone=PLAY cardId=DISCOVER_SPELL player=1]",
+        "GameState.DebugPrintEntityChoices() - Entities[0]=[entityName=Anonymous id=80 zone=SETASIDE cardId=OPTION_A player=1]",
+        "GameState.DebugPrintEntityChoices() - Entities[1]=[entityName=Anonymous id=81 zone=SETASIDE cardId=OPTION_B player=1]",
+        "PowerProcessor.EndCurrentTaskList() - m_currentTaskList=222"
+    }) engine.ProcessLine(line);
+    Assert(!engine.Snapshot().CanAnalyzeDecision, "Another completed task enabled an open spell prompt");
+    engine.ProcessLine("PowerProcessor.EndCurrentTaskList() - m_currentTaskList=223");
+    var offered = engine.Snapshot();
+    Assert(offered.CanAnalyzeDecision && !offered.Quality.IsStable && ChoiceVisibility.ConfirmedDecision(offered)?.Options.Count == 2 &&
+        ChoiceVisibility.ConfirmedOwn(offered) is null, "A real input prompt was lost or enabled unrelated effect resolution");
+    var swapped = offered with { Choice = offered.Choice! with { Options = [new(80, "WRONG_OWNER", 2, 0)] } };
+    Assert(ChoiceVisibility.ConfirmedDecision(swapped) is null && !swapped.CanAnalyzeDecision, "A foreign candidate passed the decision boundary");
+    engine.ProcessLine("PowerProcessor.EndCurrentTaskList() - m_currentTaskList=224");
+    Assert(!engine.Snapshot().CanAnalyzeDecision, "A later unrelated task retained the previous input proof");
+    engine.SetLocalPlayerId(2);
+    Assert(ChoiceVisibility.ConfirmedDecision(engine.Snapshot()) is null, "Opponent perspective exposed private choices");
+    engine.SetLocalPlayerId(1);
+    engine.ProcessLine("GameState.DebugPrintEntitiesChosen() - id=8 Player=1 EntitiesCount=1");
+    Assert(!engine.Snapshot().LocalSpellChoiceInput, "The submitted choice remained actionable");
 }
 
 static void MulliganInputBoundary()

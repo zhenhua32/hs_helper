@@ -36,6 +36,8 @@ public sealed partial class PowerLogStateEngine
         public int? SourceId { get; set; }
         public List<ChoiceOptionSnapshot> Options { get; } = [];
         public bool Ready { get; set; }
+        public bool OwnSetAsideOptions { get; set; } = true;
+        public bool InputTaskEnded { get; set; }
         public bool Chosen { get; set; }
         public bool Superseded { get; set; }
         public long OfferedAt { get; init; }
@@ -226,7 +228,13 @@ public sealed partial class PowerLogStateEngine
         {
             _eventSequence++;
             _currentEntity = null;
-            if (_taskComplete) return false;
+            var offer = GetOwnChoice();
+            var confirmed = offer is { Ready: true, Type: "GENERAL", TaskList: > 0 } &&
+                int.TryParse(Pattern(@"\bm_currentTaskList=(\d+)\b").Match(line).Groups[1].Value, out var taskId) &&
+                taskId == offer.TaskList;
+            var inputChanged = offer is not null && offer.InputTaskEnded != confirmed;
+            if (offer is not null) offer.InputTaskEnded = confirmed;
+            if (_taskComplete) return inputChanged;
             _taskComplete = true;
             _version++;
             return true;
@@ -498,7 +506,13 @@ public sealed partial class PowerLogStateEngine
                 hasPerspective ? _localPlayerId : null, MemoryPerspective, isComplete,
                 _blockCount == 0 && (choiceReady || _taskComplete && ownChoice is null && decisionPhase)),
             IsSpectating = _isSpectating,
-            LocalMulliganInput = isComplete && waitingForMulligan
+            LocalMulliganInput = isComplete && waitingForMulligan,
+            LocalSpellChoiceInput = isComplete && _taskComplete && phase == GamePhase.Choice &&
+                ownChoice is { Ready: true, InputTaskEnded: true, OwnSetAsideOptions: true, SourceId: int source, Type: "GENERAL", Minimum: 1, Maximum: 1 } &&
+                _turnBlocks.Count == 2 && _blockCount == 2 && _turnBlocks.Peek() == ("POWER", source) &&
+                _turnBlocks.Last() == ("PLAY", source) && _entities.TryGetValue(source, out var spell) &&
+                spell.CardId is not null && spell.CardId == ownChoice.SourceCardId && IntTag(spell, "CONTROLLER") == _localPlayerId &&
+                spell.Tags.GetValueOrDefault("CARDTYPE") is "SPELL" or "5" && spell.Tags.GetValueOrDefault("ZONE") == "PLAY"
         };
         return AttachmentVisibility.Project(snapshot);
     }
@@ -737,6 +751,8 @@ public sealed partial class PowerLogStateEngine
         var cardId = card.Success ? NullIfEmpty(card.Groups[1].Value) :
             _entities.GetValueOrDefault(entityId.Value)?.CardId;
         var optionValue = new ChoiceOptionSnapshot(entityId.Value, cardId, owner, ParseId(option.Groups[1].Value));
+        if (!_readingChosen && (!Pattern(@"\bzone=SETASIDE\b").IsMatch(entityRef) || !playerMatch.Success ||
+            owner != _currentChoice.PrivateOwner || string.IsNullOrEmpty(cardId))) _currentChoice.OwnSetAsideOptions = false;
         var existing = _currentChoice.Options.FindIndex(value => value.Position == optionValue.Position);
         if (existing >= 0)
         {

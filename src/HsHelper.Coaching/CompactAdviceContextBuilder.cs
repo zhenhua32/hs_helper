@@ -191,7 +191,7 @@ public static class CompactAdviceContextBuilder
         }, Json)!.AsObject();
     }
 
-    private static CurrentChoiceSnapshot? OwnChoice(GameSnapshot snapshot) => ChoiceVisibility.ConfirmedOwn(snapshot);
+    private static CurrentChoiceSnapshot? OwnChoice(GameSnapshot snapshot) => ChoiceVisibility.ConfirmedDecision(snapshot);
 
     private static object CurrentWeapon(GameSnapshot snapshot, EntitySnapshot entity)
     {

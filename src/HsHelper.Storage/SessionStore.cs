@@ -553,7 +553,14 @@ public sealed class SessionStore
             var saved = JsonNode.Parse(savedJson)!.AsObject();
             var updated = JsonNode.Parse(json)!.AsObject();
             var hadInput = saved[nameof(snapshot.LocalMulliganInput)]?.GetValue<bool>() == true;
-            var merged = snapshot with { LocalMulliganInput = hadInput || snapshot.LocalMulliganInput };
+            var hadSpellInput = saved[nameof(snapshot.LocalSpellChoiceInput)]?.GetValue<bool>() == true;
+            var merged = snapshot with { LocalMulliganInput = hadInput || snapshot.LocalMulliganInput,
+                LocalSpellChoiceInput = hadSpellInput || snapshot.LocalSpellChoiceInput };
+            if (merged.LocalSpellChoiceInput && ChoiceVisibility.ConfirmedDecision(merged) is not null)
+            {
+                saved.Remove(nameof(snapshot.LocalSpellChoiceInput));
+                updated.Remove(nameof(snapshot.LocalSpellChoiceInput));
+            }
             var savedQuality = saved[nameof(snapshot.Quality)]!.AsObject();
             var correctOpenTrigger = snapshot.LocalMulliganInput && snapshot.CanAnalyzeDecision && !snapshot.Quality.IsStable &&
                 savedQuality[nameof(SnapshotQuality.OpenBlockCount)]?.GetValue<int>() == 1 &&
@@ -575,7 +582,7 @@ public sealed class SessionStore
                 {
                     if (!correctOpenTrigger && Covers(savedDeck, snapshot.DeckTracking))
                     {
-                        if (hadInput == merged.LocalMulliganInput) return;
+                        if (hadInput == merged.LocalMulliganInput && hadSpellInput == merged.LocalSpellChoiceInput) return;
                         merged = merged with { DeckTracking = savedDeck };
                     }
                     else if (!correctOpenTrigger && !Covers(snapshot.DeckTracking, savedDeck)) throw new InvalidDataException("相同时间点的牌库追踪记录不一致。");

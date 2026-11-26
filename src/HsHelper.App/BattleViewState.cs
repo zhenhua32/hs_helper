@@ -283,7 +283,7 @@ public static class BattleViewBuilder
     }
 
     private static CurrentChoiceSnapshot? ConfirmedChoice(GameSnapshot snapshot, int? local) =>
-        local.HasValue && local == snapshot.LocalPlayerId ? ChoiceVisibility.ConfirmedOwn(snapshot) : null;
+        local.HasValue && local == snapshot.LocalPlayerId ? ChoiceVisibility.ConfirmedDecision(snapshot) : null;
 
     private static string? CardType(string? type) => type switch
     {
