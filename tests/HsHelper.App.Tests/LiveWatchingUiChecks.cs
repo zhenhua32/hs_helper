@@ -49,6 +49,7 @@ internal static class LiveWatchingUiChecks
     public static void RunOnDispatcher()
     {
         CatchUpKeepsInputResponsiveAndRecordsEveryChange();
+        MissingLogStatusFollowsFileAvailability();
         EmptyLogBindsDeckWhenGameStarts();
         StopWaitsForProducerAndSavesPartial("stop");
         StopWaitsForProducerAndSavesPartial("path");
@@ -106,6 +107,28 @@ internal static class LiveWatchingUiChecks
         WaitUntil(() => Frame(window).DeckTracking is { IsExact: true, TotalCards: 1 } track &&
             track.KnownRemaining.GetValueOrDefault("SYN_DECK") == 1 && C<TextBox>(window, "SessionBuildBox").Text == Build,
             "Starting on an empty Power.log never bound the later build and actual starting deck.");
+    }
+
+    private static void MissingLogStatusFollowsFileAvailability()
+    {
+        using var fixture = new Fixture("late-log", settledEnd: true);
+        var window = fixture.Window;
+        var status = C<TextBlock>(window, "StatusText");
+        var log = C<TextBox>(window, "LogPathBox").Text;
+        File.Delete(log);
+        Await(InvokeTask(window, "StartWatchingAsync"));
+        Check(status.Text.Contains("尚未找到 Power.log"), "A missing file was reported as connected.");
+        File.WriteAllText(log, "");
+        Await(InvokeTask(window, "ReadLiveAsync"));
+        Check(status.Text.Contains("正在监听新增内容"), "Discovery left the missing-file footer visible.");
+        File.Delete(log);
+        Await(InvokeTask(window, "ReadLiveAsync"));
+        Check(status.Text.Contains("尚未找到 Power.log"), "Disappearance left the connected footer visible.");
+        status.Text = "模型配置已保存。";
+        File.WriteAllText(log, "");
+        Await(InvokeTask(window, "ReadLiveAsync"));
+        Check(status.Text == "模型配置已保存。", "Background polling overwrote feedback from another action.");
+        Pass("the live footer follows missing and newly created files and preserves other action feedback");
     }
 
     private static void StopWaitsForProducerAndSavesPartial(string change)

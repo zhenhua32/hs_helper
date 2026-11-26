@@ -17,6 +17,8 @@ public partial class MainWindow
     private Task? _stopRecordingTask;
     private static readonly TimeSpan LiveRenderInterval = TimeSpan.FromMilliseconds(350);
     private const string CatchingUpStatus = "正在读取已有日志并追赶最新局面，可随时停止。";
+    private const string WaitingForLogStatus = "尚未找到 Power.log，正在等待日志。";
+    private const string ListeningStatus = "已追赶当前日志，正在监听新增内容。";
 
     // This object belongs to one producer. The dispatcher reads it only after that producer settles.
     private sealed class LiveLogWorker(PowerLogStateEngine engine, DeckTrackingEnricher? tracking,
@@ -136,8 +138,8 @@ public partial class MainWindow
                 if (batch.Lines.Count > 0 || batch.ResetReason != LogResetReason.None || wasWaiting != WaitingForLiveFrame) RenderSnapshot();
                 UpdateConnectionStatus(force: true);
             }
-            if (!batch.HasMoreData && StatusText.Text == CatchingUpStatus)
-                StatusText.Text = batch.Path is null ? "尚未找到 Power.log，正在等待日志。" : "已追赶当前日志，正在监听新增内容。";
+            if (StatusText.Text is CatchingUpStatus or WaitingForLogStatus or ListeningStatus)
+                StatusText.Text = batch.Path is null ? WaitingForLogStatus : batch.HasMoreData ? CatchingUpStatus : ListeningStatus;
             if (batch.Lines.Count > 0) ScheduleAutomaticAdvice(batch.HasMoreData);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }

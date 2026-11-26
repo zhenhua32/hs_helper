@@ -40,8 +40,7 @@ public static class HearthstoneDiagnostics
         if (powerLog is null && string.IsNullOrWhiteSpace(gameDirectory))
         {
             var localLog = LogSessionDiscovery.FindLatestPowerLog(localDataRoot);
-            if (localLog is not null || root is null && Directory.Exists(localDataRoot)
-                || Directory.Exists(System.IO.Path.Combine(localDataRoot, "Logs")))
+            if (localLog is not null || root is null && Directory.Exists(localDataRoot))
             {
                 root = localDataRoot;
                 powerLog = localLog;
