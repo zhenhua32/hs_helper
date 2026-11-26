@@ -101,6 +101,10 @@ public partial class MainWindow
             "unsupported" => "规则未覆盖（具体动作已移除）",
             _ => "策略建议"
         };
+        var displayed = DisplaySnapshot;
+        if (advice.Verification == "strategy" && displayed.MatchId == advice.MatchId &&
+            displayed.StateVersion == advice.StateVersion && displayed.CanAnalyzeVisibleTurn)
+            label = "已知牌面的策略建议";
         if (string.Equals(advice.Task, AdviceTaskKind.DeckPlan.ToString(), StringComparison.Ordinal)) label = "赛前套牌计划";
         else if (CurrentAccess.IsHistorical) label = "历史复盘 · " + label;
         var text = new StringBuilder($"{label} · 局面 v{advice.StateVersion}\n\n{advice.Summary}\n\n依据\n");
@@ -117,7 +121,8 @@ public partial class MainWindow
         if (advice.VerifiedLethal) text.AppendLine("本地规则确认此序列可斩杀。");
         text.AppendLine($"\n已保存建议记录 · {saved.RecordedAt.ToLocalTime():HH:mm:ss}");
         AdviceBox.Text = text.ToString();
-        if (advice.MatchId == DisplaySnapshot.MatchId && advice.StateVersion == DisplaySnapshot.StateVersion)
+        _adviceNeedsInvalidation = true;
+        if (advice.MatchId == displayed.MatchId && advice.StateVersion == displayed.StateVersion)
             _overlayAdvice = AdviceLimitationsPresentation.OverlayText(advice);
     }
     private async void AnalyzeDeckPlanClicked(object sender, RoutedEventArgs e) => await Run(() => TrackAnalysisAsync(AnalyzeDeckPlanCoreAsync));
@@ -160,6 +165,7 @@ public partial class MainWindow
             await SeedBudgetAsync(snapshot.MatchId);
             if (!IsCurrent()) throw new OperationCanceledException();
             MainTabs.SelectedIndex = MainTabs.Items.Count - 1;
+            _adviceNeedsInvalidation = true;
             AdviceBox.Text = "正在分析套牌获胜方式、留牌方向和对阵计划…";
             var advice = await new AdviceService(_http).AnalyzeAsync(config.Settings, config.ApiKey, context, coach.ExecuteAsync,
                 IsCurrent, cancellation.Token, coach.Capabilities(_analysisBudget, u => RememberUsage(u, build, context.Task, context.TemplateVersion)));

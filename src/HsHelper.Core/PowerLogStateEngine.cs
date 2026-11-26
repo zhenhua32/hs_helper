@@ -16,6 +16,7 @@ public sealed partial class PowerLogStateEngine
         public EntityKind Kind { get; set; } = kind;
         public string? CardId { get; set; }
         public bool Hidden { get; set; }
+        public int? PreparationPlaceholderOwner { get; set; }
         public Dictionary<string, string> Tags { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, string> DormantCache { get; } = new(StringComparer.Ordinal);
         public long Revision { get; set; }
@@ -329,6 +330,7 @@ public sealed partial class PowerLogStateEngine
             if (_currentEntity is not { } id) return Unresolved();
             var entity = GetEntity(id);
             var incomingCard = NullIfEmpty(match.Groups[3].Value);
+            entity.PreparationPlaceholderOwner = null;
             var definitionChanged = entity.CardId is not null && entity.CardId != incomingCard;
             PrepareHistoryIdentity(entity, incomingCard, match.Groups[1].Value == "SHOW_ENTITY");
             _publicHandMemory.IdentityObserved(entity.Id);
@@ -362,6 +364,7 @@ public sealed partial class PowerLogStateEngine
             var oldCard = IsIdentityVisible(entity) ? entity.CardId : null;
             var oldZone = entity.Tags.GetValueOrDefault("ZONE");
             entity.Hidden = true;
+            entity.PreparationPlaceholderOwner = null;
             entity.CardId = null;
             foreach (var tag in entity.Tags.Keys.Where(t => !HiddenSafeTags.Contains(t)).ToArray())
                 entity.Tags.Remove(tag);
@@ -461,9 +464,10 @@ public sealed partial class PowerLogStateEngine
         if (ownChoice is not null && !ownChoice.Ready) warnings.Add("当前选择详情尚未完整读取");
         if (!_taskComplete && ownChoice is not { Ready: true, TaskList: null }) warnings.Add("尚未观察到当前任务列表结算完成");
         var phase = GetPhase();
-        var unresolvedPublicType = _entities.Values.Any(entity => entity.Kind == EntityKind.Card &&
+        var unresolvedTypes = _entities.Values.Where(entity => entity.Kind == EntityKind.Card &&
             entity.Tags.GetValueOrDefault("ZONE") == "PLAY" && !IsAttachmentEntity(entity) &&
-            IdentityObservation(entity).Audience == AttachmentVisibility.Audience.Unresolved);
+            IdentityObservation(entity).Audience == AttachmentVisibility.Audience.Unresolved).ToArray();
+        var unresolvedPublicType = unresolvedTypes.Length > 0;
         if (unresolvedPublicType) warnings.Add("公开区域仍有类型未确认的实体，不能把尚未分清的附魔当作公开卡牌。");
         var continuous = _sawStart && !_hasGap && _gameEntity.HasValue && playersValid && hasPerspective;
         var isComplete = continuous && !unresolvedPublicType;
@@ -481,9 +485,10 @@ public sealed partial class PowerLogStateEngine
         var visibleChoice = playersValid && ownChoice is { Ready: true } ? ownChoice : null;
         var entities = _entities.Values.ToFrozenDictionary(e => e.Id, e => ToSnapshot(e, hasPerspective, visibleChoice));
         var activePlayers = players.Where(e => IntTag(e, "CURRENT_PLAYER") == 1).ToArray();
+        var activePlayer = activePlayers.Length == 1 ? IntTag(activePlayers[0], "PLAYER_ID") : null;
         var snapshot = new GameSnapshot($"{_sessionId}-{_matchNumber:D4}", _version, _eventSequence,
             _gameEntity is { } gameId ? IntTag(_entities[gameId], "TURN") : null,
-            activePlayers.Length == 1 ? IntTag(activePlayers[0], "PLAYER_ID") : null,
+            activePlayer,
             hasPerspective ? _localPlayerId : null, phase, entities,
             new SnapshotQuality(_sawStart, isComplete, stable, hasPerspective, _blockCount,
                 Array.AsReadOnly(warnings.ToArray())) { AwaitingPublicEntityTypeOnly = continuous && unresolvedPublicType })
@@ -507,6 +512,9 @@ public sealed partial class PowerLogStateEngine
                 _blockCount == 0 && (choiceReady || _taskComplete && ownChoice is null && decisionPhase)),
             IsSpectating = _isSpectating,
             LocalMulliganInput = isComplete && waitingForMulligan,
+            SettledWithHiddenPreparation = continuous && unresolvedPublicType && _taskComplete && _blockCount == 0 &&
+                phase == GamePhase.Main && step == "MAIN_ACTION" && activePlayer == _localPlayerId && ownChoice is null &&
+                unresolvedTypes.All(entity => entity.PreparationPlaceholderOwner == 3 - _localPlayerId),
             LocalSpellChoiceInput = isComplete && _taskComplete && phase == GamePhase.Choice &&
                 ownChoice is { Ready: true, InputTaskEnded: true, OwnSetAsideOptions: true, SourceId: int source, Type: "GENERAL", Minimum: 1, Maximum: 1 } &&
                 _turnBlocks.Count == 2 && _blockCount == 2 && _turnBlocks.Peek() == ("POWER", source) &&
@@ -589,6 +597,10 @@ public sealed partial class PowerLogStateEngine
             InvalidateHistoryScopes();
         if (tag == "ZONE" && fromZone == "HAND" && value != "HAND") InvalidateHistoryEntity(entity.Id, keepSource: true);
         entity.Tags[tag] = value;
+        if (tag == "ZONE")
+            entity.PreparationPlaceholderOwner = fromZone == "SETASIDE" && value == "PLAY" ? PreparationPlaceholderOwner(entity) : null;
+        else if (entity.PreparationPlaceholderOwner.HasValue && (tag == "CONTROLLER" || !IsAnonymousPreparationPlaceholder(entity)))
+            entity.PreparationPlaceholderOwner = null;
         entity.Revision++;
         ObserveTurnTag(entity, tag, value);
         if (tag == "ZONE") ObserveTurnZone(entity, fromZone, value);

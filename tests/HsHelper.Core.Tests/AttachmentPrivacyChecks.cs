@@ -15,6 +15,7 @@ public static class AttachmentPrivacyChecks
         yield return ("numeric attached40 works and conflicting raw aliases do not authorize a source", NumericAndConflict);
         yield return ("attachment events retain only identity actually observed then and honor later perspective", EventProof);
         yield return ("legacy attachment projection masks missing proof without changing original bytes and is idempotent", Legacy);
+        yield return ("settled own turns with hidden preparation allow strategy while unproven entities still block", HiddenPreparation);
     }
     private static PowerLogStateEngine Start(int? local = 1)
     {
@@ -47,6 +48,49 @@ public static class AttachmentPrivacyChecks
             Assert(!frame.Entities.Values.Any(entity => entity.CardId == Gift) && !frame.RecentEvents.Any(entry => entry.CardId == Gift), "An incomplete source tag sequence temporarily exposed a private gift.");
         }
         Complete(engine); Hidden(engine.Snapshot(), 50);
+    }
+
+    private static void HiddenPreparation()
+    {
+        PowerLogStateEngine Observe(string powerSource = "70")
+        {
+            var engine = Start();
+            Feed(engine, "FULL_ENTITY - Creating ID=70 CardID=", "tag=CONTROLLER value=2", "tag=ZONE value=HAND",
+                "BLOCK_START BlockType=DECK_ACTION Entity=70 EffectCardId= EffectIndex=0 Target=0",
+                "TAG_CHANGE Entity=70 tag=PREPARE_REVEALED value=1",
+                $"BLOCK_START BlockType=POWER Entity={powerSource} EffectCardId= EffectIndex=0 Target=0",
+                "FULL_ENTITY - Updating [entityName=Hidden id=88 zone=SETASIDE zonePos=0 cardId= player=2] CardID=",
+                "tag=ENTITY_ID value=88", "TAG_CHANGE Entity=88 tag=ZONE value=PLAY", "BLOCK_END", "BLOCK_END");
+            return engine;
+        }
+
+        var engine = Observe();
+        Assert(!engine.Snapshot().CanAnalyzeDecision, "Strategy became available before the input task settled.");
+        Complete(engine);
+        var partial = engine.Snapshot();
+        Assert(partial.CanAnalyzeVisibleTurn && partial.CanAnalyzeDecision && !partial.Quality.IsComplete &&
+            !partial.Quality.IsStable && partial.Entities[88].CardId is null, "A hidden preparation blocked strategy or became public.");
+        engine.SetLocalPlayerId(2);
+        Assert(!engine.Snapshot().CanAnalyzeVisibleTurn, "Preparation evidence crossed to a different player's turn.");
+        engine.SetLocalPlayerId(1);
+        Feed(engine, $"SHOW_ENTITY - Updating Entity=[entityName=X id=88 zone=PLAY zonePos=0 cardId= player=2] CardID={Gift}",
+            "tag=CARDTYPE value=ENCHANTMENT", "tag=ATTACHED value=70");
+        Complete(engine);
+        var revealed = engine.Snapshot();
+        Assert(revealed.Quality.IsStable && !revealed.CanAnalyzeVisibleTurn, "A now typed private attachment did not restore ordinary advice.");
+        Hidden(revealed, 88);
+
+        var wrongSource = Observe(powerSource: "71"); Complete(wrongSource);
+        Assert(!wrongSource.Snapshot().CanAnalyzeDecision, "An unrelated POWER block qualified as preparation.");
+        var additionalUnknown = Observe();
+        Feed(additionalUnknown, "FULL_ENTITY - Creating ID=89 CardID=", "tag=CONTROLLER value=2", "tag=ZONE value=PLAY");
+        Complete(additionalUnknown);
+        Assert(!additionalUnknown.Snapshot().CanAnalyzeDecision, "Preparation waived an unrelated untyped entity.");
+        var movedOntoBoard = Observe();
+        Feed(movedOntoBoard, "TAG_CHANGE Entity=88 tag=ZONE_POSITION value=1"); Complete(movedOntoBoard);
+        Assert(!movedOntoBoard.Snapshot().CanAnalyzeDecision, "A positioned board entity inherited the exception.");
+        var gap = Observe(); gap.MarkDataGap(); Complete(gap);
+        Assert(!gap.Snapshot().CanAnalyzeDecision, "Preparation waived an actual data gap.");
     }
     private static void Zones()
     {

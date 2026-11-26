@@ -51,8 +51,11 @@ public static class CompactAdviceContextBuilder
             { RecentEvents = Array.AsReadOnly(recentEvents.ToArray()) });
         recentEvents = snapshot.RecentEvents;
         var local = ChoiceVisibility.ConfirmedLocalPlayer(snapshot);
+        var visibleTurnOnly = snapshot.CanAnalyzeVisibleTurn;
         var visible = snapshot.Entities.Values.Where(entity => entity.Kind is EntityKind.Game or EntityKind.Player ||
-            entity.Zone == "PLAY" || local.HasValue && entity.ControllerId == local && entity.Zone is "HAND" or "SECRET")
+            entity.Zone == "PLAY" && (!visibleTurnOnly || entity.CardId is not null ||
+                AttachmentVisibility.HasKnownOrdinaryCategory(snapshot, entity.Id)) ||
+            local.HasValue && entity.ControllerId == local && entity.Zone is "HAND" or "SECRET")
             .OrderBy(entity => entity.Id).ToArray();
         var choice = OwnChoice(snapshot);
         var definitionsById = (cards ?? []).DistinctBy(card => card.Id).ToDictionary(card => card.Id, StringComparer.Ordinal);
@@ -66,6 +69,8 @@ public static class CompactAdviceContextBuilder
             source.Kind == EntityKind.Card && source.ControllerId == local && source.Zone is "PLAY" or "GRAVEYARD" &&
             choice.SourceCardId == source.CardId ? source.CardId : null;
         var contextLimits = new List<string>();
+        if (visibleTurnOnly)
+            contextLimits.Add("对手有未公开的准备效果。只根据已确认的牌面给策略建议，对手隐藏牌及效果保持未知。");
         if (snapshot.Choice is not null && choice is null)
             contextLimits.Add("当前选择的视角、稳定性或候选证据未通过核对，已省略其候选身份。");
         if (effects.Values.Any(effect => !effect.IsResolved && effect.OfferedHalfText is null))

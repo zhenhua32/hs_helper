@@ -162,7 +162,8 @@ public static class AttachmentVisibility
             Entities = hidden is null && limited is null ? snapshot.Entities : snapshot.Entities.Where(pair => hidden?.Contains(pair.Key) != true)
                 .ToFrozenDictionary(pair => pair.Key, pair => limited?.GetValueOrDefault(pair.Key) ?? pair.Value),
             RecentEvents = eventsChanged ? Array.AsReadOnly(events) : snapshot.RecentEvents,
-            Quality = quality
+            Quality = quality,
+            SettledWithHiddenPreparation = snapshot.SettledWithHiddenPreparation && !unresolvedActive
         };
     }
 }

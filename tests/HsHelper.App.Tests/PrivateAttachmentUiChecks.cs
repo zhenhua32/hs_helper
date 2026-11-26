@@ -42,6 +42,26 @@ internal static class PrivateAttachmentUiChecks
             Set(window, "_loadedModelSettings", new ModelSettings(new("https://private-attachment-ui.invalid/v1/chat/completions"), "private-attachment-ui", 2)
                 { EnableTools = true, BudgetLimits = new(MaxTokensPerMatch: 1000000) });
 
+            var partial = Frame("PREPARATION");
+            var blocked = partial with { SettledWithHiddenPreparation = false, Quality = partial.Quality with { OpenBlockCount = 2 } };
+            Pin(window, blocked);
+            handler.Prepare(false, strategy: true); Await(Invoke(window, "AnalyzeCurrentAsync"));
+            var adviceBox = C<TextBox>(window, "AdviceBox");
+            InvokeObject(window, "InvalidateAdvice");
+            Check(handler.Snapshots.Count == 0 && adviceBox.Text.Contains("游戏动作仍在结算", StringComparison.Ordinal),
+                "A blocked action reached the provider or its reason was lost on snapshot refresh.");
+            Pin(window, partial);
+            Await(Invoke(window, "AnalyzeCurrentAsync"));
+            var savedStrategy = Await(archive.ListAsync()).Single(record => record.Advice.MatchId == partial.MatchId).Advice;
+            Check(handler.Snapshots.Count == 1 && savedStrategy.Verification == "strategy" && savedStrategy.Actions.Count == 0 &&
+                adviceBox.Text.Contains("VISIBLE_TURN_STRATEGY", StringComparison.Ordinal), "A settled partial frame did not return strategy in the WPF answer.");
+            var partialContext = handler.Snapshots.Single();
+            Check(!partialContext["entities"]!.AsArray().Any(entity => entity!["id"]!.GetValue<int>() is 70 or 88) &&
+                partialContext["quality"]!["context_limits"]!.AsArray().Any(limit =>
+                    limit!.GetValue<string>().Contains("未公开的准备效果", StringComparison.Ordinal)),
+                "The partial context exposed an opponent slot or omitted the limitation.");
+            Pass("a blocked analysis explains the wait in the answer area; a settled hidden preparation allows private strategy advice");
+
             foreach (var zone in new[] { "HAND", "DECK", "SETASIDE", "LEGACY_HAND" })
             {
                 var frame = Frame(zone == "LEGACY_HAND" ? "HAND" : zone, zone == "LEGACY_HAND" ? "legacy-raw" : null);
@@ -171,7 +191,14 @@ internal static class PrivateAttachmentUiChecks
         foreach (var (id, card, owner, cls) in new[] { (11, "HERO_05", 1, "HUNTER"), (21, "HERO_08", 2, "MAGE") })
             Feed($"FULL_ENTITY - Creating ID={id} CardID={card}", $"tag=CONTROLLER value={owner}", "tag=ZONE value=PLAY", "tag=CARDTYPE value=HERO", $"tag=CLASS value={cls}", $"tag=HEALTH value={(scope == "AURA" && id == 21 ? 6 : 30)}", "tag=DAMAGE value=0", "tag=ARMOR value=0", "tag=ATK value=0", "tag=IMMUNE value=0");
         Feed("FULL_ENTITY - Creating ID=30 CardID=CS2_172", "tag=CONTROLLER value=1", "tag=ZONE value=PLAY", "tag=CARDTYPE value=MINION", "tag=ATK value=3", "tag=HEALTH value=8", "tag=DAMAGE value=0", "tag=CARDRACE value=20", "tag=EXHAUSTED value=0", "tag=NUM_TURNS_IN_PLAY value=1", "tag=NUM_ATTACKS_THIS_TURN value=0");
-        if (scope == "AURA") Feed("FULL_ENTITY - Creating ID=60 CardID=EDR_480", "tag=CONTROLLER value=1", "tag=ZONE value=PLAY", "tag=CARDTYPE value=MINION", "tag=ATK value=0", "tag=HEALTH value=9", "tag=DAMAGE value=0", "tag=RUSH value=1", "tag=AURA value=1");
+        if (scope == "PREPARATION")
+            Feed("FULL_ENTITY - Creating ID=70 CardID=", "tag=CONTROLLER value=2", "tag=ZONE value=HAND",
+                "BLOCK_START BlockType=DECK_ACTION Entity=70 EffectCardId= EffectIndex=0 Target=0",
+                "TAG_CHANGE Entity=70 tag=PREPARE_REVEALED value=1",
+                "BLOCK_START BlockType=POWER Entity=70 EffectCardId= EffectIndex=0 Target=0",
+                "FULL_ENTITY - Updating [entityName=Hidden id=88 zone=SETASIDE zonePos=0 cardId= player=2] CardID=",
+                "tag=ENTITY_ID value=88", "TAG_CHANGE Entity=88 tag=ZONE value=PLAY", "BLOCK_END", "BLOCK_END");
+        else if (scope == "AURA") Feed("FULL_ENTITY - Creating ID=60 CardID=EDR_480", "tag=CONTROLLER value=1", "tag=ZONE value=PLAY", "tag=CARDTYPE value=MINION", "tag=ATK value=0", "tag=HEALTH value=9", "tag=DAMAGE value=0", "tag=RUSH value=1", "tag=AURA value=1");
         else
         {
             var owner = scope is "OWN_HAND" or "PAST_OWN" ? 1 : 2; var zone = scope == "PUBLIC_PLAY" ? "PLAY" : scope is "OWN_HAND" or "PAST_OWN" ? "HAND" : scope;
@@ -180,7 +207,10 @@ internal static class PrivateAttachmentUiChecks
             if (scope == "PAST_OWN") Feed("TAG_CHANGE Entity=50 tag=ZONE value=SETASIDE", "TAG_CHANGE Entity=50 tag=ZONE value=PLAY", "TAG_CHANGE Entity=70 tag=ZONE value=DECK");
         }
         Feed("TAG_CHANGE Entity=1 tag=TURN value=1", "TAG_CHANGE Entity=1 tag=STEP value=MAIN_READY", "TAG_CHANGE Entity=1 tag=STEP value=MAIN_ACTION", "PowerProcessor.EndCurrentTaskList() - complete");
-        var frame = engine.Snapshot(); Check(frame.Quality.IsStable && frame.Quality.IsComplete && frame.Quality.HasLocalPerspective, "The real source fixture was not stable complete own perspective."); return frame;
+        var frame = engine.Snapshot();
+        Check(scope == "PREPARATION" ? frame.CanAnalyzeVisibleTurn : frame.Quality.IsStable && frame.Quality.IsComplete && frame.Quality.HasLocalPerspective,
+            "The real source fixture was not available for its intended analysis.");
+        return frame;
     }
     private static void Import(CardCatalog catalog, JsonArray cards) { using var input = new MemoryStream(Encoding.UTF8.GetBytes(cards.ToJsonString())); Await(catalog.ImportAsync(input, Build, source: "fixture://private-attachment-ui")); }
     private static void Pin(MainWindow window, GameSnapshot frame) { Set(window, "_historyContext", new HistoricalContext(frame.MatchId, Build, null, null, frame, [])); Set(window, "_historyObservedAt", DateTimeOffset.UtcNow.AddMinutes(-1)); Set(window, "_liveFrame", frame); }
@@ -204,14 +234,22 @@ internal static class PrivateAttachmentUiChecks
     private sealed class Handler : HttpMessageHandler
     {
         private bool _aura;
+        private bool _strategy;
         public List<JsonObject> Snapshots { get; } = [];
         public JsonObject? ToolResult { get; private set; }
-        public void Prepare(bool aura) { _aura = aura; Snapshots.Clear(); ToolResult = null; }
+        public void Prepare(bool aura, bool strategy = false) { _aura = aura; _strategy = strategy; Snapshots.Clear(); ToolResult = null; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             var body = JsonNode.Parse(await request.Content!.ReadAsStringAsync(token))!; var messages = body["messages"]!.AsArray();
             var content = messages.Last(message => message?["role"]?.ToString() == "user")!["content"]!.GetValue<string>();
             Snapshots.Add(JsonNode.Parse(content)!["Snapshot"]!.DeepClone().AsObject());
+            if (_strategy)
+            {
+                Check(body["tools"]!.AsArray().All(tool => tool!["function"]!["name"]!.GetValue<string>() is not
+                    ("evaluate_line" or "find_lethal" or "calculate_draw_odds")), "A partial turn advertised executable simulation.");
+                return Response(new { choices = new[] { new { finish_reason = "stop", message = new { role = "assistant", content =
+                    """{"summary":"VISIBLE_TURN_STRATEGY","reasons":["Use the observed board."],"risks":[]}""" } } } });
+            }
             var tool = messages.LastOrDefault(message => message?["role"]?.ToString() == "tool");
             if (tool is null) return Response(new { choices = new[] { new { finish_reason = "tool_calls", message = new { role = "assistant", content = (string?)null,
                 tool_calls = new[] { new { id = "private_attachment_ui_tool", type = "function", function = new { name = _aura ? "evaluate_line" : "get_entity_effect", arguments = _aura ? "{\"actions\":[{\"kind\":\"attack\",\"source_entity_id\":30,\"target_entity_id\":21}]}" : "{\"entity_id\":50}" } } } } } }, usage = new { prompt_tokens = 7, completion_tokens = 3, total_tokens = 10 } });

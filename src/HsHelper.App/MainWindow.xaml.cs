@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     private string _liveRoot = "";
     private CancellationTokenSource _source = new();
     private CancellationTokenSource? _analysis;
+    private bool _adviceNeedsInvalidation;
     private DeckDefinition? _deck;
     private AnalysisBudget _analysisBudget = new();
     private readonly HashSet<Task> _analysisTasks = [];
@@ -260,8 +261,9 @@ public partial class MainWindow : Window
         _revision++;
         _analysis?.Cancel();
         _overlayAdvice = "局面已更新，旧建议已失效。";
-        const string stale = "局面或视角已更新。已有建议已失效，可重新请求分析。";
-        if (AdviceBox is not null && AdviceBox.Text != stale) AdviceBox.Text = stale;
+        if (AdviceBox is not null && _adviceNeedsInvalidation)
+            AdviceBox.Text = "局面或视角已更新。已有建议已失效，可重新请求分析。";
+        _adviceNeedsInvalidation = false;
     }
     private void BuildChanged(object sender, TextChangedEventArgs e)
     {
@@ -340,7 +342,24 @@ public partial class MainWindow : Window
         await DescribeDeckAsync(_deck);
     });
     private async void AnalyzeClicked(object sender, RoutedEventArgs e) => await Run(AnalyzeCurrentAsync);
-    private Task AnalyzeCurrentAsync() => TrackAnalysisAsync(AnalyzeCoreAsync);
+    private async Task AnalyzeCurrentAsync()
+    {
+        var access = CurrentAccess;
+        if (!access.CanAnalyze) { ShowAdviceFailure(access.Reason); return; }
+        var revision = _revision;
+        try { await TrackAnalysisAsync(AnalyzeCoreAsync); }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            if (revision == _revision) ShowAdviceFailure(error.Message);
+        }
+    }
+
+    private void ShowAdviceFailure(string reason)
+    {
+        _adviceNeedsInvalidation = false;
+        AdviceBox.Text = $"本次分析未完成。{reason}";
+        StatusText.Text = reason;
+    }
     private async Task TrackAnalysisAsync(Func<Task> analyze)
     {
         var configurationRevision = _configurationRevision;
@@ -356,7 +375,7 @@ public partial class MainWindow : Window
         if (_closing || _traces is null) throw new InvalidOperationException("应用正在初始化或关闭，请稍后再分析。");
         if (_historyLoading) throw new InvalidOperationException("历史局面正在读取，请等待读取完成后分析。");
         var access = CurrentAccess;
-        if (!access.CanAnalyze) throw new InvalidOperationException(access.Reason);
+        if (!access.CanAnalyze) { ShowAdviceFailure(access.Reason); return; }
         var modelConfiguration = ConfigurationFromFields();
         var configurationRevision = _configurationRevision;
         var history = _historyContext;
@@ -391,7 +410,9 @@ public partial class MainWindow : Window
             && PublicHandMemoryPresentation.SameEvidence(DisplaySnapshot, handMemory)
             && ReferenceEquals(_analysis, cancellation) && CurrentAccess.CanAnalyze && CurrentAccess.Kind == access.Kind;
         _analysis = cancellation;
+        _adviceNeedsInvalidation = true;
         AnalyzeButton.IsEnabled = false;
+        AdviceBox.Text = snapshot.CanAnalyzeVisibleTurn ? "正在准备已知牌面的策略分析…" : "正在准备当前局面…";
         try
         {
             var pinnedManifest = string.IsNullOrEmpty(requestedBuild) || requestedBuild == "unknown" ? null : await _catalog.GetManifestAsync(requestedBuild);
@@ -448,11 +469,13 @@ public partial class MainWindow : Window
                 await UpdateOverlayAsync();
             }
         }
-        catch (OperationCanceledException) { if (IsCurrent()) AdviceBox.Text = "分析已取消、超时或局面已变化，旧结果已丢弃。"; }
-        catch (Exception error) when (IsCurrent())
+        catch (OperationCanceledException)
         {
-            AdviceBox.Text = $"本次分析未完成。{error.Message}";
-            throw;
+            if (IsCurrent()) ShowAdviceFailure("分析已取消、超时或局面已变化。");
+        }
+        catch (Exception error)
+        {
+            if (IsCurrent()) ShowAdviceFailure(error.Message);
         }
         finally
         {

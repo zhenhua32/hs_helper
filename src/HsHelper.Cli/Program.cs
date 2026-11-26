@@ -118,21 +118,23 @@ static async Task<int> MainAsync(string[] args)
                 bool PublicSecretClassification(EntitySnapshot entity, KeyValuePair<string, string> tag) =>
                     confirmedLocal.HasValue && entity.Zone == "SECRET" && entity.ControllerId is 1 or 2 && entity.ControllerId != confirmedLocal &&
                     tag.Key is "SECRET" or "QUEST" or "SIDE_QUEST" && tag.Value is "0" or "1" or "unknown";
-                if (!snapshot.Quality.IsComplete || !snapshot.CanAnalyzeDecision || !snapshot.Quality.HasLocalPerspective || snapshot.IsSpectating ||
+                if ((!snapshot.Quality.IsComplete && !snapshot.CanAnalyzeVisibleTurn) || !snapshot.CanAnalyzeDecision ||
+                    !snapshot.Quality.HasLocalPerspective || snapshot.IsSpectating ||
                     snapshot.LocalPlayerId is not (1 or 2) || snapshot.Entities.Values.Any(entity =>
                         entity.Tags.Keys.Any(identityTags.Contains) || (entity.Kind == EntityKind.Card &&
                          !(entity.Zone is "PLAY" or "GRAVEYARD" || (entity.ControllerId == snapshot.LocalPlayerId && entity.Zone is "HAND" or "SECRET") ||
                              ChoiceVisibility.IsProjectedCurrentOptionEntity(snapshot, entity, allowSpellInput: true)) &&
                          (entity.CardId is not null || entity.Tags.Any(tag => tag.Key is not ("ZONE" or "CONTROLLER" or "ZONE_POSITION" or "ENTITY_ID") &&
                              !PublicSecretClassification(entity, tag))))))
-                    throw new InvalidDataException("需要稳定、完整且已过滤隐藏身份与账号信息的玩家视角局面。");
+                    throw new InvalidDataException("需要已确认可分析且已过滤隐藏身份与账号信息的玩家视角局面。");
                 var requestStartedAt = DateTimeOffset.UtcNow;
                 var sessions = new SessionStore(Path.Combine(dataRoot, "sessions.db")); await sessions.InitializeAsync();
                 var point = (await sessions.ListDecisionPointsAsync(snapshot.MatchId, includeUnstable: true))
                     .FirstOrDefault(p => p.EventSequence == snapshot.EventSequence && p.StateVersion == snapshot.StateVersion &&
                         p.IsDecisionPoint && p.IsComplete);
                 var historical = point is null ? null : await sessions.GetHistoricalDecisionAsync(point.Id);
-                if (historical is not null && (!historical.Point.IsDecisionPoint || !historical.Context.Snapshot.CanAnalyzeDecision || !historical.Point.IsComplete ||
+                if (historical is not null && (!historical.Point.IsDecisionPoint || !historical.Context.Snapshot.CanAnalyzeDecision ||
+                    (!historical.Point.IsComplete && !historical.Context.Snapshot.CanAnalyzeVisibleTurn) ||
                     SnapshotCodec.Serialize(historical.Context.Snapshot) != SnapshotCodec.Serialize(snapshot))) historical = null;
                 string? KnownBuild(string? value) => string.IsNullOrWhiteSpace(value) || value == "unknown" ? null : value;
                 var build = KnownBuild(snapshot.ClientBuild) ??

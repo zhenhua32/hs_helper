@@ -548,14 +548,21 @@ public sealed class SessionStore
         if (savedJson == json) return;
         if (savedJson is not null)
         {
-            // Re-reading the same observations can improve derived counts or prove that the
-            // client's open trigger was waiting for mulligan input. Keep the original timestamp.
+            // Re-reading the same observations can improve derived counts or recognize a
+            // decision point from explicit log evidence. Keep the original timestamp.
             var saved = JsonNode.Parse(savedJson)!.AsObject();
             var updated = JsonNode.Parse(json)!.AsObject();
             var hadInput = saved[nameof(snapshot.LocalMulliganInput)]?.GetValue<bool>() == true;
             var hadSpellInput = saved[nameof(snapshot.LocalSpellChoiceInput)]?.GetValue<bool>() == true;
+            var hadVisibleTurn = saved[nameof(snapshot.SettledWithHiddenPreparation)]?.GetValue<bool>() == true;
             var merged = snapshot with { LocalMulliganInput = hadInput || snapshot.LocalMulliganInput,
-                LocalSpellChoiceInput = hadSpellInput || snapshot.LocalSpellChoiceInput };
+                LocalSpellChoiceInput = hadSpellInput || snapshot.LocalSpellChoiceInput,
+                SettledWithHiddenPreparation = hadVisibleTurn || snapshot.SettledWithHiddenPreparation };
+            if (merged.CanAnalyzeVisibleTurn)
+            {
+                saved.Remove(nameof(snapshot.SettledWithHiddenPreparation));
+                updated.Remove(nameof(snapshot.SettledWithHiddenPreparation));
+            }
             if (merged.LocalSpellChoiceInput && ChoiceVisibility.ConfirmedDecision(merged) is not null)
             {
                 saved.Remove(nameof(snapshot.LocalSpellChoiceInput));
@@ -582,7 +589,8 @@ public sealed class SessionStore
                 {
                     if (!correctOpenTrigger && Covers(savedDeck, snapshot.DeckTracking))
                     {
-                        if (hadInput == merged.LocalMulliganInput && hadSpellInput == merged.LocalSpellChoiceInput) return;
+                        if (hadInput == merged.LocalMulliganInput && hadSpellInput == merged.LocalSpellChoiceInput &&
+                            hadVisibleTurn == merged.SettledWithHiddenPreparation) return;
                         merged = merged with { DeckTracking = savedDeck };
                     }
                     else if (!correctOpenTrigger && !Covers(snapshot.DeckTracking, savedDeck)) throw new InvalidDataException("相同时间点的牌库追踪记录不一致。");

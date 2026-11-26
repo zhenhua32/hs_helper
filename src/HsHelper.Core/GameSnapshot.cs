@@ -153,8 +153,14 @@ public sealed record GameSnapshot(
     public bool LocalMulliganInput { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool LocalSpellChoiceInput { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool SettledWithHiddenPreparation { get; init; }
     [JsonIgnore]
-    public bool CanAnalyzeDecision => Quality.IsStable || LocalSpellChoiceInput && ChoiceVisibility.ConfirmedDecision(this) is not null ||
+    public bool CanAnalyzeVisibleTurn => SettledWithHiddenPreparation && Phase == GamePhase.Main && Choice is null &&
+        Quality.HasGameStart && !Quality.IsComplete && !Quality.IsStable && Quality.OpenBlockCount == 0 &&
+        ActivePlayerId is 1 or 2 && ActivePlayerId == ChoiceVisibility.ConfirmedLocalPlayer(this);
+    [JsonIgnore]
+    public bool CanAnalyzeDecision => Quality.IsStable || CanAnalyzeVisibleTurn || LocalSpellChoiceInput && ChoiceVisibility.ConfirmedDecision(this) is not null ||
         LocalMulliganInput && Phase == GamePhase.Mulligan &&
         Quality.IsComplete && Quality.HasLocalPerspective && !IsSpectating && Quality.OpenBlockCount == 1 &&
         Player(LocalPlayerId)?.Tags.GetValueOrDefault("MULLIGAN_STATE") == "INPUT";
