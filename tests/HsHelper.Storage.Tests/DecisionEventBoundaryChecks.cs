@@ -13,6 +13,7 @@ public static class DecisionEventBoundaryChecks
     {
         var root = Path.Combine(Path.GetDirectoryName(database)!, "decision-event-boundary");
         yield return ("exact decisions exclude a later public reveal at the same sequence", () => ExactVersions(Path.Combine(root, "exact.db")));
+        yield return ("replaying a legacy mulligan adds only its proven input boundary", () => MulliganInput(Path.Combine(root, "mulligan.db")));
         yield return ("decision state filtering precedes the bounded event limit", () => FilterBeforeLimit(Path.Combine(root, "limit.db")));
         yield return ("exact decisions retain original binding time and immutable data", () => BindingAndFreeze(Path.Combine(root, "binding.db")));
         yield return ("late same-sequence writes cannot pollute repeated concurrent decision reads", () => ConcurrentLateWrite(Path.Combine(root, "concurrent.db")));
@@ -221,6 +222,32 @@ public static class DecisionEventBoundaryChecks
         await Throws<InvalidDataException>(() => new SessionStore(path).InitializeAsync());
         Check(await Scalar(path, "SELECT version FROM hs_storage_schema") == 4 &&
             Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(path))) == before, "Future-schema rejection rewrote its version or database bytes.");
+    }
+
+    private static async Task MulliganInput(string path)
+    {
+        var store = await Open(path);
+        var frame = Frame("legacy-mulligan", 1, 1);
+        var entities = frame.Entities.ToDictionary();
+        var player = entities[2];
+        var tags = player.Tags.ToDictionary();
+        tags["MULLIGAN_STATE"] = "INPUT";
+        entities[2] = player with { Tags = tags.ToFrozenDictionary() };
+        frame = frame with { Phase = GamePhase.Mulligan, Quality = frame.Quality with { IsStable = false, OpenBlockCount = 1 }, Entities = entities.ToFrozenDictionary() };
+        async Task Save(GameSnapshot value) { var recorder = Recorder(store); recorder.Observe(value, 1); await recorder.CompleteAsync(); }
+        await Save(frame);
+        var before = (await store.ListDecisionPointsAsync(frame.MatchId, true)).Single();
+        await Save(frame with { LocalMulliganInput = true });
+        await Save(frame);
+        var after = (await store.ListDecisionPointsAsync(frame.MatchId)).Single();
+        var stored = await store.GetSnapshotAtAsync(frame.MatchId, long.MaxValue);
+        Check(before.Id == after.Id && before.RecordedAt == after.RecordedAt && !after.IsStable &&
+            stored is { CanAnalyzeDecision: true, LocalMulliganInput: true }, "A legacy checkpoint lost its time, trigger or replay proof.");
+        var early = frame with { MatchId = "open-mulligan", Quality = frame.Quality with { IsStable = true } };
+        await Save(early);
+        await Save(early with { Quality = frame.Quality, LocalMulliganInput = true });
+        var corrected = (await store.ListDecisionPointsAsync(early.MatchId)).Single();
+        Check(!corrected.IsStable && corrected.IsDecisionPoint, "An input prompt retained the contradictory settled-trigger flag.");
     }
 
     private static async Task<(SessionRecorder Recorder, GameSnapshot Earlier, DecisionPoint Point)> Earlier(SessionStore store, string match, string? deck = null)

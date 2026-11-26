@@ -539,7 +539,7 @@ public sealed class SessionStore
         Add(command, "$id", snapshot.MatchId); Add(command, "$seq", snapshot.EventSequence); Add(command, "$version", snapshot.StateVersion);
         Add(command, "$turn", snapshot.Turn); Add(command, "$phase", snapshot.Phase.ToString()); Add(command, "$active", snapshot.ActivePlayerId);
         Add(command, "$stable", snapshot.Quality.IsStable); Add(command, "$complete", snapshot.Quality.IsComplete);
-        Add(command, "$decision", snapshot.Quality.IsStable || snapshot.Phase == GamePhase.Complete);
+        Add(command, "$decision", snapshot.CanAnalyzeDecision || snapshot.Phase == GamePhase.Complete);
         Add(command, "$time", Timestamp(observation.ObservedAt)); Add(command, "$json", Pack(json));
         if (await command.ExecuteNonQueryAsync(token) != 0) return;
         command.CommandText = "SELECT snapshot_json FROM session_snapshots WHERE session_id=$id AND event_seq=$seq AND state_version=$version";
@@ -548,10 +548,22 @@ public sealed class SessionStore
         if (savedJson == json) return;
         if (savedJson is not null)
         {
-            // Only derived counts may improve on re-reading the same bound log. Preserve timestamps,
-            // raw observations and a previously more informative deck if a catalog is unavailable.
+            // Re-reading the same observations can improve derived counts or prove that the
+            // client's open trigger was waiting for mulligan input. Keep the original timestamp.
             var saved = JsonNode.Parse(savedJson)!.AsObject();
             var updated = JsonNode.Parse(json)!.AsObject();
+            var hadInput = saved[nameof(snapshot.LocalMulliganInput)]?.GetValue<bool>() == true;
+            var merged = snapshot with { LocalMulliganInput = hadInput || snapshot.LocalMulliganInput };
+            var savedQuality = saved[nameof(snapshot.Quality)]!.AsObject();
+            var correctOpenTrigger = snapshot.LocalMulliganInput && snapshot.CanAnalyzeDecision && !snapshot.Quality.IsStable &&
+                savedQuality[nameof(SnapshotQuality.OpenBlockCount)]?.GetValue<int>() == 1 &&
+                savedQuality[nameof(SnapshotQuality.IsStable)]?.GetValue<bool>() == true;
+            if (correctOpenTrigger) savedQuality[nameof(SnapshotQuality.IsStable)] = false;
+            if (merged.LocalMulliganInput && merged.CanAnalyzeDecision)
+            {
+                saved.Remove(nameof(snapshot.LocalMulliganInput));
+                updated.Remove(nameof(snapshot.LocalMulliganInput));
+            }
             var savedDeck = saved[nameof(snapshot.DeckTracking)]?.Deserialize<DeckTrackingSnapshot>(SnapshotCodec.Options);
             saved.Remove(nameof(snapshot.DeckTracking));
             updated.Remove(nameof(snapshot.DeckTracking));
@@ -561,13 +573,17 @@ public sealed class SessionStore
                     deck.StateVersion == snapshot.StateVersion && deck.CardBuild == binding.CardBuild && deck.DeckVersion == binding.DeckVersionId;
                 if (Bound(savedDeck) && Bound(snapshot.DeckTracking))
                 {
-                    if (Covers(savedDeck, snapshot.DeckTracking)) return;
-                    if (Covers(snapshot.DeckTracking, savedDeck))
+                    if (!correctOpenTrigger && Covers(savedDeck, snapshot.DeckTracking))
                     {
-                        command.CommandText = "UPDATE session_snapshots SET snapshot_json=$json WHERE session_id=$id AND event_seq=$seq AND state_version=$version";
-                        await command.ExecuteNonQueryAsync(token);
-                        return;
+                        if (hadInput == merged.LocalMulliganInput) return;
+                        merged = merged with { DeckTracking = savedDeck };
                     }
+                    else if (!correctOpenTrigger && !Covers(snapshot.DeckTracking, savedDeck)) throw new InvalidDataException("相同时间点的牌库追踪记录不一致。");
+                    command.Parameters["$json"].Value = Pack(SnapshotCodec.Serialize(merged));
+                    command.Parameters["$decision"].Value = merged.CanAnalyzeDecision || merged.Phase == GamePhase.Complete;
+                    command.CommandText = "UPDATE session_snapshots SET snapshot_json=$json,is_stable=$stable,is_decision=$decision WHERE session_id=$id AND event_seq=$seq AND state_version=$version";
+                    await command.ExecuteNonQueryAsync(token);
+                    return;
                 }
             }
         }

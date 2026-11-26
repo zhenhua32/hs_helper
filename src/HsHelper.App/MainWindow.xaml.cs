@@ -377,7 +377,7 @@ public partial class MainWindow : Window
             throw new InvalidOperationException($"局面报告 build {observedBuild}，请使用对应卡库，不能用其他版本牌效分析。");
         if (snapshot.LocalClass is { } localClass && localClass != "HUNTER")
             throw new InvalidOperationException("当前选中视角不是猎人，请核对我方身份后再使用猎人教练。");
-        if (!snapshot.Quality.IsStable || !snapshot.Quality.HasLocalPerspective || snapshot.Entities.Count == 0)
+        if (!snapshot.CanAnalyzeDecision || !snapshot.Quality.HasLocalPerspective || snapshot.Entities.Count == 0)
             throw new InvalidOperationException("请先加载局面、确认我方玩家ID，并等待结算完成。");
         if (!Uri.TryCreate(EndpointBox.Text.Trim(), UriKind.Absolute, out var endpoint)) throw new ArgumentException("请填写完整模型接口地址。");
         _analysis?.Cancel();

@@ -462,6 +462,12 @@ public sealed partial class PowerLogStateEngine
         var step = _gameEntity is { } currentGame ? _entities[currentGame].Tags.GetValueOrDefault("STEP") : null;
         var decisionPhase = phase is GamePhase.Mulligan or GamePhase.Complete || step == "MAIN_ACTION";
         var choiceReady = ownChoice is { Ready: true } && (ownChoice.TaskList is null || _taskComplete);
+        // The client keeps a GameEntity trigger open while the player chooses starting cards.
+        // EndCurrentTaskList settles the deal and INPUT identifies the player who can still act.
+        var waitingForMulligan = phase == GamePhase.Mulligan && _taskComplete && hasPerspective &&
+            _blockCount == 1 && _turnBlocks.TryPeek(out var block) && block.Type == "TRIGGER" && block.Entity == _gameEntity &&
+            players.Any(player => IntTag(player, "PLAYER_ID") == _localPlayerId && player.Tags.GetValueOrDefault("MULLIGAN_STATE") == "INPUT") &&
+            (ownChoice is null || ownChoice.Type == "MULLIGAN" && choiceReady);
         var stable = isComplete && _blockCount == 0 &&
             (choiceReady || (_taskComplete && ownChoice is null && decisionPhase));
         var visibleChoice = playersValid && ownChoice is { Ready: true } ? ownChoice : null;
@@ -491,7 +497,8 @@ public sealed partial class PowerLogStateEngine
             PublicHandMemory = _publicHandMemory.Snapshot($"{_sessionId}-{_matchNumber:D4}", _version, _eventSequence,
                 hasPerspective ? _localPlayerId : null, MemoryPerspective, isComplete,
                 _blockCount == 0 && (choiceReady || _taskComplete && ownChoice is null && decisionPhase)),
-            IsSpectating = _isSpectating
+            IsSpectating = _isSpectating,
+            LocalMulliganInput = isComplete && waitingForMulligan
         };
         return AttachmentVisibility.Project(snapshot);
     }

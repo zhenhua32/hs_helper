@@ -53,7 +53,7 @@ public partial class MainWindow
         var state = DisplaySnapshot;
         if (catchingUp || AutoAdviceBox.IsChecked != true || !_timer.IsEnabled || _historyContext is not null || _historyLoading ||
             CurrentAccess.Kind != SnapshotViewKind.Live || !CurrentAccess.CanAnalyze ||
-            !state.Quality.IsStable || !state.Quality.HasLocalPerspective || state.IsSpectating || state.Phase == GamePhase.Complete ||
+            !state.CanAnalyzeDecision || !state.Quality.HasLocalPerspective || state.IsSpectating || state.Phase == GamePhase.Complete ||
             (state.ActivePlayerId != state.LocalPlayerId && state.Phase is not (GamePhase.Mulligan or GamePhase.Choice)))
         { _decisionTimer.Stop(); _automaticCandidate = null; return; }
         var candidate = (state.MatchId, state.StateVersion);
@@ -117,7 +117,7 @@ public partial class MainWindow
             var access = CurrentAccess;
             overlay.Update(new OverlayState($"{(access.Kind == SnapshotViewKind.Live ? "最近观察" : access.Label)} · 回合 {state.Turn?.ToString() ?? "?"} · v{state.StateVersion}",
                 hand, remaining, plays, _overlayAdvice,
-                $"{(state.Quality.IsStable ? "稳定" : "结算中")} · {(state.Quality.IsComplete ? "记录完整" : "记录有缺口")}\n" +
+                $"{(state.LocalMulliganInput ? "等待我方换牌" : state.Quality.IsStable ? "稳定" : "结算中")} · {(state.Quality.IsComplete ? "记录完整" : "记录有缺口")}\n" +
                     access.Reason + "\n" + string.Join("；", state.Quality.Warnings),
                 state.Quality.IsComplete, state.Quality.IsStable,
                 memory.Entries.Select(entry => entry.DisplayText), memory.Status));

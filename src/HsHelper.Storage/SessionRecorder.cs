@@ -45,7 +45,7 @@ public sealed class SessionRecorder
             if (previous is null && _previous is not null)
                 AddFinalCheckpoint();
             var qualityChanged = previous is null || !SamePersistentQuality(previous.Quality, snapshot.Quality);
-            var saveSnapshot = previous is null || snapshot.Quality.IsStable ||
+            var saveSnapshot = previous is null || snapshot.CanAnalyzeDecision ||
                 (snapshot.Phase == GamePhase.Complete && previous.Phase != GamePhase.Complete) || qualityChanged ||
                 SettledPublicHandMemoryChanged(previous, snapshot);
             var storedObservation = saveSnapshot ? snapshot : MetadataOnly(snapshot);

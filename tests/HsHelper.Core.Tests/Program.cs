@@ -26,6 +26,7 @@ var cases = new (string Name, Action Run)[]
     ("choice candidates are complete only after boundary and private to chooser", ChoiceCandidates),
     ("dormant cached attributes do not overwrite current tags", DormantCachedAttributes),
     ("automatic perspective requires exclusive initial private hand and task boundary", AutomaticPerspective),
+    ("settled local mulligan input can wait inside a game trigger", MulliganInputBoundary),
     ("spectating blocks automatic perspective", SpectatorPerspective),
     ("recent events retain only the selected perspective's private card identities", RecentEventPrivacy),
     ("deck tracker subtracts draws rather than subsequent plays", TrackDrawAndPlay),
@@ -314,6 +315,30 @@ static void SpectatorPerspective()
     engine.ProcessLine("HIDE_ENTITY - Entity=20 tag=ZONE value=HAND");
     engine.ProcessLine("D 12:00:01.0 PowerProcessor.EndCurrentTaskList() - complete");
     Assert(engine.Snapshot().IsSpectating && engine.Snapshot().LocalPlayerId is null, "Spectator log inferred own player");
+}
+
+static void MulliganInputBoundary()
+{
+    var engine = Replay();
+    void Feed(string content) => engine.ProcessLine(content);
+    void Settle() => Feed("PowerProcessor.EndCurrentTaskList() - complete");
+    bool Ready() => engine.Snapshot().CanAnalyzeDecision;
+    Feed("TAG_CHANGE Entity=GameEntity tag=STEP value=BEGIN_MULLIGAN");
+    Feed("BLOCK_START BlockType=TRIGGER Entity=GameEntity EffectCardId= EffectIndex=-1 Target=0");
+    Feed("TAG_CHANGE Entity=3 tag=MULLIGAN_STATE value=INPUT");
+    Settle();
+    Assert(!Ready(), "Opponent input opened local mulligan advice");
+    Feed("TAG_CHANGE Entity=2 tag=MULLIGAN_STATE value=INPUT");
+    Assert(!Ready(), "An unfinished deal opened mulligan advice");
+    Settle();
+    Assert(Ready() && !engine.Snapshot().Quality.IsStable && engine.Snapshot().Quality.OpenBlockCount == 1, "The local prompt was blocked or its ongoing trigger was reported as settled");
+    Feed("BLOCK_START BlockType=TRIGGER Entity=10 EffectCardId= EffectIndex=-1 Target=0");
+    Settle();
+    Assert(!Ready(), "A nested card effect was treated as a settled deal");
+    Feed("BLOCK_END");
+    Feed("TAG_CHANGE Entity=2 tag=MULLIGAN_STATE value=DONE");
+    Settle();
+    Assert(!Ready(), "A completed player choice remained actionable in the open trigger");
 }
 
 static void RecentEventPrivacy()

@@ -110,7 +110,8 @@ public static class CompactAdviceContextBuilder
             build_matches = build is null or "" or "unknown" || snapshot.ClientBuild is null ? (bool?)null : build == snapshot.ClientBuild,
             quality = new { has_start = snapshot.Quality.HasGameStart, complete = snapshot.Quality.IsComplete,
                 stable = snapshot.Quality.IsStable, perspective = snapshot.Quality.HasLocalPerspective, spectating = snapshot.IsSpectating,
-                open_blocks = snapshot.Quality.OpenBlockCount, warnings = snapshot.Quality.Warnings.Concat(contextLimits).ToArray(),
+                open_blocks = snapshot.Quality.OpenBlockCount, local_mulligan_input = snapshot.LocalMulliganInput,
+                warnings = snapshot.Quality.Warnings.Concat(contextLimits).ToArray(),
                 context_complete = contextLimits.Count == 0, context_limits = contextLimits,
                 history_truncated_through = snapshot.EventHistoryTruncatedThrough },
             entities = visible.Select(entity => new

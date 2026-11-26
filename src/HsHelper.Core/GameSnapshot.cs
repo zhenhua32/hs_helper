@@ -149,6 +149,12 @@ public sealed record GameSnapshot(
     public PublicHandMemorySnapshot? PublicHandMemory { get; init; }
     public string PerspectiveSource { get; init; } = "unconfirmed";
     public bool IsSpectating { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool LocalMulliganInput { get; init; }
+    [JsonIgnore]
+    public bool CanAnalyzeDecision => Quality.IsStable || LocalMulliganInput && Phase == GamePhase.Mulligan &&
+        Quality.IsComplete && Quality.HasLocalPerspective && !IsSpectating && Quality.OpenBlockCount == 1 &&
+        Player(LocalPlayerId)?.Tags.GetValueOrDefault("MULLIGAN_STATE") == "INPUT";
     public int? FirstPlayerId
     {
         get

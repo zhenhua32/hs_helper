@@ -16,7 +16,7 @@ public static class SnapshotAccessPolicy
         DateTimeOffset? lastSuccessfulRead, DateTimeOffset? fileLastWrite)
     {
         snapshot = AttachmentVisibility.Project(snapshot);
-        var usable = snapshot.Entities.Count > 0 && snapshot.Quality.IsStable &&
+        var usable = snapshot.Entities.Count > 0 && snapshot.CanAnalyzeDecision &&
             snapshot.Quality.HasLocalPerspective && !snapshot.IsSpectating;
         if (loading) return new(SnapshotViewKind.Unavailable, false, "正在读取日志", "请等待日志追赶完成。");
         if (historical || fileReplay)

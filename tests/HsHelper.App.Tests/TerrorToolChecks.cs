@@ -49,7 +49,7 @@ internal static class TerrorToolChecks
                     policy.Instructions.Contains("等概率", StringComparison.Ordinal) && policy.Instructions.Contains("普通攻击次数/就绪字段", StringComparison.Ordinal),
                     "The model policy omitted conditional forced-combat branches or their unobserved ordinary counters.");
             }
-            Check(AdviceTaskTemplates.Get(AdviceTaskKind.Mulligan).Version == "hunter-v7/mulligan", "Terror policies changed unrelated task versioning.");
+            Check(!AdviceTaskTemplates.Get(AdviceTaskKind.Mulligan).Instructions.Contains("TerrorEndTurnPreviews", StringComparison.Ordinal), "Mulligan policy included turn-specific combat instructions.");
         });
     }
 
