@@ -131,6 +131,10 @@ internal static class HiddenWindowSmoke
                 !JsonSerializer.Serialize(records).Contains(FakeKey, StringComparison.Ordinal), "Displayed/archive advice did not use the sanitized saved record.");
             Check(fakeModel.Calls == 1 && !fakeModel.UnexpectedRequest && rejectCards.Calls == 0, "Hidden UI initialization made an unexpected request.");
             Check(!fakeModel.RequestBody.Contains(FakeKey, StringComparison.Ordinal), "Fixture credential entered the model payload.");
+            fakeModel.TruncateNext = true;
+            Click(FindButton(window, "AI 分析套牌计划"));
+            WaitUntil(() => Field(window, "_analysis") is null && Control<TextBox>(window, "AdviceBox").Text.Contains("模型输出未完整完成"),
+                "A truncated model response left the advice panel waiting instead of explaining the failure.", () => unhandled);
             AssertPassive(window);
             CheckCurrentBuildSync(window, () => unhandled);
             LiveWatchingUiChecks.RunOnDispatcher();
@@ -333,12 +337,14 @@ internal static class HiddenWindowSmoke
     {
         public int Calls { get; private set; }
         public bool UnexpectedRequest { get; private set; }
+        public bool TruncateNext { get; set; }
         public string RequestBody { get; private set; } = "";
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             Calls++; RequestBody = await request.Content!.ReadAsStringAsync(token);
-            UnexpectedRequest = Calls != 1 || request.RequestUri?.Host != "smoke.invalid" || request.Headers.Authorization?.ToString() != "Bearer " + FakeKey;
+            UnexpectedRequest = Calls != (TruncateNext ? 2 : 1) || request.RequestUri?.Host != "smoke.invalid" || request.Headers.Authorization?.ToString() != "Bearer " + FakeKey;
             if (UnexpectedRequest) throw new InvalidOperationException("Hidden smoke rejected an unexpected model request.");
+            if (TruncateNext) return new(HttpStatusCode.OK) { Content = new StringContent("""{"choices":[{"finish_reason":"length"}]}""", Encoding.UTF8, "application/json") };
             var payload = JsonNode.Parse(RequestBody)!;
             var context = JsonNode.Parse(payload["messages"]![1]!["content"]!.GetValue<string>())!;
             Check(context["TaskKind"]!.GetValue<string>() == "DeckPlan" && context["Snapshot"]!["schema"]!.GetValue<string>() == "compact-v1",

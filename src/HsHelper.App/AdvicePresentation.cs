@@ -164,9 +164,18 @@ public partial class MainWindow
             var advice = await new AdviceService(_http).AnalyzeAsync(config.Settings, config.ApiKey, context, coach.ExecuteAsync,
                 IsCurrent, cancellation.Token, coach.Capabilities(_analysisBudget, u => RememberUsage(u, build, context.Task, context.TemplateVersion)));
             var saved = await ArchiveAdviceAsync(advice, snapshot, context, build, deck.Id, evidence, config.ApiKey);
-            if (IsCurrent()) DisplayArchivedAdvice(saved);
+            if (IsCurrent())
+            {
+                DisplayArchivedAdvice(saved);
+                StatusText.Text = "套牌建议已生成并保存。";
+            }
         }
         catch (OperationCanceledException) { if (IsCurrent()) AdviceBox.Text = "套牌分析已取消或配置已变化。"; }
+        catch (Exception error) when (IsCurrent())
+        {
+            AdviceBox.Text = $"本次套牌分析未完成。{error.Message}";
+            throw;
+        }
         finally
         {
             try { await FlushTracesAsync(); }

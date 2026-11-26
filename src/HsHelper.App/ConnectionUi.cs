@@ -26,7 +26,7 @@ public partial class MainWindow
         var now = DateTimeOffset.UtcNow;
         if (!force && _catchingUp && now - _lastConnectionUpdateAt < LiveRenderInterval) return;
         _lastConnectionUpdateAt = now;
-        var mode = _loadingSource ? "正在导入日志" : !_timer.IsEnabled ? "监听已停止" : _currentLogFile is null ? "等待 Power.log" :
+        var mode = _loadingSource ? "正在导入日志" : _viewIsFileReplay ? "文件回放" : !_timer.IsEnabled ? "监听已停止" : _currentLogFile is null ? "等待 Power.log" :
             _catchingUp ? "正在追赶已有日志" :
             _lastLogActivityAt is { } last && DateTimeOffset.UtcNow - last > TimeSpan.FromSeconds(30) ? "连接中，日志暂未新增" : "正在监听";
         var snapshot = DisplaySnapshot;
@@ -38,7 +38,8 @@ public partial class MainWindow
         var text = $"{mode} · {matchMode} · " +
             $"套牌：{deck?.Name ?? "本局未绑定"} · 局面更新时间（本机）：{(updated is { } at ? at.ToLocalTime().ToString("HH:mm:ss") : "暂无")}" +
             (_lastReadAttemptAt is { } read ? $" · 最近读取 {read.ToLocalTime():HH:mm:ss}" : "") +
-            (_currentLogFile is null ? "" : $"\n{_currentLogOffset:N0} 字节 · 已处理 {_sourceLine:N0} 行 · {_currentLogFile}");
+            (_currentLogFile is null ? "" : "\n" + (_viewIsFileReplay ? "" : $"{_currentLogOffset:N0} 字节 · ") +
+                $"已处理 {_sourceLine:N0} 行 · {_currentLogFile}");
         if (_historyContext is not null) text = "历史局面 · " + text;
         if (ConnectionText.Text != text) ConnectionText.Text = text;
     }

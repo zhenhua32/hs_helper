@@ -118,7 +118,7 @@ static async Task<int> MainAsync(string[] args)
                 bool PublicSecretClassification(EntitySnapshot entity, KeyValuePair<string, string> tag) =>
                     confirmedLocal.HasValue && entity.Zone == "SECRET" && entity.ControllerId is 1 or 2 && entity.ControllerId != confirmedLocal &&
                     tag.Key is "SECRET" or "QUEST" or "SIDE_QUEST" && tag.Value is "0" or "1" or "unknown";
-                if (!snapshot.Quality.IsComplete || !snapshot.Quality.IsStable || !snapshot.Quality.HasLocalPerspective || snapshot.IsSpectating ||
+                if (!snapshot.Quality.IsComplete || !snapshot.CanAnalyzeDecision || !snapshot.Quality.HasLocalPerspective || snapshot.IsSpectating ||
                     snapshot.LocalPlayerId is not (1 or 2) || snapshot.Entities.Values.Any(entity =>
                         entity.Tags.Keys.Any(identityTags.Contains) || (entity.Kind == EntityKind.Card &&
                          !(entity.Zone is "PLAY" or "GRAVEYARD" || (entity.ControllerId == snapshot.LocalPlayerId && entity.Zone is "HAND" or "SECRET") ||
@@ -130,9 +130,9 @@ static async Task<int> MainAsync(string[] args)
                 var sessions = new SessionStore(Path.Combine(dataRoot, "sessions.db")); await sessions.InitializeAsync();
                 var point = (await sessions.ListDecisionPointsAsync(snapshot.MatchId, includeUnstable: true))
                     .FirstOrDefault(p => p.EventSequence == snapshot.EventSequence && p.StateVersion == snapshot.StateVersion &&
-                        p.IsDecisionPoint && p.IsStable && p.IsComplete);
+                        p.IsDecisionPoint && p.IsComplete);
                 var historical = point is null ? null : await sessions.GetHistoricalDecisionAsync(point.Id);
-                if (historical is not null && (!historical.Point.IsDecisionPoint || !historical.Point.IsStable || !historical.Point.IsComplete ||
+                if (historical is not null && (!historical.Point.IsDecisionPoint || !historical.Context.Snapshot.CanAnalyzeDecision || !historical.Point.IsComplete ||
                     SnapshotCodec.Serialize(historical.Context.Snapshot) != SnapshotCodec.Serialize(snapshot))) historical = null;
                 string? KnownBuild(string? value) => string.IsNullOrWhiteSpace(value) || value == "unknown" ? null : value;
                 var build = KnownBuild(snapshot.ClientBuild) ??

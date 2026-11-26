@@ -130,13 +130,13 @@ public partial class MainWindow : Window
         GameSnapshot lastFrame = engine.Snapshot();
         var capture = NewCapture(build);
         _capture = capture;
+        long lineNumber = 0;
         try
         {
             tracking = await CreateTrackingFramesAsync(build);
             token.ThrowIfCancellationRequested();
             var producer = Task.Run(async () =>
             {
-                long lineNumber = 0;
                 await foreach (var line in SharedLogReplay.ReadLinesAsync(path, token))
                 {
                     lineNumber++;
@@ -167,6 +167,7 @@ public partial class MainWindow : Window
         _liveFrame = lastFrame; _trackingFrames = tracking;
         _lastStateObservedAt = DateTimeOffset.UtcNow;
         _currentLogFile = path;
+        _sourceLine = lineNumber;
         LogPathBox.Text = path;
         SessionBuildBox.Text = build ?? "";
         RenderSnapshot();
@@ -443,10 +444,16 @@ public partial class MainWindow : Window
             if (IsCurrent())
             {
                 DisplayArchivedAdvice(saved);
+                StatusText.Text = "教练建议已生成并保存。";
                 await UpdateOverlayAsync();
             }
         }
         catch (OperationCanceledException) { if (IsCurrent()) AdviceBox.Text = "分析已取消、超时或局面已变化，旧结果已丢弃。"; }
+        catch (Exception error) when (IsCurrent())
+        {
+            AdviceBox.Text = $"本次分析未完成。{error.Message}";
+            throw;
+        }
         finally
         {
             try { await FlushTracesAsync(); }
