@@ -514,6 +514,12 @@ public sealed partial class PowerLogStateEngine
                 spell.CardId is not null && spell.CardId == ownChoice.SourceCardId && IntTag(spell, "CONTROLLER") == _localPlayerId &&
                 spell.Tags.GetValueOrDefault("CARDTYPE") is "SPELL" or "5" && spell.Tags.GetValueOrDefault("ZONE") == "PLAY"
         };
+        // The Map's second offer is issued by an enchantment while the selected minion is being played.
+        if (isComplete && _taskComplete && phase == GamePhase.Choice &&
+            ownChoice is { SourceCardId: "TLC_824e", SourceId: int enchantment, Ready: true, InputTaskEnded: true, OwnSetAsideOptions: true } &&
+            _blockCount == 2 && _turnBlocks.Count == 2 && _turnBlocks.Peek() == ("TRIGGER", enchantment) &&
+            _turnBlocks.Last() is ("PLAY", int played) && ChoiceVisibility.IsMapFollowupInput(snapshot, played))
+            snapshot = snapshot with { LocalSpellChoiceInput = true };
         return AttachmentVisibility.Project(snapshot);
     }
 

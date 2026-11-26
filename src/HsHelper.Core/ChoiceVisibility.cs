@@ -49,7 +49,8 @@ public static class ChoiceVisibility
             if (!allowSpellInput || !snapshot.LocalSpellChoiceInput || snapshot.Phase != GamePhase.Choice ||
                 snapshot.Quality.OpenBlockCount != 2 || choice is not { Type: "GENERAL", CountMin: 1, CountMax: 1, SourceEntityId: int source } ||
                 !snapshot.Entities.TryGetValue(source, out var spell) || spell.ControllerId != local || spell.Zone != "PLAY" ||
-                spell.CardId is null || spell.CardId != choice.SourceCardId || spell.Tags.GetValueOrDefault("CARDTYPE") is not ("SPELL" or "5") ||
+                spell.CardId is null || spell.CardId != choice.SourceCardId ||
+                !(spell.Tags.GetValueOrDefault("CARDTYPE") is "SPELL" or "5" || IsMapFollowupInput(snapshot)) ||
                 choice.Options.Any(option => option is null || option.ControllerId != local || string.IsNullOrEmpty(option.CardId))) return null;
         }
         var options = choice.Options.ToArray();
@@ -66,5 +67,34 @@ public static class ChoiceVisibility
                 return null;
         }
         return choice with { Options = Array.AsReadOnly(options) };
+    }
+
+    internal static bool IsMapFollowupInput(GameSnapshot snapshot, int? playedEntityId = null)
+    {
+        if (snapshot.Choice is not { Type: "GENERAL", CountMin: 1, CountMax: 1, Options.Count: 2,
+                SourceCardId: "TLC_824e", SourceEntityId: int source, PlayerId: int local } choice ||
+            local != ConfirmedLocalPlayer(snapshot) || !snapshot.Entities.TryGetValue(source, out var enchantment) ||
+            enchantment.CardId != choice.SourceCardId || enchantment.Zone != "PLAY" || enchantment.ControllerId != local ||
+            enchantment.Tags.GetValueOrDefault("CARDTYPE") is not ("ENCHANTMENT" or "6") ||
+            enchantment.GetIntTag("ATTACHED") is not int attachment || !snapshot.Entities.TryGetValue(attachment, out var player) ||
+            player.Kind != EntityKind.Player || player.GetIntTag("PLAYER_ID") != local ||
+            enchantment.GetIntTag("CREATOR") is not int map || snapshot.ChoiceHistory is not { } history ||
+            history.MatchId != snapshot.MatchId || history.StateVersion != snapshot.StateVersion || history.EventSequence != snapshot.EventSequence)
+            return false;
+
+        var first = history.Entries.LastOrDefault(entry => entry?.SourceEntityId == map);
+        if (first is not { IsComplete: true, Type: "GENERAL", SourceCardId: "TLC_824", CountMin: 1, CountMax: 1,
+                Options.Count: 3, ChosenEntityIds.Count: 1 } || first.PlayerId != local ||
+            first.ChosenAtEventSequence >= choice.OfferedAtEventSequence || choice.OfferedAtEventSequence > snapshot.EventSequence)
+            return false;
+        var chosen = first.ChosenEntityIds[0];
+        if (playedEntityId.HasValue && playedEntityId != chosen || !snapshot.Entities.TryGetValue(chosen, out var played) ||
+            played.ControllerId != local || played.Zone != "PLAY" ||
+            !first.Options.Any(option => option is { CardId.Length: > 0 } && option.EntityId == chosen &&
+                option.ControllerId == local && option.CardId == played.CardId))
+            return false;
+        return choice.Options.All(candidate => candidate is { CardId.Length: > 0 } && candidate.ControllerId == local &&
+            candidate.EntityId != chosen && first.Options.Any(option => option is not null && option.EntityId == candidate.EntityId &&
+                option.CardId == candidate.CardId && option.ControllerId == local)) && choice.Options[0].EntityId != choice.Options[1].EntityId;
     }
 }

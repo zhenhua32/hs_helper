@@ -28,6 +28,7 @@ var cases = new (string Name, Action Run)[]
     ("automatic perspective requires exclusive initial private hand and task boundary", AutomaticPerspective),
     ("settled local mulligan input can wait inside a game trigger", MulliganInputBoundary),
     ("own discover prompt requires the matching spell tasks and explicit local options", SpellChoiceInputBoundary),
+    ("Map follow-up is a decision only for the played original pick and the remaining two options", MapFollowupInputBoundary),
     ("spectating blocks automatic perspective", SpectatorPerspective),
     ("recent events retain only the selected perspective's private card identities", RecentEventPrivacy),
     ("deck tracker subtracts draws rather than subsequent plays", TrackDrawAndPlay),
@@ -346,6 +347,47 @@ static void SpellChoiceInputBoundary()
     engine.SetLocalPlayerId(1);
     engine.ProcessLine("GameState.DebugPrintEntitiesChosen() - id=8 Player=1 EntitiesCount=1");
     Assert(!engine.Snapshot().LocalSpellChoiceInput, "The submitted choice remained actionable");
+}
+
+static void MapFollowupInputBoundary()
+{
+    GameSnapshot Followup(int played = 83, int attachment = 2, int task = 264, string remaining = "SECOND")
+    {
+        var engine = Replay();
+        foreach (var (id, card, type, zone) in new[] { (75, "TLC_824", "SPELL", "PLAY"),
+                 (81, "FIRST", "MINION", "SETASIDE"), (82, "SECOND", "MINION", "SETASIDE"), (83, "PICKED", "MINION", "SETASIDE") })
+        {
+            foreach (var line in new[] { $"FULL_ENTITY - Creating ID={id} CardID={card}", $"tag=CARDTYPE value={type}",
+                         "tag=CONTROLLER value=1", $"tag=ZONE value={zone}" }) engine.ProcessLine(line);
+        }
+        foreach (var line in new[] {
+            "GameState.DebugPrintEntityChoices() - id=3 Player=1 TaskList=250 ChoiceType=GENERAL CountMin=1 CountMax=1",
+            "GameState.DebugPrintEntityChoices() - Source=[entityName=X id=75 zone=PLAY cardId=TLC_824 player=1]",
+            "GameState.DebugPrintEntityChoices() - Entities[0]=[entityName=X id=81 zone=SETASIDE cardId=FIRST player=1]",
+            "GameState.DebugPrintEntityChoices() - Entities[1]=[entityName=X id=82 zone=SETASIDE cardId=SECOND player=1]",
+            "GameState.DebugPrintEntityChoices() - Entities[2]=[entityName=X id=83 zone=SETASIDE cardId=PICKED player=1]",
+            "PowerProcessor.EndCurrentTaskList() - m_currentTaskList=250",
+            "GameState.DebugPrintEntitiesChosen() - id=3 Player=1 EntitiesCount=1",
+            "GameState.DebugPrintEntitiesChosen() - Entities[0]=[entityName=X id=83 zone=SETASIDE cardId=PICKED player=1]",
+            "TAG_CHANGE Entity=75 tag=ZONE value=GRAVEYARD", "TAG_CHANGE Entity=83 tag=ZONE value=HAND",
+            "FULL_ENTITY - Creating ID=100 CardID=TLC_824e", "tag=CARDTYPE value=ENCHANTMENT", "tag=CONTROLLER value=1",
+            $"tag=ATTACHED value={attachment}", "tag=CREATOR value=75", "tag=ZONE value=PLAY",
+            $"BLOCK_START BlockType=PLAY Entity={played} EffectCardId= EffectIndex=-1 Target=0",
+            "TAG_CHANGE Entity=83 tag=ZONE value=PLAY", "BLOCK_START BlockType=TRIGGER Entity=100 EffectCardId= EffectIndex=-1 Target=0",
+            "GameState.DebugPrintEntityChoices() - id=4 Player=1 TaskList=264 ChoiceType=GENERAL CountMin=1 CountMax=1",
+            "GameState.DebugPrintEntityChoices() - Source=[entityName=X id=100 zone=PLAY cardId=TLC_824e player=1]",
+            "GameState.DebugPrintEntityChoices() - Entities[0]=[entityName=X id=81 zone=SETASIDE cardId=FIRST player=1]",
+            $"GameState.DebugPrintEntityChoices() - Entities[1]=[entityName=X id=82 zone=SETASIDE cardId={remaining} player=1]",
+            $"PowerProcessor.EndCurrentTaskList() - m_currentTaskList={task}" }) engine.ProcessLine(line);
+        return engine.Snapshot();
+    }
+    var valid = Followup();
+    Assert(valid.CanAnalyzeDecision && !valid.Quality.IsStable && ChoiceVisibility.ConfirmedDecision(valid)?.Options.Count == 2 &&
+        ChoiceVisibility.ConfirmedOwn(valid) is null, "Map follow-up lost its strategy-only boundary.");
+    foreach (var blocked in new[] { Followup(played: 81), Followup(attachment: 3), Followup(task: 262), Followup(remaining: "OTHER"),
+                 valid with { ChoiceHistory = null }, valid with { IsSpectating = true } })
+        Assert(!blocked.CanAnalyzeDecision && ChoiceVisibility.ConfirmedDecision(blocked) is null,
+            "Unrelated play, source, task, option, history or observer qualified a follow-up.");
 }
 
 static void MulliganInputBoundary()
